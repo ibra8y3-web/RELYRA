@@ -23,12 +23,15 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.compose.material3.Tab
+import androidx.compose.material3.TabRow
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -51,7 +54,21 @@ import java.text.DateFormat
 import java.util.Date
 
 @Composable
-fun ChatsScreen(vm: MainViewModel, onOpen: (String) -> Unit) {
+fun ChatsScreen(vm: MainViewModel, onOpen: (String) -> Unit, onOpenGroup: (String) -> Unit, onCreateGroup: () -> Unit) {
+    var tab by rememberSaveable { mutableStateOf(0) }
+    Column(Modifier.fillMaxSize()) {
+        TabRow(selectedTabIndex = tab) {
+            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(R.string.groups_tab_direct)) })
+            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(stringResource(R.string.groups_tab_groups)) })
+        }
+        Box(Modifier.weight(1f).fillMaxWidth()) {
+            if (tab == 0) DirectChats(vm, onOpen) else GroupsList(vm, onOpenGroup, onCreateGroup)
+        }
+    }
+}
+
+@Composable
+private fun DirectChats(vm: MainViewModel, onOpen: (String) -> Unit) {
     val contacts by vm.contacts.collectAsStateWithLifecycle()
     val summaries by vm.summaries.collectAsStateWithLifecycle()
     val usable = contacts.filter { !it.blocked }

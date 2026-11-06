@@ -37,10 +37,34 @@ data class StoredMessage(
 
 enum class AckKind { DELIVERED, READ }
 
+enum class GroupKind { GROUP, CHANNEL }
+enum class GroupRole { MEMBER, ADMIN, OWNER }
+enum class GroupState { INVITED, ACTIVE, LEFT, REMOVED }
+
+class GroupMemberRef(val id: String, val role: GroupRole)
+
+object GroupLimits {
+    const val MAX_MEMBERS = 200
+    const val MAX_NAME = 64
+    fun sanitizeName(raw: String): String = raw.filter { !it.isISOControl() }.trim().replace(Regex("\\s+"), " ").take(MAX_NAME)
+}
+
 sealed interface Envelope {
     val messageId: String
     val from: String
     val to: String
+
+    /** One copy of a group message, addressed to one member (each copy has its own ID and is acknowledged on its own). */
+    class GroupChat(override val messageId: String, override val from: String, override val to: String,
+                    val groupId: String, val sentAt: Long, val body: String) : Envelope
+
+    /** Full membership snapshot of a group. Receivers accept it only from someone who is an admin/owner in THEIR copy. */
+    class GroupSync(override val messageId: String, override val from: String, override val to: String,
+                    val groupId: String, val name: String, val kind: GroupKind, val epoch: Long,
+                    val owner: String, val members: List<GroupMemberRef>) : Envelope
+
+    class GroupLeave(override val messageId: String, override val from: String, override val to: String,
+                     val groupId: String) : Envelope
 
     class Chat(override val messageId: String, override val from: String, override val to: String,
                val sentAt: Long, val body: String) : Envelope
@@ -83,6 +107,9 @@ object EnvelopeCodec {
     private const val T_CHAT = 1
     private const val T_ACK = 2
     private const val T_ATTACH = 3
+    private const val T_GROUP_CHAT = 4
+    private const val T_GROUP_SYNC = 5
+    private const val T_GROUP_LEAVE = 6
 
     fun encode(e: Envelope): ByteArray {
         val bos = ByteArrayOutputStream()
@@ -108,6 +135,25 @@ object EnvelopeCodec {
                     o.writeLong(e.size); o.writeLong(e.blobSize)
                     o.write(e.plainSha256); o.write(e.blobSha256); o.write(e.key)
                     o.writeUTF(e.serverUrl)
+                }
+                is Envelope.GroupChat -> {
+                    o.writeByte(T_GROUP_CHAT)
+                    o.writeUTF(e.messageId); o.writeUTF(e.from); o.writeUTF(e.to)
+                    o.writeUTF(e.groupId); o.writeLong(e.sentAt); o.writeUTF(e.body)
+                }
+                is Envelope.GroupSync -> {
+                    require(e.members.size in 1..GroupLimits.MAX_MEMBERS)
+                    o.writeByte(T_GROUP_SYNC)
+                    o.writeUTF(e.messageId); o.writeUTF(e.from); o.writeUTF(e.to)
+                    o.writeUTF(e.groupId); o.writeUTF(e.name)
+                    o.writeByte(e.kind.ordinal); o.writeLong(e.epoch); o.writeUTF(e.owner)
+                    o.writeShort(e.members.size)
+                    for (m in e.members) { o.writeUTF(m.id); o.writeByte(m.role.ordinal) }
+                }
+                is Envelope.GroupLeave -> {
+                    o.writeByte(T_GROUP_LEAVE)
+                    o.writeUTF(e.messageId); o.writeUTF(e.from); o.writeUTF(e.to)
+                    o.writeUTF(e.groupId)
                 }
             }
         }
@@ -151,6 +197,36 @@ object EnvelopeCodec {
                             !AttachmentLimits.validSizes(size, blobSize)
                         ) null
                         else Envelope.Attachment(id, from, to, sentAt, name, mime, size, blobSize, plain, blob, key, url)
+                    }
+                    T_GROUP_CHAT -> {
+                        val gid = i.readUTF()
+                        UUID.fromString(gid)
+                        val sentAt = i.readLong()
+                        val body = i.readUTF()
+                        if (body.isBlank() || body.length > MAX_BODY) null else Envelope.GroupChat(id, from, to, gid, sentAt, body)
+                    }
+                    T_GROUP_SYNC -> {
+                        val gid = i.readUTF()
+                        UUID.fromString(gid)
+                        val name = i.readUTF()
+                        val kind = GroupKind.entries.getOrNull(i.readUnsignedByte()) ?: return null
+                        val epoch = i.readLong()
+                        val owner = i.readUTF()
+                        val count = i.readUnsignedShort()
+                        if (count !in 1..GroupLimits.MAX_MEMBERS || name.length > GroupLimits.MAX_NAME || owner.length > 100 || epoch < 0) return null
+                        val members = ArrayList<GroupMemberRef>(count)
+                        repeat(count) {
+                            val mid = i.readUTF()
+                            val role = GroupRole.entries.getOrNull(i.readUnsignedByte()) ?: return null
+                            if (mid.isEmpty() || mid.length > 100) return null
+                            members += GroupMemberRef(mid, role)
+                        }
+                        Envelope.GroupSync(id, from, to, gid, name, kind, epoch, owner, members)
+                    }
+                    T_GROUP_LEAVE -> {
+                        val gid = i.readUTF()
+                        UUID.fromString(gid)
+                        Envelope.GroupLeave(id, from, to, gid)
                     }
                     else -> null
                 }

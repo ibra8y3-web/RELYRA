@@ -6,6 +6,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -37,6 +38,9 @@ import org.relyra.app.ui.components.rememberMessageHost
 import org.relyra.app.ui.screens.AddContactScreen
 import org.relyra.app.ui.screens.ChatScreen
 import org.relyra.app.ui.screens.ChatsScreen
+import org.relyra.app.ui.screens.CreateGroupScreen
+import org.relyra.app.ui.screens.GroupChatScreen
+import org.relyra.app.ui.screens.GroupInfoScreen
 import org.relyra.app.ui.screens.ContactsScreen
 import org.relyra.app.ui.screens.HomeScreen
 import org.relyra.app.ui.screens.IdentityScreen
@@ -56,6 +60,9 @@ private object Routes {
     const val RECOVERY = "identity/recovery"
     const val LOG = "settings/log"
     const val NETWORK = "settings/network"
+    const val GROUP = "group/{id}"
+    const val GROUP_INFO = "group/{id}/info"
+    const val GROUP_NEW = "groups/new"
 }
 
 private class Tab(val route: String, @StringRes val label: Int, val icon: ImageVector)
@@ -72,6 +79,8 @@ private val tabs = listOf(
 private fun titleFor(route: String): Int = when (route) {
     Routes.HOME -> R.string.nav_home
     Routes.CHATS, Routes.CHAT -> R.string.nav_chats
+    Routes.GROUP_NEW -> R.string.groups_new_title
+    Routes.GROUP_INFO -> R.string.groups_info
     Routes.CONTACTS -> R.string.nav_contacts
     Routes.IDENTITY -> R.string.nav_identity
     Routes.SETTINGS -> R.string.nav_settings
@@ -94,10 +103,18 @@ fun AppNav(
     val isTab = tabs.any { it.route == route }
     val snackbar = rememberMessageHost(vm)
     val allContacts by vm.contacts.collectAsStateWithLifecycle()
-    val chatName = if (route == Routes.CHAT) {
-        val id = backStack?.arguments?.getString("id")
-        allContacts.find { it.publicId == id }?.displayName
-    } else null
+    val allGroups by vm.groups.collectAsStateWithLifecycle()
+    val chatName = when (route) {
+        Routes.CHAT -> {
+            val id = backStack?.arguments?.getString("id")
+            allContacts.find { it.publicId == id }?.displayName
+        }
+        Routes.GROUP -> {
+            val id = backStack?.arguments?.getString("id")
+            allGroups.find { it.groupId == id }?.name
+        }
+        else -> null
+    }
 
     val showRecovery by vm.showRecoveryNext.collectAsStateWithLifecycle()
     LaunchedEffect(showRecovery) {
@@ -119,6 +136,14 @@ fun AppNav(
                     if (!isTab) {
                         IconButton(onClick = { nav.popBackStack() }) {
                             Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = stringResource(R.string.back))
+                        }
+                    }
+                },
+                actions = {
+                    if (route == Routes.GROUP) {
+                        val gid = backStack?.arguments?.getString("id")
+                        IconButton(onClick = { nav.navigate("group/$gid/info") }) {
+                            Icon(Icons.Default.Info, contentDescription = stringResource(R.string.groups_info))
                         }
                     }
                 },
@@ -148,7 +173,26 @@ fun AppNav(
     ) { padding ->
         NavHost(nav, startDestination = Routes.HOME, modifier = Modifier.padding(padding)) {
             composable(Routes.HOME) { HomeScreen(vm) }
-            composable(Routes.CHATS) { ChatsScreen(vm, onOpen = { nav.navigate("chat/$it") }) }
+            composable(Routes.CHATS) {
+                ChatsScreen(
+                    vm,
+                    onOpen = { nav.navigate("chat/$it") },
+                    onOpenGroup = { nav.navigate("group/$it") },
+                    onCreateGroup = { nav.navigate(Routes.GROUP_NEW) },
+                )
+            }
+            composable(Routes.GROUP) { entry -> GroupChatScreen(vm, entry.arguments?.getString("id") ?: "") }
+            composable(Routes.GROUP_INFO) { entry ->
+                GroupInfoScreen(vm, entry.arguments?.getString("id") ?: "", onGone = {
+                    nav.popBackStack(Routes.CHATS, inclusive = false)
+                })
+            }
+            composable(Routes.GROUP_NEW) {
+                CreateGroupScreen(vm, onCreated = { id ->
+                    nav.popBackStack()
+                    nav.navigate("group/$id")
+                })
+            }
             composable(Routes.CHAT) { entry -> ChatScreen(vm, entry.arguments?.getString("id") ?: "") }
             composable(Routes.CONTACTS) { ContactsScreen(vm, onAdd = { nav.navigate(Routes.ADD) }) }
             composable(Routes.IDENTITY) { IdentityScreen(vm, onRecovery = { nav.navigate(Routes.RECOVERY) }) }

@@ -1,4 +1,4 @@
-# RELYRA — Phases 1-5 + Phase 6a (encrypted file transfer)
+# RELYRA — Phases 1-6b + Phase 7a (groups and channels)
 
 Native Android (Kotlin, Jetpack Compose, Material 3). Min Android 10, target 15.
 
@@ -75,9 +75,27 @@ No Gradle wrapper is committed; CI provisions Gradle itself. Locally: `gradle as
   delete the contact and add it again to start a new session. Group (MLS) and multi-device sessions are not done.
   Wire/session design has not been externally reviewed.
 
+## Phase 7a: groups and broadcast channels (v0.7.0)
+- Chats tab now has **Direct | Groups**. Create a group (everyone posts) or a channel (only owner/admins post), add members
+  from your contacts, rename, promote/demote admins, remove members, transfer ownership, leave, delete the local copy.
+- **Encryption is NOT MLS.** Each group packet is encrypted separately for every member through the existing one-to-one
+  Double Ratchet session (the design of the first Signal groups). A removed member simply stops being an addressee, so no
+  group key rotation is needed. Cost: sending grows with the member count (max 200). Every member must be one of your
+  contacts with an encryption key; members who are not your contacts are shown but cannot exchange messages with you.
+- Each message copy has its own MessageID, is stored by the receiver before it is acknowledged, retried with the same ID
+  and shown once. The sender sees "Delivered to X of Y" from real acknowledgements. Identical text sent twice is two messages.
+- Authority is decided from each receiver's own copy of the group, never from what a packet claims: an unknown group is
+  only an invitation the user must accept; a membership snapshot is applied only when its sender is owner/admin locally and
+  its epoch is higher; admins cannot touch the owner/admin set; in a channel members cannot post.
+- DB schema v6 (migration 5->6: `chat_groups`, `group_members`, `group_messages`, `group_outbox`).
+- 14 JVM tests cover invitations, acceptance, delivery, lost acks, channel posting rights, forged snapshots from outsiders and
+  plain members, admin limits, removal, leaving, ownership transfer and codec fuzzing.
+- **Limits (honest):** no read receipts or file attachments in groups yet; two admins editing at the same moment can briefly
+  diverge (higher epoch wins, equal epochs are ignored); a member who is not your contact cannot be reached; no MLS,
+  no public/discoverable groups, no communities yet. Not tested on real devices yet.
+
 ## Not in this build (not shown in the UI)
-MLS, groups, calls, libp2p/P2P, Tor, mesh, vault,
-browser, documents, backup/export, Server Studio, Local API, plugins. See the roadmap phases 3-12.
+MLS, communities, calls, libp2p/P2P, Tor, mesh, vault, browser, documents, backup/export, Server Studio, Local API, plugins.
 
 ## Notes
 Single Gradle module with packages mirroring the planned layers (`core/crypto`, `core/database`,

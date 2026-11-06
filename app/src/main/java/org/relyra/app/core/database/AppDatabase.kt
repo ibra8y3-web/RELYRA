@@ -13,8 +13,9 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         IdentityEntity::class, ContactEntity::class, SecurityEventEntity::class,
         MessageEntity::class, ProcessedIdEntity::class, AttachmentEntity::class,
         RatchetEntity::class,
+        GroupEntity::class, GroupMemberEntity::class, GroupMessageEntity::class, GroupOutboxEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -24,6 +25,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun messageDao(): MessageDao
     abstract fun attachmentDao(): AttachmentDao
     abstract fun ratchetDao(): RatchetDao
+    abstract fun groupDao(): GroupDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -69,11 +71,36 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `chat_groups` (`groupId` TEXT NOT NULL, `name` TEXT NOT NULL, " +
+                        "`kind` TEXT NOT NULL, `ownerId` TEXT NOT NULL, `epoch` INTEGER NOT NULL, `state` TEXT NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL, `invitedBy` TEXT NOT NULL, PRIMARY KEY(`groupId`))"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `group_members` (`groupId` TEXT NOT NULL, `memberId` TEXT NOT NULL, " +
+                        "`role` TEXT NOT NULL, PRIMARY KEY(`groupId`, `memberId`))"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `group_messages` (`messageId` TEXT NOT NULL, `groupId` TEXT NOT NULL, " +
+                        "`senderId` TEXT NOT NULL, `outgoing` INTEGER NOT NULL, `body` TEXT NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL, `readLocally` INTEGER NOT NULL, PRIMARY KEY(`messageId`))"
+                )
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `group_outbox` (`id` TEXT NOT NULL, `groupId` TEXT NOT NULL, " +
+                        "`memberId` TEXT NOT NULL, `baseMessageId` TEXT, `payload` BLOB NOT NULL, " +
+                        "`createdAt` INTEGER NOT NULL, `attempts` INTEGER NOT NULL, `nextAttemptAt` INTEGER NOT NULL, " +
+                        "`acked` INTEGER NOT NULL, `failed` INTEGER NOT NULL, PRIMARY KEY(`id`))"
+                )
+            }
+        }
+
         /** SQLCipher-encrypted. Never uses destructive migration: user data must survive updates. */
         fun build(context: Context, passphrase: ByteArray): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "relyra.db")
                 .openHelperFactory(SupportOpenHelperFactory(passphrase))
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .build()
     }
 }

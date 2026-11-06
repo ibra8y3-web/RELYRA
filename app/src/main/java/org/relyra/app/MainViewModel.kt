@@ -29,6 +29,14 @@ import org.relyra.app.core.messaging.AttachmentPhase
 import org.relyra.app.core.messaging.StoredAttachment
 import org.relyra.app.core.transfer.DownloadResult
 import org.relyra.app.core.transfer.PrepareResult
+import org.relyra.app.core.database.GroupDeliveryCount
+import org.relyra.app.core.database.GroupEntity
+import org.relyra.app.core.database.GroupMemberEntity
+import org.relyra.app.core.database.GroupMessageEntity
+import org.relyra.app.core.database.GroupSummary
+import org.relyra.app.core.messaging.GroupKind
+import org.relyra.app.core.messaging.GroupOutcome
+import org.relyra.app.core.messaging.GroupResult
 
 sealed interface StorageState {
     data object Opening : StorageState
@@ -56,6 +64,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val myCard = MutableStateFlow<String?>(null)
     val summaries = MutableStateFlow<List<ChatSummary>>(emptyList())
     val pendingCount = MutableStateFlow(0)
+    val groups = MutableStateFlow<List<GroupEntity>>(emptyList())
+    val groupSummaries = MutableStateFlow<List<GroupSummary>>(emptyList())
     val nostrKey = MutableStateFlow<String?>(null)
     val relays get() = rely.container.network.relays
     val relayConnected get() = rely.container.nostr.connections
@@ -99,6 +109,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             launch { container.events.observeCount().collect { eventCount.value = it } }
             launch { container.messages.observeSummaries().collect { summaries.value = it } }
             launch { container.messages.observePending().collect { pendingCount.value = it } }
+            launch { container.groupStore.observeGroups().collect { groups.value = it } }
+            launch { container.groupStore.observeSummaries().collect { groupSummaries.value = it } }
             container.messages.resetStaleDownloads()
             container.delivery.processOutbox()
             // While the app is open, retry whatever is due (the engine's backoff decides what is actually sent).
@@ -248,6 +260,69 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setFileServerEnabled(url: String, enabled: Boolean) = rely.container.blossom.setEnabled(url, enabled)
     fun setFileServerSign(url: String, value: Boolean) = rely.container.blossom.setSignWithIdentity(url, value)
     fun testFileServer(url: String) = rely.container.blossom.test(url)
+
+    // ---- groups and channels ---------------------------------------------------------------------------------
+
+    fun groupMessages(id: String): Flow<List<GroupMessageEntity>> =
+        if (storage.value is StorageState.Ready) ctr().groupStore.observeMessages(id) else emptyFlow()
+
+    fun groupMembers(id: String): Flow<List<GroupMemberEntity>> =
+        if (storage.value is StorageState.Ready) ctr().groupStore.observeMembers(id) else emptyFlow()
+
+    fun groupDelivery(id: String): Flow<List<GroupDeliveryCount>> =
+        if (storage.value is StorageState.Ready) ctr().groupStore.observeDelivery(id) else emptyFlow()
+
+    fun groupOf(id: String): Flow<GroupEntity?> =
+        if (storage.value is StorageState.Ready) ctr().groupStore.observeGroup(id) else emptyFlow()
+
+    private fun groupError(r: GroupResult) {
+        message.value = when (r) {
+            GroupResult.OK -> return
+            GroupResult.NOT_ALLOWED -> UiMessage(R.string.err_group_not_allowed)
+            GroupResult.NO_RECIPIENTS -> UiMessage(R.string.err_group_no_recipients)
+            GroupResult.UNKNOWN_CONTACT -> UiMessage(R.string.err_group_contact)
+            GroupResult.TOO_LONG -> UiMessage(R.string.err_msg_too_long)
+            GroupResult.INVALID, GroupResult.EMPTY -> UiMessage(R.string.err_group_invalid)
+            else -> UiMessage(R.string.err_group_state)
+        }
+    }
+
+    /** Runs a group operation off the main thread, reports a failure, then pushes whatever became due. */
+    private fun groupOp(onDone: (GroupResult) -> Unit = {}, block: suspend () -> GroupResult) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val r = try { block() } catch (t: Throwable) { fail(t); return@launch }
+            groupError(r)
+            runCatching { ctr().delivery.processOutbox() }
+            withContext(Dispatchers.Main) { onDone(r) }
+        }
+    }
+
+    fun createGroup(name: String, kind: GroupKind, members: List<String>, onDone: (GroupOutcome) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val r = try { ctr().groups.create(name, kind, members) } catch (t: Throwable) { fail(t); return@launch }
+            groupError(r.result)
+            runCatching { ctr().delivery.processOutbox() }
+            withContext(Dispatchers.Main) { onDone(r) }
+        }
+    }
+
+    fun sendGroupMessage(groupId: String, body: String, onSent: () -> Unit) =
+        groupOp(onDone = { if (it == GroupResult.OK) onSent() }) { ctr().groups.send(groupId, body) }
+
+    fun addGroupMembers(groupId: String, ids: List<String>) = groupOp { ctr().groups.addMembers(groupId, ids) }
+    fun removeGroupMember(groupId: String, id: String) = groupOp { ctr().groups.removeMember(groupId, id) }
+    fun setGroupAdmin(groupId: String, id: String, admin: Boolean) = groupOp { ctr().groups.setAdmin(groupId, id, admin) }
+    fun renameGroup(groupId: String, name: String) = groupOp { ctr().groups.rename(groupId, name) }
+    fun transferGroup(groupId: String, id: String) = groupOp { ctr().groups.transferOwnership(groupId, id) }
+    fun acceptGroup(groupId: String) = groupOp { ctr().groups.accept(groupId) }
+    fun leaveGroup(groupId: String, onDone: () -> Unit = {}) =
+        groupOp(onDone = { if (it == GroupResult.OK) onDone() }) { ctr().groups.leave(groupId) }
+    fun deleteGroup(groupId: String, onDone: () -> Unit = {}) =
+        groupOp(onDone = { if (it == GroupResult.OK) onDone() }) { ctr().groups.deleteLocal(groupId) }
+
+    fun markGroupRead(groupId: String) {
+        viewModelScope.launch(Dispatchers.IO) { runCatching { ctr().groupStore.markRead(groupId) } }
+    }
 
     fun cancelMessage(id: String) { viewModelScope.launch(Dispatchers.IO) { ctr().delivery.cancel(id) } }
 

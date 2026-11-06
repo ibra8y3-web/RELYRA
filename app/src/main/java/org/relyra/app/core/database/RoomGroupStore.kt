@@ -1,0 +1,64 @@
+package org.relyra.app.core.database
+
+import androidx.room.withTransaction
+import org.relyra.app.core.messaging.GroupMemberRef
+import org.relyra.app.core.messaging.GroupMessage
+import org.relyra.app.core.messaging.GroupRecord
+import org.relyra.app.core.messaging.GroupState
+import org.relyra.app.core.messaging.GroupStore
+import org.relyra.app.core.messaging.OutboxRow
+
+class RoomGroupStore(private val db: AppDatabase) : GroupStore {
+    private val dao get() = db.groupDao()
+
+    override suspend fun group(id: String): GroupRecord? = dao.get(id)?.toModel()
+    override suspend fun members(groupId: String): List<GroupMemberRef> = dao.members(groupId).map { it.toModel() }
+
+    override suspend fun putGroup(g: GroupRecord, members: List<GroupMemberRef>) {
+        db.withTransaction {
+            dao.put(g.toEntity())
+            dao.clearMembers(g.groupId)
+            dao.putMembers(members.map { GroupMemberEntity(g.groupId, it.id, it.role.name) })
+        }
+    }
+
+    override suspend fun setState(groupId: String, state: GroupState) = dao.setState(groupId, state.name)
+
+    override suspend fun insertOutgoingMessage(m: GroupMessage, copies: List<OutboxRow>) {
+        db.withTransaction {
+            dao.insertMessage(m.toEntity())
+            dao.insertOutbox(copies.map { it.toEntity() })
+        }
+    }
+
+    override suspend fun recordIncomingMessage(m: GroupMessage): Boolean = db.withTransaction {
+        if (db.messageDao().insertProcessed(ProcessedIdEntity(m.messageId, m.createdAt)) == -1L) {
+            false
+        } else {
+            dao.insertMessage(m.toEntity())
+            true
+        }
+    }
+
+    override suspend fun enqueue(rows: List<OutboxRow>) = dao.insertOutbox(rows.map { it.toEntity() })
+    override suspend fun dueOutbox(now: Long, limit: Int): List<OutboxRow> = dao.due(now, limit).map { it.toModel() }
+    override suspend fun updateOutbox(row: OutboxRow) = dao.updateOutbox(row.toEntity())
+    override suspend fun markAcked(id: String, memberId: String): Boolean = dao.ack(id, memberId) > 0
+
+    override suspend fun deleteGroup(groupId: String) {
+        db.withTransaction {
+            dao.deleteMessages(groupId)
+            dao.deleteOutbox(groupId)
+            dao.clearMembers(groupId)
+            dao.deleteGroup(groupId)
+        }
+    }
+
+    fun observeGroups() = dao.observeAll()
+    fun observeGroup(id: String) = dao.observe(id)
+    fun observeMembers(id: String) = dao.observeMembers(id)
+    fun observeMessages(id: String) = dao.observeMessages(id)
+    fun observeSummaries() = dao.observeSummaries()
+    fun observeDelivery(id: String) = dao.observeDelivery(id)
+    suspend fun markRead(id: String) = dao.markRead(id)
+}

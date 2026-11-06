@@ -33,6 +33,7 @@ class DeliveryEngine(
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val newId: () -> String = { UUID.randomUUID().toString() },
     private val uploader: BlobUploader? = null,
+    private val groups: GroupInbound? = null,
 ) {
     private val lock = Mutex()
     private val uploadLock = Mutex()
@@ -81,7 +82,8 @@ class DeliveryEngine(
         return EnqueueResult.Queued(id)
     }
 
-    private suspend fun transmit(peer: String, plaintext: ByteArray): SendOutcome {
+    /** Encrypts [plaintext] for [peer] and hands it to the first transport that accepts it. Also used by groups. */
+    suspend fun transmit(peer: String, plaintext: ByteArray): SendOutcome {
         // Do not encrypt (which advances the ratchet) when there is no route to send on anyway.
         if (transports().none { it.isReady() }) return SendOutcome.Unavailable
         val payload = protector.protect(peer, plaintext) ?: return SendOutcome.Rejected("no encryption key for peer")
@@ -98,7 +100,9 @@ class DeliveryEngine(
     }
 
     /** Sends everything that is due. Safe to call from the UI and from the background worker. */
-    suspend fun processOutbox(): Int {
+    suspend fun processOutbox(): Int = processDirect() + (groups?.processOutbox() ?: 0)
+
+    private suspend fun processDirect(): Int {
         uploadPending()
         lock.withLock {
             val me = ownId() ?: return 0
@@ -242,7 +246,9 @@ class DeliveryEngine(
                 )
                 transmit(env.from, EnvelopeCodec.encode(Envelope.Ack(env.messageId, me, env.from, AckKind.DELIVERED)))
             }
+            is Envelope.GroupChat, is Envelope.GroupSync, is Envelope.GroupLeave -> groups?.onEnvelope(env)
             is Envelope.Ack -> lock.withLock {
+                if (groups?.onAck(env) == true) return
                 val m = store.get(env.messageId) ?: return
                 if (!m.outgoing || m.chatId != env.from) return
                 val target = if (env.kind == AckKind.READ) MessageState.READ else MessageState.DELIVERED

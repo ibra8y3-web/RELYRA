@@ -2,11 +2,13 @@ package org.relyra.app
 
 import android.content.Context
 import org.relyra.app.core.database.AppDatabase
+import org.relyra.app.core.database.RoomGroupStore
 import org.relyra.app.core.database.RoomMessageStore
 import org.relyra.app.core.identity.ContactRepository
 import org.relyra.app.core.identity.IdentityRepository
 import org.relyra.app.core.identity.SecurityLog
 import org.relyra.app.core.messaging.DeliveryEngine
+import org.relyra.app.core.messaging.GroupEngine
 import org.relyra.app.core.messaging.Transport
 import org.relyra.app.core.network.AdaptiveRouter
 import org.relyra.app.core.network.NetworkManager
@@ -23,6 +25,7 @@ class AppContainer(context: Context) {
     val identities: IdentityRepository by lazy { IdentityRepository(database, secure, events) { transfers.wipeAll() } }
     val contacts: ContactRepository by lazy { ContactRepository(database, events) { ids, paths -> transfers.clean(ids, paths) } }
     val messages by lazy { RoomMessageStore(database) }
+    val groupStore by lazy { RoomGroupStore(database) }
 
     val network by lazy { NetworkManager(appContext) }
     private val netScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
@@ -35,7 +38,7 @@ class AppContainer(context: Context) {
     val router by lazy { AdaptiveRouter { listOf(nostr) } }
     val transports: List<Transport> by lazy { listOf(router) }
 
-    val delivery by lazy {
+    val delivery: DeliveryEngine by lazy {
         DeliveryEngine(
             store = messages,
             peers = contacts.peers,
@@ -43,6 +46,17 @@ class AppContainer(context: Context) {
             transports = { transports },
             ownId = { database.identityDao().get()?.publicId },
             uploader = transfers,
+            groups = groups,
+        )
+    }
+
+    /** Groups and channels: every packet goes out through [delivery] (one-to-one end-to-end encryption). */
+    val groups: GroupEngine by lazy {
+        GroupEngine(
+            store = groupStore,
+            peers = contacts.peers,
+            ownId = { database.identityDao().get()?.publicId },
+            transmit = { peer, plaintext -> delivery.transmit(peer, plaintext) },
         )
     }
 
