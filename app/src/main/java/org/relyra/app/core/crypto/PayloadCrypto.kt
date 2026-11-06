@@ -1,6 +1,6 @@
 package org.relyra.app.core.crypto
 
-import com.google.crypto.tink.aead.subtle.AesGcmJce
+import com.google.crypto.tink.subtle.AesGcmJce
 import com.google.crypto.tink.subtle.Hkdf
 import com.google.crypto.tink.subtle.X25519
 import java.security.GeneralSecurityException

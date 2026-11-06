@@ -42,8 +42,8 @@ class NostrPool(
         secret = newSecret
         pubHex = newPub
         if (newSecret != null) {
-            conns.keys.filter { it !in urls }.forEach { conns.remove(it)?.stop() }
-            urls.filter { it !in conns }.forEach { u -> conns[u] = Conn(u).also { it.start() } }
+            conns.keys.filter { !urls.contains(it) }.forEach { conns.remove(it)?.stop() }
+            urls.filter { !conns.containsKey(it) }.forEach { u -> conns[u] = Conn(u).also { it.start() } }
         }
         publishStates()
     }
