@@ -1,0 +1,58 @@
+package org.relyra.app.core.database
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+import kotlinx.coroutines.flow.Flow
+
+@Dao
+interface IdentityDao {
+    @Query("SELECT * FROM identity WHERE slot = 1")
+    fun observe(): Flow<IdentityEntity?>
+
+    @Query("SELECT * FROM identity WHERE slot = 1")
+    suspend fun get(): IdentityEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(entity: IdentityEntity)
+
+    @Query("UPDATE identity SET displayName = :name WHERE slot = 1")
+    suspend fun rename(name: String)
+}
+
+@Dao
+interface ContactDao {
+    @Query("SELECT * FROM contacts ORDER BY displayName COLLATE NOCASE")
+    fun observeAll(): Flow<List<ContactEntity>>
+
+    @Query("SELECT * FROM contacts WHERE publicId = :id")
+    suspend fun get(id: String): ContactEntity?
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insert(contact: ContactEntity)
+
+    @Query("UPDATE contacts SET verified = :verified WHERE publicId = :id")
+    suspend fun setVerified(id: String, verified: Boolean)
+
+    @Query("UPDATE contacts SET blocked = :blocked WHERE publicId = :id")
+    suspend fun setBlocked(id: String, blocked: Boolean)
+
+    @Query("UPDATE contacts SET encKey = :enc, nostrKey = :nostr WHERE publicId = :id")
+    suspend fun setKeys(id: String, enc: ByteArray, nostr: ByteArray)
+
+    @Query("DELETE FROM contacts WHERE publicId = :id")
+    suspend fun delete(id: String)
+}
+
+@Dao
+interface SecurityEventDao {
+    @Insert
+    suspend fun insert(event: SecurityEventEntity)
+
+    @Query("SELECT * FROM security_events ORDER BY id DESC LIMIT :limit")
+    fun observeRecent(limit: Int): Flow<List<SecurityEventEntity>>
+
+    @Query("SELECT COUNT(*) FROM security_events")
+    fun observeCount(): Flow<Int>
+}

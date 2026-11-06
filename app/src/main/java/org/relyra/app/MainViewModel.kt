@@ -1,0 +1,275 @@
+package org.relyra.app
+
+import android.app.Application
+import android.content.Context
+import androidx.annotation.StringRes
+import androidx.core.content.edit
+import androidx.lifecycle.AndroidViewModel
+import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import org.relyra.app.core.database.ContactEntity
+import org.relyra.app.core.database.EventType
+import org.relyra.app.core.database.IdentityEntity
+import org.relyra.app.core.database.SecurityEventEntity
+import org.relyra.app.core.database.ChatSummary
+import org.relyra.app.core.database.MessageEntity
+import org.relyra.app.core.identity.AddResult
+import org.relyra.app.core.messaging.EnqueueResult
+import org.relyra.app.core.network.AddRelayResult
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.delay
+import android.net.Uri
+import org.relyra.app.core.database.AttachmentEntity
+import org.relyra.app.core.messaging.AttachmentLimits
+import org.relyra.app.core.messaging.AttachmentPhase
+import org.relyra.app.core.messaging.StoredAttachment
+import org.relyra.app.core.transfer.DownloadResult
+import org.relyra.app.core.transfer.PrepareResult
+
+sealed interface StorageState {
+    data object Opening : StorageState
+    data object Ready : StorageState
+    class Failed(val detail: String) : StorageState
+}
+
+sealed interface IdentityState {
+    data object Loading : IdentityState
+    data object None : IdentityState
+    class Present(val identity: IdentityEntity) : IdentityState
+}
+
+class UiMessage(@StringRes val res: Int, val args: List<Any> = emptyList())
+
+class MainViewModel(app: Application) : AndroidViewModel(app) {
+    private val rely = app as RelyraApp
+    private val settings = app.getSharedPreferences("relyra_settings", Context.MODE_PRIVATE)
+
+    val storage = MutableStateFlow<StorageState>(StorageState.Opening)
+    val identity = MutableStateFlow<IdentityState>(IdentityState.Loading)
+    val contacts = MutableStateFlow<List<ContactEntity>>(emptyList())
+    val events = MutableStateFlow<List<SecurityEventEntity>>(emptyList())
+    val eventCount = MutableStateFlow(0)
+    val myCard = MutableStateFlow<String?>(null)
+    val summaries = MutableStateFlow<List<ChatSummary>>(emptyList())
+    val pendingCount = MutableStateFlow(0)
+    val nostrKey = MutableStateFlow<String?>(null)
+    val relays get() = rely.container.network.relays
+    val relayConnected get() = rely.container.nostr.connections
+    val relayStatus get() = rely.container.network.status
+    val fileServers get() = rely.container.blossom.servers
+    val fileServerStatus get() = rely.container.blossom.status
+    val downloadProgress get() = rely.container.transfers.progress
+    val readReceipts = MutableStateFlow(settings.getBoolean(KEY_RECEIPTS, true))
+
+    val lockEnabled = MutableStateFlow(settings.getBoolean(KEY_LOCK, false))
+    val unlocked = MutableStateFlow(false)
+    val busy = MutableStateFlow(false)
+    val message = MutableStateFlow<UiMessage?>(null)
+    val incomingLink = MutableStateFlow<String?>(null)
+    val showRecoveryNext = MutableStateFlow(false)
+
+    /** True while a system screen (camera scanner, share sheet) is open, so we do not re-lock on return. */
+    @Volatile var externalInFlight = false
+
+    private fun ctr() = rely.container
+
+    init {
+        viewModelScope.launch(Dispatchers.IO) {
+            val container = try {
+                rely.container.also { it.open() }
+            } catch (t: Throwable) {
+                storage.value = StorageState.Failed(t.javaClass.simpleName + ": " + (t.message ?: ""))
+                return@launch
+            }
+            storage.value = StorageState.Ready
+            launch {
+                container.identities.observe().collect { e ->
+                    identity.value = if (e == null) IdentityState.None else IdentityState.Present(e)
+                    myCard.value = e?.let { runCatching { container.identities.cardUri(it) }.getOrNull() }
+                    container.nostr.setIdentity(if (e == null) null else runCatching { container.identities.nostrSecret() }.getOrNull())
+                    nostrKey.value = e?.let { runCatching { container.identities.nostrPublicKeyHex() }.getOrNull() }
+                }
+            }
+            launch { container.contacts.observeAll().collect { contacts.value = it } }
+            launch { container.events.observeRecent(200).collect { events.value = it } }
+            launch { container.events.observeCount().collect { eventCount.value = it } }
+            launch { container.messages.observeSummaries().collect { summaries.value = it } }
+            launch { container.messages.observePending().collect { pendingCount.value = it } }
+            container.messages.resetStaleDownloads()
+            container.delivery.processOutbox()
+            // While the app is open, retry whatever is due (the engine's backoff decides what is actually sent).
+            while (true) {
+                delay(30_000)
+                runCatching { container.delivery.processOutbox() }
+            }
+        }
+    }
+
+    private fun fail(t: Throwable) {
+        message.value = UiMessage(R.string.err_generic, listOf(t.message ?: t.javaClass.simpleName))
+    }
+
+    fun createIdentity(name: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            busy.value = true
+            try {
+                ctr().identities.create(name)
+                showRecoveryNext.value = true
+            } catch (t: Throwable) { fail(t) } finally { busy.value = false }
+        }
+    }
+
+    fun restoreIdentity(name: String, recoveryKey: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            busy.value = true
+            try {
+                if (!ctr().identities.restore(name, recoveryKey)) message.value = UiMessage(R.string.err_recovery_invalid)
+            } catch (t: Throwable) { fail(t) } finally { busy.value = false }
+        }
+    }
+
+    fun rename(name: String) {
+        viewModelScope.launch(Dispatchers.IO) { runCatching { ctr().identities.rename(name) }.onFailure(::fail) }
+    }
+
+    suspend fun loadRecoveryKey(): String? = withContext(Dispatchers.IO) {
+        val key = ctr().identities.recoveryKey()
+        if (key != null) ctr().events.log(EventType.RECOVERY_VIEWED)
+        key
+    }
+
+    fun resetIdentity() {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                ctr().identities.reset()
+                settings.edit { putBoolean(KEY_LOCK, false) }
+                lockEnabled.value = false
+                unlocked.value = false
+                myCard.value = null
+            } catch (t: Throwable) { fail(t) }
+        }
+    }
+
+    fun addContact(input: String, name: String, onResult: (AddResult) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            busy.value = true
+            val result = try { ctr().contacts.add(input, name) } catch (t: Throwable) { fail(t); null }
+            busy.value = false
+            if (result != null) withContext(Dispatchers.Main) { onResult(result) }
+        }
+    }
+
+    fun setVerified(c: ContactEntity, v: Boolean) { viewModelScope.launch(Dispatchers.IO) { ctr().contacts.setVerified(c, v) } }
+    fun setBlocked(c: ContactEntity, b: Boolean) { viewModelScope.launch(Dispatchers.IO) { ctr().contacts.setBlocked(c, b) } }
+    fun deleteContact(c: ContactEntity) { viewModelScope.launch(Dispatchers.IO) { ctr().contacts.delete(c) } }
+
+    fun setLockEnabled(enabled: Boolean) {
+        settings.edit { putBoolean(KEY_LOCK, enabled) }
+        lockEnabled.value = enabled
+        unlocked.value = true
+        viewModelScope.launch(Dispatchers.IO) {
+            ctr().events.log(if (enabled) EventType.APP_LOCK_ON else EventType.APP_LOCK_OFF)
+        }
+    }
+
+    fun chatMessages(chatId: String): Flow<List<MessageEntity>> =
+        if (storage.value is StorageState.Ready) ctr().messages.observeChat(chatId) else emptyFlow()
+
+    fun sendMessage(chatId: String, body: String, onResult: (EnqueueResult) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = try {
+                ctr().delivery.enqueue(chatId, body).also { ctr().delivery.processOutbox() }
+            } catch (t: Throwable) { fail(t); null }
+            if (result != null) withContext(Dispatchers.Main) { onResult(result) }
+        }
+    }
+
+    fun attachmentsOf(chatId: String): Flow<List<AttachmentEntity>> =
+        if (storage.value is StorageState.Ready) ctr().messages.observeAttachments(chatId) else emptyFlow()
+
+    /** Encrypts the picked file on this device, then queues it. The upload and delivery happen in the engine. */
+    fun sendFile(chatId: String, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val c = ctr()
+            if (c.blossom.servers.value.none { it.enabled }) {
+                message.value = UiMessage(R.string.err_no_file_server)
+                return@launch
+            }
+            busy.value = true
+            try {
+                when (val p = c.transfers.prepare(getApplication<Application>().contentResolver, uri)) {
+                    PrepareResult.Empty -> message.value = UiMessage(R.string.err_file_empty)
+                    PrepareResult.TooLarge ->
+                        message.value = UiMessage(R.string.err_file_too_large, listOf(AttachmentLimits.MAX_BYTES / (1024 * 1024)))
+                    PrepareResult.Unreadable -> message.value = UiMessage(R.string.err_file_unreadable)
+                    is PrepareResult.Ok -> {
+                        val f = p.file
+                        val r = c.delivery.enqueueAttachment(chatId) { id ->
+                            StoredAttachment(id, f.name, f.mime, f.size, f.blobSize, f.plainSha256, f.blobSha256,
+                                f.key, "", f.blobPath, AttachmentPhase.AWAITING_UPLOAD)
+                        }
+                        if (r is EnqueueResult.Queued) {
+                            busy.value = false
+                            c.delivery.processOutbox()
+                        } else {
+                            c.transfers.discard(f.blobPath)
+                            message.value = when (r) {
+                                EnqueueResult.Blocked -> UiMessage(R.string.err_msg_blocked)
+                                EnqueueResult.NoEncryptionKey -> UiMessage(R.string.err_msg_no_key)
+                                else -> UiMessage(R.string.err_generic, listOf(r.javaClass.simpleName))
+                            }
+                        }
+                    }
+                }
+            } catch (t: Throwable) { fail(t) } finally { busy.value = false }
+        }
+    }
+
+    /** Downloads are always started by the user, never automatically. */
+    fun downloadAttachment(messageId: String) {
+        ctr().transfers.startDownload(messageId) { r ->
+            if (r is DownloadResult.Failed) message.value = UiMessage(R.string.err_download, listOf(r.reason))
+        }
+    }
+
+    fun exportAttachment(messageId: String, dest: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = ctr().transfers.export(getApplication<Application>().contentResolver, messageId, dest)
+            message.value = UiMessage(if (ok) R.string.file_saved else R.string.err_file_save)
+        }
+    }
+
+    fun addFileServer(input: String): AddRelayResult = rely.container.blossom.add(input)
+    fun removeFileServer(url: String) = rely.container.blossom.remove(url)
+    fun setFileServerEnabled(url: String, enabled: Boolean) = rely.container.blossom.setEnabled(url, enabled)
+    fun setFileServerSign(url: String, value: Boolean) = rely.container.blossom.setSignWithIdentity(url, value)
+    fun testFileServer(url: String) = rely.container.blossom.test(url)
+
+    fun cancelMessage(id: String) { viewModelScope.launch(Dispatchers.IO) { ctr().delivery.cancel(id) } }
+
+    fun markChatRead(chatId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { ctr().delivery.markChatRead(chatId, readReceipts.value) }
+        }
+    }
+
+    fun setReadReceipts(enabled: Boolean) {
+        settings.edit { putBoolean(KEY_RECEIPTS, enabled) }
+        readReceipts.value = enabled
+    }
+
+    fun addRelay(input: String): AddRelayResult = rely.container.network.add(input)
+    fun removeRelay(url: String) = rely.container.network.remove(url)
+    fun setRelayEnabled(url: String, enabled: Boolean) = rely.container.network.setEnabled(url, enabled)
+    fun testRelay(url: String) = rely.container.network.test(url)
+
+    fun relock() { if (lockEnabled.value) unlocked.value = false }
+    fun markUnlocked() { unlocked.value = true }
+}
+
+private const val KEY_LOCK = "app_lock"
+private const val KEY_RECEIPTS = "read_receipts"
