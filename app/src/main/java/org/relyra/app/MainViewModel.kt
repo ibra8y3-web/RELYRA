@@ -37,6 +37,13 @@ import org.relyra.app.core.database.GroupSummary
 import org.relyra.app.core.messaging.GroupKind
 import org.relyra.app.core.messaging.GroupOutcome
 import org.relyra.app.core.messaging.GroupResult
+import org.relyra.app.background.ConnectionService
+import org.relyra.app.core.database.ChatPrefEntity
+import org.relyra.app.core.diagnostics.DeviceInfo
+import org.relyra.app.core.diagnostics.Diagnostics
+import org.relyra.app.core.diagnostics.DiagnosticsReport
+import org.relyra.app.core.storage.StorageUsage
+import org.relyra.app.core.storage.ThemeMode
 
 sealed interface StorageState {
     data object Opening : StorageState
@@ -51,6 +58,12 @@ sealed interface IdentityState {
 }
 
 class UiMessage(@StringRes val res: Int, val args: List<Any> = emptyList())
+
+/** Something another app shared to RELYRA (text and/or one file). The user picks the recipient. */
+class ShareRequest(val text: String?, val uri: Uri?)
+
+/** A request to open a conversation, from a notification tap. */
+class OpenRequest(val id: String, val group: Boolean)
 
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val rely = app as RelyraApp
@@ -67,6 +80,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val groups = MutableStateFlow<List<GroupEntity>>(emptyList())
     val groupSummaries = MutableStateFlow<List<GroupSummary>>(emptyList())
     val nostrKey = MutableStateFlow<String?>(null)
+    val chatPrefs = MutableStateFlow<Map<String, ChatPrefEntity>>(emptyMap())
+    val pendingShare = MutableStateFlow<ShareRequest?>(null)
+    val openRequest = MutableStateFlow<OpenRequest?>(null)
+    val diagnostics = MutableStateFlow<DiagnosticsReport?>(null)
+    val usage = MutableStateFlow<StorageUsage?>(null)
+    val settings get() = rely.container.settings
     val relays get() = rely.container.network.relays
     val relayConnected get() = rely.container.nostr.connections
     val relayStatus get() = rely.container.network.status
@@ -111,6 +130,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             launch { container.messages.observePending().collect { pendingCount.value = it } }
             launch { container.groupStore.observeGroups().collect { groups.value = it } }
             launch { container.groupStore.observeSummaries().collect { groupSummaries.value = it } }
+            launch { container.data.observePrefs().collect { list -> chatPrefs.value = list.associateBy { it.chatId } } }
+            if (container.settings.keepConnected.value) ConnectionService.start(rely)
             container.messages.resetStaleDownloads()
             container.delivery.processOutbox()
             // While the app is open, retry whatever is due (the engine's backoff decides what is actually sent).
@@ -243,6 +264,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Downloads are always started by the user, never automatically. */
     fun downloadAttachment(messageId: String) {
+        if (settings.wifiOnlyDownloads.value && !DeviceInfo.onUnlimitedLink(rely)) {
+            message.value = UiMessage(R.string.err_wifi_only)
+            return
+        }
         ctr().transfers.startDownload(messageId) { r ->
             if (r is DownloadResult.Failed) message.value = UiMessage(R.string.err_download, listOf(r.reason))
         }
@@ -321,13 +346,17 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         groupOp(onDone = { if (it == GroupResult.OK) onDone() }) { ctr().groups.deleteLocal(groupId) }
 
     fun markGroupRead(groupId: String) {
-        viewModelScope.launch(Dispatchers.IO) { runCatching { ctr().groupStore.markRead(groupId) } }
+        viewModelScope.launch(Dispatchers.IO) {
+            ctr().notifier.cancel(groupId)
+            runCatching { ctr().groupStore.markRead(groupId) }
+        }
     }
 
     fun cancelMessage(id: String) { viewModelScope.launch(Dispatchers.IO) { ctr().delivery.cancel(id) } }
 
     fun markChatRead(chatId: String) {
         viewModelScope.launch(Dispatchers.IO) {
+            ctr().notifier.cancel(chatId)
             runCatching { ctr().delivery.markChatRead(chatId, readReceipts.value) }
         }
     }
@@ -341,6 +370,62 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun removeRelay(url: String) = rely.container.network.remove(url)
     fun setRelayEnabled(url: String, enabled: Boolean) = rely.container.network.setEnabled(url, enabled)
     fun testRelay(url: String) = rely.container.network.test(url)
+
+    // ---- conversation housekeeping ---------------------------------------------------------------------------
+
+    private fun housekeeping(block: suspend () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) { try { block() } catch (t: Throwable) { fail(t) } }
+    }
+
+    fun notificationsAllowed(): Boolean = ctr().notifier.systemAllows()
+    fun cancelNotification(id: String) { ctr().notifier.cancel(id) }
+    fun deleteMessage(id: String) = housekeeping { ctr().data.deleteMessage(id) }
+    fun deleteGroupMessage(id: String) = housekeeping { ctr().data.deleteGroupMessage(id) }
+    fun clearChat(chatId: String) = housekeeping { ctr().data.clearChat(chatId); message.value = UiMessage(R.string.chat_cleared) }
+    fun clearGroupChat(groupId: String) = housekeeping { ctr().data.clearGroupChat(groupId); message.value = UiMessage(R.string.chat_cleared) }
+    fun setPinned(id: String, v: Boolean) = housekeeping { ctr().data.setPinned(id, v) }
+    fun setArchived(id: String, v: Boolean) = housekeeping { ctr().data.setArchived(id, v) }
+    fun setMuted(id: String, v: Boolean) = housekeeping { ctr().data.setMuted(id, v) }
+
+    // ---- settings ----------------------------------------------------------------------------------------------
+
+    fun setKeepConnected(v: Boolean) {
+        settings.setKeepConnected(v)
+        if (v) ConnectionService.start(rely) else ConnectionService.stop(rely)
+    }
+
+    fun setTheme(m: ThemeMode) = settings.setTheme(m)
+
+    fun refreshUsage() {
+        viewModelScope.launch(Dispatchers.IO) { usage.value = runCatching { ctr().data.usage() }.getOrNull() }
+    }
+
+    fun clearCache() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val freed = ctr().data.clearCache()
+            usage.value = runCatching { ctr().data.usage() }.getOrNull()
+            message.value = UiMessage(R.string.cache_cleared, listOf(android.text.format.Formatter.formatShortFileSize(rely, freed)))
+        }
+    }
+
+    fun deleteOlderThan(days: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val n = ctr().data.deleteOlderThan(days)
+                usage.value = runCatching { ctr().data.usage() }.getOrNull()
+                message.value = UiMessage(R.string.retention_done, listOf(n))
+            } catch (t: Throwable) { fail(t) }
+        }
+    }
+
+    fun runDiagnostics() {
+        viewModelScope.launch {
+            busy.value = true
+            try {
+                diagnostics.value = Diagnostics.collect(ctr(), rely)
+            } catch (t: Throwable) { fail(t) } finally { busy.value = false }
+        }
+    }
 
     fun relock() { if (lockEnabled.value) unlocked.value = false }
     fun markUnlocked() { unlocked.value = true }

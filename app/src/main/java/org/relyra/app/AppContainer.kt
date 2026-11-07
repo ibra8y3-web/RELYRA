@@ -1,6 +1,7 @@
 package org.relyra.app
 
 import android.content.Context
+import kotlinx.coroutines.launch
 import org.relyra.app.core.database.AppDatabase
 import org.relyra.app.core.database.RoomGroupStore
 import org.relyra.app.core.database.RoomMessageStore
@@ -9,6 +10,10 @@ import org.relyra.app.core.identity.IdentityRepository
 import org.relyra.app.core.identity.SecurityLog
 import org.relyra.app.core.messaging.DeliveryEngine
 import org.relyra.app.core.messaging.GroupEngine
+import org.relyra.app.core.messaging.IncomingListener
+import org.relyra.app.core.notify.Notifier
+import org.relyra.app.core.storage.AppSettings
+import org.relyra.app.core.storage.DataManager
 import org.relyra.app.core.messaging.Transport
 import org.relyra.app.core.network.AdaptiveRouter
 import org.relyra.app.core.network.NetworkManager
@@ -20,12 +25,44 @@ import org.relyra.app.core.transfer.TransferEngine
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
     val secure = SecureStore(appContext)
+    val settings = AppSettings(appContext)
+    val notifier by lazy { Notifier(appContext, settings) }
     val database: AppDatabase by lazy { AppDatabase.build(appContext, secure.databaseKey()) }
     val events by lazy { SecurityLog(database) }
     val identities: IdentityRepository by lazy { IdentityRepository(database, secure, events) { transfers.wipeAll() } }
     val contacts: ContactRepository by lazy { ContactRepository(database, events) { ids, paths -> transfers.clean(ids, paths) } }
     val messages by lazy { RoomMessageStore(database) }
     val groupStore by lazy { RoomGroupStore(database) }
+    val data: DataManager by lazy {
+        DataManager(
+            db = database,
+            cleanFiles = { ids, paths -> transfers.clean(ids, paths) },
+            filesDir = appContext.filesDir,
+            cacheDir = appContext.cacheDir,
+            databaseFile = appContext.getDatabasePath("relyra.db"),
+        )
+    }
+
+    /** Turns a NEW incoming message into a notification (never for a muted conversation, never with text unless allowed). */
+    private val incomingListener = object : IncomingListener {
+        override fun onMessage(conversation: String, group: Boolean, sender: String, body: String?) {
+            netScope.launch {
+                if (data.isMuted(conversation)) return@launch
+                val senderName = database.contactDao().get(sender)?.displayName.orEmpty()
+                val title = if (group) database.groupDao().get(conversation)?.name.orEmpty() else senderName
+                val text = body?.let { if (group && senderName.isNotBlank()) "$senderName: $it" else it }
+                notifier.postMessage(conversation, group, title.ifBlank { appContext.getString(R.string.app_name) }, text)
+            }
+        }
+
+        override fun onInvited(groupId: String, name: String, invitedBy: String) {
+            netScope.launch {
+                if (data.isMuted(groupId)) return@launch
+                val who = database.contactDao().get(invitedBy)?.displayName.orEmpty()
+                notifier.postMessage(groupId, true, name, appContext.getString(R.string.notif_group_invite, who.ifBlank { "?" }))
+            }
+        }
+    }
 
     val network by lazy { NetworkManager(appContext) }
     private val netScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
@@ -47,6 +84,7 @@ class AppContainer(context: Context) {
             ownId = { database.identityDao().get()?.publicId },
             uploader = transfers,
             groups = groups,
+            incoming = incomingListener,
         )
     }
 
@@ -57,6 +95,7 @@ class AppContainer(context: Context) {
             peers = contacts.peers,
             ownId = { database.identityDao().get()?.publicId },
             transmit = { peer, plaintext -> delivery.transmit(peer, plaintext) },
+            incoming = incomingListener,
         )
     }
 

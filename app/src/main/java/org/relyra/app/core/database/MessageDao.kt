@@ -14,7 +14,8 @@ interface MessageDao {
 
     @Query(
         "SELECT chatId, MAX(createdAt) AS lastAt, " +
-            "SUM(CASE WHEN outgoing = 0 AND readLocally = 0 THEN 1 ELSE 0 END) AS unread " +
+            "SUM(CASE WHEN outgoing = 0 AND readLocally = 0 THEN 1 ELSE 0 END) AS unread, " +
+            "(SELECT m2.body FROM messages m2 WHERE m2.chatId = messages.chatId ORDER BY m2.createdAt DESC LIMIT 1) AS lastBody " +
             "FROM messages GROUP BY chatId"
     )
     fun observeSummaries(): Flow<List<ChatSummary>>
@@ -48,6 +49,37 @@ interface MessageDao {
 
     @Query("DELETE FROM messages WHERE chatId = :chatId")
     suspend fun deleteChat(chatId: String)
+
+    @Query("DELETE FROM messages WHERE messageId = :id")
+    suspend fun deleteOne(id: String)
+
+    /** Old messages that are finished. A message still waiting to be sent is never selected. */
+    @Query("SELECT messageId FROM messages WHERE createdAt < :cutoff AND NOT (outgoing = 1 AND state = 'QUEUED')")
+    suspend fun idsOlderThan(cutoff: Long): List<String>
+
+    @Query("DELETE FROM messages WHERE messageId IN (:ids)")
+    suspend fun deleteMany(ids: List<String>)
+
+    @Query("SELECT COUNT(*) FROM messages WHERE outgoing = 1 AND state = :state")
+    suspend fun countOutgoing(state: String): Int
+
+    @Query("SELECT COUNT(*) FROM messages")
+    suspend fun countAll(): Int
+}
+
+@Dao
+interface ChatPrefDao {
+    @Query("SELECT * FROM chat_prefs")
+    fun observeAll(): Flow<List<ChatPrefEntity>>
+
+    @Query("SELECT * FROM chat_prefs WHERE chatId = :id")
+    suspend fun get(id: String): ChatPrefEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(e: ChatPrefEntity)
+
+    @Query("DELETE FROM chat_prefs WHERE chatId = :id")
+    suspend fun delete(id: String)
 }
 
 @Dao
@@ -75,6 +107,18 @@ interface AttachmentDao {
 
     @Query("DELETE FROM attachments WHERE messageId IN (SELECT messageId FROM messages WHERE chatId = :chatId)")
     suspend fun deleteForChat(chatId: String)
+
+    @Query("DELETE FROM attachments WHERE messageId = :id")
+    suspend fun deleteOne(id: String)
+
+    @Query("SELECT localPath FROM attachments WHERE localPath IS NOT NULL AND messageId IN (:ids)")
+    suspend fun pathsFor(ids: List<String>): List<String>
+
+    @Query("DELETE FROM attachments WHERE messageId IN (:ids)")
+    suspend fun deleteMany(ids: List<String>)
+
+    @Query("SELECT COUNT(*) FROM attachments")
+    suspend fun countAll(): Int
 
     /** A download that was interrupted by the app being killed can be started again. */
     @Query("UPDATE attachments SET phase = 'REMOTE' WHERE phase = 'DOWNLOADING'")

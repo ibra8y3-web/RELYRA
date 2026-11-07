@@ -1,5 +1,6 @@
 package org.relyra.app.ui.screens
 
+import android.text.format.DateUtils
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,8 +18,18 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.MoreVert
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Star
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
@@ -27,6 +38,7 @@ import androidx.compose.material3.Tab
 import androidx.compose.material3.TabRow
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -35,42 +47,139 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.relyra.app.MainViewModel
 import org.relyra.app.R
 import org.relyra.app.UiMessage
 import org.relyra.app.core.database.AttachmentEntity
+import org.relyra.app.core.database.ChatPrefEntity
+import org.relyra.app.core.database.ContactEntity
 import org.relyra.app.core.database.MessageEntity
 import org.relyra.app.core.messaging.AttachmentPhase
 import org.relyra.app.core.messaging.EnqueueResult
 import org.relyra.app.core.messaging.EnvelopeCodec
 import org.relyra.app.core.messaging.MessageState
+import org.relyra.app.core.notify.Foreground
 import org.relyra.app.core.transfer.BlossomUrl
 import org.relyra.app.ui.components.Avatar
 import java.text.DateFormat
 import java.util.Date
 
 @Composable
-fun ChatsScreen(vm: MainViewModel, onOpen: (String) -> Unit, onOpenGroup: (String) -> Unit, onCreateGroup: () -> Unit) {
+fun ChatsScreen(
+    vm: MainViewModel,
+    onOpen: (String) -> Unit,
+    onOpenGroup: (String) -> Unit,
+    onCreateGroup: () -> Unit,
+    onAddContact: () -> Unit,
+) {
     var tab by rememberSaveable { mutableStateOf(0) }
+    var query by rememberSaveable { mutableStateOf("") }
     Column(Modifier.fillMaxSize()) {
         TabRow(selectedTabIndex = tab) {
             Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(R.string.groups_tab_direct)) })
             Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(stringResource(R.string.groups_tab_groups)) })
         }
+        OutlinedTextField(
+            value = query, onValueChange = { query = it.take(60) },
+            placeholder = { Text(stringResource(R.string.chats_search_hint)) },
+            leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
+            singleLine = true,
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        )
         Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (tab == 0) DirectChats(vm, onOpen) else GroupsList(vm, onOpenGroup, onCreateGroup)
+            if (tab == 0) DirectChats(vm, query, onOpen, onAddContact) else GroupsList(vm, query, onOpenGroup, onCreateGroup)
+        }
+    }
+}
+
+/** Pin, mute, archive (and optionally clear) for one conversation. Choices are kept only on this device. */
+@Composable
+internal fun ConversationMenu(
+    pref: ChatPrefEntity?,
+    onPin: (Boolean) -> Unit,
+    onMute: (Boolean) -> Unit,
+    onArchive: (Boolean) -> Unit,
+    onClear: (() -> Unit)?,
+) {
+    var open by remember { mutableStateOf(false) }
+    val pinned = pref?.pinned == true
+    val muted = pref?.muted == true
+    val archived = pref?.archived == true
+    Box {
+        IconButton(onClick = { open = true }) {
+            Icon(Icons.Default.MoreVert, contentDescription = stringResource(R.string.more))
+        }
+        DropdownMenu(expanded = open, onDismissRequest = { open = false }) {
+            DropdownMenuItem(
+                text = { Text(stringResource(if (pinned) R.string.chat_menu_unpin else R.string.chat_menu_pin)) },
+                onClick = { open = false; onPin(!pinned) },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(if (muted) R.string.chat_menu_unmute else R.string.chat_menu_mute)) },
+                onClick = { open = false; onMute(!muted) },
+            )
+            DropdownMenuItem(
+                text = { Text(stringResource(if (archived) R.string.chat_menu_unarchive else R.string.chat_menu_archive)) },
+                onClick = { open = false; onArchive(!archived) },
+            )
+            if (onClear != null) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.chat_menu_clear)) },
+                    onClick = { open = false; onClear() },
+                )
+            }
         }
     }
 }
 
 @Composable
-private fun DirectChats(vm: MainViewModel, onOpen: (String) -> Unit) {
+internal fun TimeLabel(at: Long) {
+    val text = if (DateUtils.isToday(at)) DateFormat.getTimeInstance(DateFormat.SHORT).format(Date(at))
+    else DateFormat.getDateInstance(DateFormat.SHORT).format(Date(at))
+    Text(text, style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+}
+
+@Composable
+internal fun UnreadBadge(count: Int) {
+    Box(
+        Modifier.clip(RoundedCornerShape(50)).background(MaterialTheme.colorScheme.primary).padding(horizontal = 8.dp, vertical = 2.dp),
+        contentAlignment = Alignment.Center,
+    ) {
+        Text(count.toString(), style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onPrimary)
+    }
+}
+
+@Composable
+internal fun ClearChatDialog(onConfirm: () -> Unit, onDismiss: () -> Unit) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.chat_clear_title)) },
+        text = { Text(stringResource(R.string.chat_clear_body)) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(stringResource(R.string.chat_clear_confirm), color = MaterialTheme.colorScheme.error)
+            }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
+@Composable
+private fun DirectChats(vm: MainViewModel, query: String, onOpen: (String) -> Unit, onAddContact: () -> Unit) {
     val contacts by vm.contacts.collectAsStateWithLifecycle()
     val summaries by vm.summaries.collectAsStateWithLifecycle()
+    val prefs by vm.chatPrefs.collectAsStateWithLifecycle()
+    val listPreview by vm.settings.listPreview.collectAsStateWithLifecycle()
+    var showArchived by rememberSaveable { mutableStateOf(false) }
+    var clearTarget by remember { mutableStateOf<String?>(null) }
     val usable = contacts.filter { !it.blocked }
     if (usable.isEmpty()) {
         Column(
@@ -81,30 +190,91 @@ private fun DirectChats(vm: MainViewModel, onOpen: (String) -> Unit) {
             Text(stringResource(R.string.chats_empty_title), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(R.string.chats_empty_body), color = MaterialTheme.colorScheme.onSurfaceVariant,
                 modifier = Modifier.padding(top = 8.dp))
+            Button(onClick = onAddContact, modifier = Modifier.padding(top = 16.dp)) {
+                Text(stringResource(R.string.chats_add_contact_cta))
+            }
         }
         return
     }
     val byChat = summaries.associateBy { it.chatId }
-    val fmt = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
+    val q = query.trim()
+    val matching = usable.filter {
+        q.isEmpty() || it.displayName.contains(q, ignoreCase = true) ||
+            byChat[it.publicId]?.lastBody?.contains(q, ignoreCase = true) == true
+    }
+    val archivedCount = matching.count { prefs[it.publicId]?.archived == true }
+    val visible = matching
+        .filter { (prefs[it.publicId]?.archived == true) == showArchived }
+        .sortedWith(
+            compareByDescending<ContactEntity> { prefs[it.publicId]?.pinned == true }
+                .thenByDescending { byChat[it.publicId]?.lastAt ?: 0L }
+        )
     LazyColumn(Modifier.fillMaxSize()) {
-        items(usable.sortedByDescending { byChat[it.publicId]?.lastAt ?: 0L }, key = { it.publicId }) { c ->
+        if (archivedCount > 0 || showArchived) {
+            item(key = "archived-toggle") {
+                TextButton(onClick = { showArchived = !showArchived }, modifier = Modifier.padding(horizontal = 8.dp)) {
+                    Text(
+                        if (showArchived) stringResource(R.string.chats_archived_hide)
+                        else stringResource(R.string.chats_archived_show, archivedCount)
+                    )
+                }
+            }
+        }
+        if (visible.isEmpty()) {
+            item(key = "none") {
+                Text(
+                    stringResource(if (q.isNotEmpty()) R.string.chats_no_match else R.string.chats_nothing_here),
+                    color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(24.dp),
+                )
+            }
+        }
+        items(visible, key = { it.publicId }) { c ->
             val s = byChat[c.publicId]
+            val pref = prefs[c.publicId]
             ListItem(
-                headlineContent = { Text(c.displayName) },
+                headlineContent = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(c.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                        if (pref?.pinned == true) {
+                            Icon(Icons.Default.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.padding(start = 6.dp).padding(0.dp))
+                        }
+                    }
+                },
                 supportingContent = {
                     Text(
                         when {
                             s == null -> stringResource(R.string.chat_no_messages)
+                            listPreview -> s.lastBody
                             s.unread > 0 -> stringResource(R.string.chat_unread_count, s.unread)
-                            else -> fmt.format(Date(s.lastAt))
-                        }
+                            else -> stringResource(R.string.chat_preview_hidden)
+                        },
+                        maxLines = 1, overflow = TextOverflow.Ellipsis,
                     )
                 },
                 leadingContent = { Avatar(c.displayName) },
+                trailingContent = {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Column(horizontalAlignment = Alignment.End) {
+                            if (s != null) TimeLabel(s.lastAt)
+                            if (s != null && s.unread > 0) UnreadBadge(s.unread)
+                        }
+                        ConversationMenu(
+                            pref,
+                            onPin = { vm.setPinned(c.publicId, it) },
+                            onMute = { vm.setMuted(c.publicId, it) },
+                            onArchive = { vm.setArchived(c.publicId, it) },
+                            onClear = { clearTarget = c.publicId },
+                        )
+                    }
+                },
                 modifier = Modifier.clickable { onOpen(c.publicId) },
             )
             HorizontalDivider()
         }
+    }
+    clearTarget?.let { id ->
+        ClearChatDialog(onConfirm = { vm.clearChat(id); clearTarget = null }, onDismiss = { clearTarget = null })
     }
 }
 
@@ -122,6 +292,16 @@ fun ChatScreen(vm: MainViewModel, chatId: String) {
     val attById = remember(atts) { atts.associateBy { it.messageId } }
     val progress by vm.downloadProgress.collectAsStateWithLifecycle()
     var exportId by remember { mutableStateOf<String?>(null) }
+    val clipboard = LocalClipboardManager.current
+    var searching by remember { mutableStateOf(false) }
+    var query by remember { mutableStateOf("") }
+    var actionMsg by remember { mutableStateOf<MessageEntity?>(null) }
+    var forwardBody by remember { mutableStateOf<String?>(null) }
+    var confirmClear by remember { mutableStateOf(false) }
+    val shown = remember(messages, query) {
+        val q = query.trim()
+        if (q.isEmpty()) messages else messages.filter { it.body.contains(q, ignoreCase = true) }
+    }
     val picker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         vm.externalInFlight = false
         if (uri != null) vm.sendFile(chatId, uri)
@@ -133,25 +313,50 @@ fun ChatScreen(vm: MainViewModel, chatId: String) {
         if (uri != null && id != null) vm.exportAttachment(id, uri)
     }
 
+    DisposableEffect(chatId) {
+        Foreground.openChat = chatId
+        vm.cancelNotification(chatId)
+        onDispose { if (Foreground.openChat == chatId) Foreground.openChat = null }
+    }
     LaunchedEffect(unread) { if (unread > 0) vm.markChatRead(chatId) }
     LaunchedEffect(messages.size) { if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex) }
 
     Column(Modifier.fillMaxSize().imePadding()) {
-        Text(
-            stringResource(if (canEncrypt) R.string.chat_banner else R.string.chat_banner_nokey),
-            style = MaterialTheme.typography.bodySmall,
-            color = if (canEncrypt) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
-            modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer).padding(12.dp),
-        )
+        Row(
+            Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                stringResource(if (canEncrypt) R.string.chat_banner else R.string.chat_banner_nokey),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (canEncrypt) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+                modifier = Modifier.weight(1f).padding(12.dp),
+            )
+            IconButton(onClick = { searching = !searching; if (!searching) query = "" }) {
+                Icon(Icons.Default.Search, contentDescription = stringResource(R.string.chat_search))
+            }
+            IconButton(onClick = { confirmClear = true }) {
+                Icon(Icons.Default.Delete, contentDescription = stringResource(R.string.chat_menu_clear))
+            }
+        }
+        if (searching) {
+            OutlinedTextField(
+                value = query, onValueChange = { query = it.take(60) },
+                placeholder = { Text(stringResource(R.string.chat_search)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
+            )
+        }
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(), state = listState,
             contentPadding = androidx.compose.foundation.layout.PaddingValues(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(messages, key = { it.messageId }) { m ->
+            items(shown, key = { it.messageId }) { m ->
                 val att = attById[m.messageId]
                 Bubble(
                     m, att, progress[m.messageId],
+                    onTap = { actionMsg = m },
                     onCancel = { vm.cancelMessage(m.messageId) },
                     onDownload = { vm.downloadAttachment(m.messageId) },
                     onSave = {
@@ -193,6 +398,64 @@ fun ChatScreen(vm: MainViewModel, chatId: String) {
             ) { Text(stringResource(R.string.chat_send)) }
         }
     }
+
+    actionMsg?.let { m ->
+        val isText = attById[m.messageId] == null
+        AlertDialog(
+            onDismissRequest = { actionMsg = null },
+            confirmButton = { TextButton(onClick = { actionMsg = null }) { Text(stringResource(R.string.close)) } },
+            text = {
+                Column {
+                    if (isText) {
+                        TextButton(onClick = { clipboard.setText(AnnotatedString(m.body)); actionMsg = null }) {
+                            Text(stringResource(R.string.msg_copy))
+                        }
+                        TextButton(onClick = { forwardBody = m.body; actionMsg = null }) {
+                            Text(stringResource(R.string.msg_forward))
+                        }
+                    }
+                    TextButton(onClick = { vm.deleteMessage(m.messageId); actionMsg = null }) {
+                        Text(stringResource(R.string.msg_delete), color = MaterialTheme.colorScheme.error)
+                    }
+                }
+            },
+        )
+    }
+
+    forwardBody?.let { body ->
+        val targets = contacts.filter { !it.blocked && it.encKey != null && it.nostrKey != null && it.publicId != chatId }
+        AlertDialog(
+            onDismissRequest = { forwardBody = null },
+            title = { Text(stringResource(R.string.msg_forward_title)) },
+            text = {
+                if (targets.isEmpty()) {
+                    Text(stringResource(R.string.msg_forward_none))
+                } else {
+                    LazyColumn(Modifier.fillMaxWidth()) {
+                        items(targets, key = { it.publicId }) { c ->
+                            ListItem(
+                                headlineContent = { Text(c.displayName) },
+                                leadingContent = { Avatar(c.displayName) },
+                                modifier = Modifier.clickable {
+                                    vm.sendMessage(c.publicId, body) { r ->
+                                        vm.message.value = UiMessage(
+                                            if (r is EnqueueResult.Queued) R.string.msg_forwarded else R.string.err_msg_forward
+                                        )
+                                    }
+                                    forwardBody = null
+                                },
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { forwardBody = null }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+
+    if (confirmClear) {
+        ClearChatDialog(onConfirm = { vm.clearChat(chatId); confirmClear = false }, onDismiss = { confirmClear = false })
+    }
 }
 
 @Composable
@@ -200,6 +463,7 @@ private fun Bubble(
     m: MessageEntity,
     att: AttachmentEntity?,
     progress: Long?,
+    onTap: () -> Unit,
     onCancel: () -> Unit,
     onDownload: () -> Unit,
     onSave: () -> Unit,
@@ -207,10 +471,11 @@ private fun Bubble(
     val mine = m.outgoing
     Column(Modifier.fillMaxWidth(), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
         Box(
-            Modifier.background(
-                if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
-                RoundedCornerShape(16.dp),
-            ).padding(horizontal = 12.dp, vertical = 8.dp)
+            Modifier
+                .clip(RoundedCornerShape(16.dp))
+                .background(if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
+                .clickable(onClick = onTap)
+                .padding(horizontal = 12.dp, vertical = 8.dp)
         ) {
             if (att == null) Text(m.body) else AttachmentCard(att, mine, progress, onDownload, onSave)
         }

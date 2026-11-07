@@ -1,4 +1,4 @@
-# RELYRA — Phases 1-6b + Phase 7a (groups and channels)
+# RELYRA — Phases 1-6b + 7a (groups) + 7b (everyday completeness)
 
 Native Android (Kotlin, Jetpack Compose, Material 3). Min Android 10, target 15.
 
@@ -94,8 +94,35 @@ No Gradle wrapper is committed; CI provisions Gradle itself. Locally: `gradle as
   diverge (higher epoch wins, equal epochs are ignored); a member who is not your contact cannot be reached; no MLS,
   no public/discoverable groups, no communities yet. Not tested on real devices yet.
 
+## Phase 7b: notifications, background receiving, tools, diagnostics (v0.8.0)
+Filled the gaps around the core so every screen has something real to do. No simulated data anywhere.
+- **Notifications** for new direct messages, group messages and group invitations. By default a notification only says who
+  wrote; the text is shown only if the user turns that on. Nothing shows for the chat you are reading or a muted chat.
+  Android 13+ permission is requested from Home or Settings.
+- **Stay connected** (Settings, off by default): a visible foreground service (`remoteMessaging` type) keeps the existing relay
+  connections alive so messages arrive while the app is closed; restarts after reboot/update only if enabled. Costs battery.
+  Android still decides what happens when the user force-stops the app or restricts it.
+- **Chats**: last message + time + unread badge, search (list and inside a chat), pin, mute, archive, clear conversation,
+  copy / forward (sent as a new message) / delete-on-this-device for messages. Same for groups.
+  Local-only choices live in the encrypted DB (schema v7, migration 6->7: `chat_prefs`).
+- **Empty screens now lead somewhere**: Home has a getting-started list driven by real state (relay added, contact added,
+  notifications allowed); Chats and Create-group offer "Add contact"; Network offers one-tap *suggested public servers*
+  (third-party, not enabled silently, testable). The wrong "all contacts already in the group" message is fixed.
+- **Share sheet**: share text or one file from any app to RELYRA and pick the recipient.
+- **File tools** (all on-device, nothing uploaded or run): SHA-256/SHA-1/MD5 with compare, hex viewer, strings, real file type
+  from content, EXIF viewer + save a JPEG copy without location/device tags, text/JSON viewer, ZIP/APK/JAR/DOCX listing with
+  preview and extract, APK inspector (package, version, SDK, permissions, signing certificate SHA-256).
+- **Diagnostics**: live relay/server status and tests, queue/failed/expired counts, database integrity check, storage use,
+  battery, network type, memory, notification and battery-optimization state, and a redacted report (no names, IDs, keys,
+  addresses or text) that can be shared.
+- **Settings**: screenshot blocking (whole app), list-preview off, Wi-Fi-only downloads (enforced), theme incl. AMOLED black,
+  clear temporary files, delete messages older than 30/90/365 days.
+- Tests added: `FileToolsTest` (digests with known vectors, hex dump, strings, type sniffing, ZIP listing/extract/limits).
+- **Not verified by a compiler or on a device by the author.** The code was reviewed statically; the GitHub Actions build and
+  tests are the first real compile. Report any build error and it will be fixed.
+
 ## Not in this build (not shown in the UI)
-MLS, communities, calls, libp2p/P2P, Tor, mesh, vault, browser, documents, backup/export, Server Studio, Local API, plugins.
+MLS, communities, calls, libp2p/P2P, Tor, mesh, vault, browser, PDF reader, backup/export, Server Studio, Local API, plugins, group files and read receipts.
 
 ## Notes
 Single Gradle module with packages mirroring the planned layers (`core/crypto`, `core/database`,

@@ -39,6 +39,9 @@ import org.relyra.app.ui.screens.AddContactScreen
 import org.relyra.app.ui.screens.ChatScreen
 import org.relyra.app.ui.screens.ChatsScreen
 import org.relyra.app.ui.screens.CreateGroupScreen
+import org.relyra.app.ui.screens.DiagnosticsScreen
+import org.relyra.app.ui.screens.ShareScreen
+import org.relyra.app.ui.screens.ToolsScreen
 import org.relyra.app.ui.screens.GroupChatScreen
 import org.relyra.app.ui.screens.GroupInfoScreen
 import org.relyra.app.ui.screens.ContactsScreen
@@ -63,6 +66,9 @@ private object Routes {
     const val GROUP = "group/{id}"
     const val GROUP_INFO = "group/{id}/info"
     const val GROUP_NEW = "groups/new"
+    const val TOOLS = "settings/tools"
+    const val DIAG = "settings/diagnostics"
+    const val SHARE = "share"
 }
 
 private class Tab(val route: String, @StringRes val label: Int, val icon: ImageVector)
@@ -88,6 +94,9 @@ private fun titleFor(route: String): Int = when (route) {
     Routes.RECOVERY -> R.string.identity_recovery
     Routes.LOG -> R.string.settings_log
     Routes.NETWORK -> R.string.net_title
+    Routes.TOOLS -> R.string.tools_title
+    Routes.DIAG -> R.string.diag_title
+    Routes.SHARE -> R.string.share_title
     else -> R.string.app_name
 }
 
@@ -126,6 +135,19 @@ fun AppNav(
     val incoming by vm.incomingLink.collectAsStateWithLifecycle()
     LaunchedEffect(incoming) {
         if (incoming != null) nav.navigate(Routes.ADD) { launchSingleTop = true }
+    }
+
+    val share by vm.pendingShare.collectAsStateWithLifecycle()
+    LaunchedEffect(share) {
+        if (share != null) nav.navigate(Routes.SHARE) { launchSingleTop = true }
+    }
+    val openReq by vm.openRequest.collectAsStateWithLifecycle()
+    LaunchedEffect(openReq) {
+        val o = openReq
+        if (o != null) {
+            vm.openRequest.value = null
+            nav.navigate(if (o.group) "group/${o.id}" else "chat/${o.id}") { launchSingleTop = true }
+        }
     }
 
     Scaffold(
@@ -172,13 +194,22 @@ fun AppNav(
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
         NavHost(nav, startDestination = Routes.HOME, modifier = Modifier.padding(padding)) {
-            composable(Routes.HOME) { HomeScreen(vm) }
+            composable(Routes.HOME) {
+                HomeScreen(
+                    vm,
+                    onOpenNetwork = { nav.navigate(Routes.NETWORK) },
+                    onAddContact = { nav.navigate(Routes.ADD) },
+                    onOpenTools = { nav.navigate(Routes.TOOLS) },
+                    onOpenDiagnostics = { nav.navigate(Routes.DIAG) },
+                )
+            }
             composable(Routes.CHATS) {
                 ChatsScreen(
                     vm,
                     onOpen = { nav.navigate("chat/$it") },
                     onOpenGroup = { nav.navigate("group/$it") },
                     onCreateGroup = { nav.navigate(Routes.GROUP_NEW) },
+                    onAddContact = { nav.navigate(Routes.ADD) },
                 )
             }
             composable(Routes.GROUP) { entry -> GroupChatScreen(vm, entry.arguments?.getString("id") ?: "") }
@@ -191,16 +222,24 @@ fun AppNav(
                 CreateGroupScreen(vm, onCreated = { id ->
                     nav.popBackStack()
                     nav.navigate("group/$id")
-                })
+                }, onAddContact = { nav.navigate(Routes.ADD) })
             }
             composable(Routes.CHAT) { entry -> ChatScreen(vm, entry.arguments?.getString("id") ?: "") }
             composable(Routes.CONTACTS) { ContactsScreen(vm, onAdd = { nav.navigate(Routes.ADD) }) }
             composable(Routes.IDENTITY) { IdentityScreen(vm, onRecovery = { nav.navigate(Routes.RECOVERY) }) }
-            composable(Routes.SETTINGS) { SettingsScreen(vm, authenticate, onOpenLog = { nav.navigate(Routes.LOG) }, onOpenNetwork = { nav.navigate(Routes.NETWORK) }) }
+            composable(Routes.SETTINGS) { SettingsScreen(vm, authenticate, onOpenLog = { nav.navigate(Routes.LOG) }, onOpenNetwork = { nav.navigate(Routes.NETWORK) }, onOpenTools = { nav.navigate(Routes.TOOLS) }, onOpenDiagnostics = { nav.navigate(Routes.DIAG) }) }
             composable(Routes.ADD) { AddContactScreen(vm, onDone = { nav.popBackStack() }) }
             composable(Routes.RECOVERY) { RecoveryScreen(vm, authenticate, onDone = { nav.popBackStack() }) }
             composable(Routes.LOG) { LogScreen(vm) }
             composable(Routes.NETWORK) { NetworkScreen(vm) }
+            composable(Routes.TOOLS) { ToolsScreen(vm) }
+            composable(Routes.DIAG) { DiagnosticsScreen(vm) }
+            composable(Routes.SHARE) {
+                ShareScreen(vm, onDone = { id ->
+                    nav.popBackStack()
+                    if (id != null) nav.navigate("chat/$id")
+                })
+            }
         }
     }
 }

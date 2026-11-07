@@ -66,6 +66,15 @@ interface GroupDao {
     @Query("DELETE FROM group_messages WHERE groupId = :id")
     suspend fun deleteMessages(id: String)
 
+    @Query("DELETE FROM group_messages WHERE messageId = :id")
+    suspend fun deleteMessage(id: String)
+
+    @Query("DELETE FROM group_messages WHERE createdAt < :cutoff")
+    suspend fun deleteMessagesOlderThan(cutoff: Long): Int
+
+    @Query("SELECT COUNT(*) FROM group_messages")
+    suspend fun countMessages(): Int
+
     @Query("DELETE FROM group_outbox WHERE groupId = :id")
     suspend fun deleteOutbox(id: String)
 
