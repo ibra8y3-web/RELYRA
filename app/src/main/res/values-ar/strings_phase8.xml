@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- النسخ الاحتياطي والاستعادة -->
+    <string name="settings_backup">النسخ الاحتياطي والاستعادة</string>
+    <string name="backup_desc">يحفظ هويتك وجهات الاتصال والرسائل والمجموعات والإعدادات في ملف واحد مقفول بعبارة مرور تختارها. المرفقات المنزّلة وملفات الخزنة غير مشمولة. لا توجد سحابة: أنت تقرر أين يُحفظ الملف.</string>
+    <string name="backup_create">إنشاء نسخة احتياطية مشفرة</string>
+    <string name="backup_restore">الاستعادة من نسخة احتياطية</string>
+    <string name="backup_pass_title">اختر عبارة مرور</string>
+    <string name="backup_pass_warning">%1$d أحرف على الأقل. إذا فقدتها فلن يتمكن أحد من فتح النسخة، ولا نحن.</string>
+    <string name="backup_pass_hint">عبارة المرور</string>
+    <string name="backup_pass_again">أعد كتابة عبارة المرور</string>
+    <string name="backup_continue">اختيار مكان الحفظ</string>
+    <string name="backup_restore_warning">الاستعادة تستبدل كل ما على هذا الجهاز: الهوية وجهات الاتصال والرسائل والمجموعات. المحادثات التي استمرت بعد إنشاء النسخة قد يتوقف فك تشفيرها، وقد تحتاج إلى إضافة جهات الاتصال تلك من جديد.</string>
+    <string name="backup_verify">فحص وتجهيز</string>
+    <string name="backup_ready_title">تم التحقق من النسخة</string>
+    <string name="backup_ready_body">النسخة سليمة وجاهزة. أغلق RELYRA ثم افتحه مرة أخرى لإكمال الاستعادة. لم يتم استبدال أي شيء بعد.</string>
+    <string name="backup_close_app">إغلاق RELYRA</string>
+    <string name="backup_cancel_restore">إلغاء الاستعادة</string>
+    <string name="backup_saved">تم حفظ النسخة الاحتياطية</string>
+    <string name="backup_applied">تمت استعادة النسخة الاحتياطية</string>
+    <string name="err_backup">تعذر إنشاء النسخة الاحتياطية: %1$s</string>
+    <string name="err_restore">تعذرت استعادة النسخة الاحتياطية: %1$s</string>
+
+    <!-- الخزنة -->
+    <string name="vault_title">الخزنة</string>
+    <string name="vault_desc">ملفات خاصة مشفرة على هذا الجهاز. تحتاج إلى بصمتك أو قفل الشاشة لفتحها.</string>
+    <string name="vault_unlock_title">فتح الخزنة</string>
+    <string name="vault_locked">الخزنة مقفلة</string>
+    <string name="vault_locked_desc">استخدم بصمتك أو قفل الشاشة لفتحها.</string>
+    <string name="vault_unlock">فتح</string>
+    <string name="vault_note">يُشفَّر كل ملف على حدة قبل حفظه. لا يُرفع أي شيء. النسخ الاحتياطية لا تتضمن ملفات الخزنة.</string>
+    <string name="vault_add">إضافة ملف</string>
+    <string name="vault_search">بحث بالاسم</string>
+    <string name="vault_empty">الخزنة فارغة.</string>
+    <string name="vault_added">تمت إضافة الملف إلى الخزنة</string>
+    <string name="vault_save_copy">حفظ نسخة غير مشفرة</string>
+    <string name="vault_verify">فحص سلامة الملف</string>
+    <string name="vault_rename">إعادة تسمية</string>
+    <string name="vault_delete">حذف</string>
+    <string name="vault_delete_confirm">حذف «%1$s» من الخزنة؟ لا يمكن التراجع عن ذلك.</string>
+    <string name="vault_close">إغلاق</string>
+    <string name="vault_intact">الملف سليم.</string>
+    <string name="vault_damaged">الملف المخزَّن مفقود أو تالف.</string>
+</resources>

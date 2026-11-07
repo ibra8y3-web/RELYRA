@@ -144,7 +144,7 @@ fun RecoveryScreen(
         val window = ctx.findActivity()?.window
         window?.addFlags(WindowManager.LayoutParams.FLAG_SECURE)
         onDispose {
-            window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
+            if (!vm.settings.blockScreenshots.value) window?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
             key = null
         }
     }

@@ -93,6 +93,7 @@ class GroupEngine(
     private val transmit: suspend (peer: String, plaintext: ByteArray) -> SendOutcome,
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val newId: () -> String = { UUID.randomUUID().toString() },
+    private val incoming: IncomingListener? = null,
 ) : GroupInbound {
     private val lock = Mutex()
 
@@ -277,7 +278,8 @@ class GroupEngine(
         if (members.none { it.id == me }) return
         if (g.kind == GroupKind.CHANNEL && sender.role == GroupRole.MEMBER) return
         // Save first, acknowledge second; a repeat of a known copy is only re-acknowledged.
-        store.recordIncomingMessage(GroupMessage(env.messageId, g.groupId, env.from, false, env.body, clock(), false))
+        val fresh = store.recordIncomingMessage(GroupMessage(env.messageId, g.groupId, env.from, false, env.body, clock(), false))
+        if (fresh) runCatching { incoming?.onMessage(g.groupId, true, env.from, env.body) }
         ack(me, env.from, env.messageId)
     }
 
@@ -300,6 +302,7 @@ class GroupEngine(
             val senderRole = env.members.find { it.id == env.from }?.role
             if (!isStaff(senderRole)) return
             store.putGroup(GroupRecord(env.groupId, name, env.kind, env.owner, env.epoch, GroupState.INVITED, clock(), env.from), env.members)
+            runCatching { incoming?.onInvited(env.groupId, name, env.from) }
             ack(me, env.from, env.messageId)
             return
         }

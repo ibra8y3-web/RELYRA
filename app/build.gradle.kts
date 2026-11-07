@@ -13,8 +13,8 @@ android {
         applicationId = "org.relyra.app"
         minSdk = 29
         targetSdk = 35
-        versionCode = 8
-        versionName = "0.7.0"
+        versionCode = 10
+        versionName = "0.9.0"
     }
 
     buildTypes {

@@ -37,6 +37,15 @@ import org.relyra.app.core.database.GroupSummary
 import org.relyra.app.core.messaging.GroupKind
 import org.relyra.app.core.messaging.GroupOutcome
 import org.relyra.app.core.messaging.GroupResult
+import org.relyra.app.background.ConnectionService
+import org.relyra.app.core.database.ChatPrefEntity
+import org.relyra.app.core.diagnostics.DeviceInfo
+import org.relyra.app.core.diagnostics.Diagnostics
+import org.relyra.app.core.diagnostics.DiagnosticsReport
+import org.relyra.app.core.storage.StorageUsage
+import org.relyra.app.core.storage.ThemeMode
+import org.relyra.app.core.database.VaultItemEntity
+import org.relyra.app.core.vault.VaultImport
 
 sealed interface StorageState {
     data object Opening : StorageState
@@ -52,9 +61,15 @@ sealed interface IdentityState {
 
 class UiMessage(@StringRes val res: Int, val args: List<Any> = emptyList())
 
+/** Something another app shared to RELYRA (text and/or one file). The user picks the recipient. */
+class ShareRequest(val text: String?, val uri: Uri?)
+
+/** A request to open a conversation, from a notification tap. */
+class OpenRequest(val id: String, val group: Boolean)
+
 class MainViewModel(app: Application) : AndroidViewModel(app) {
     private val rely = app as RelyraApp
-    private val settings = app.getSharedPreferences("relyra_settings", Context.MODE_PRIVATE)
+    private val prefs = app.getSharedPreferences("relyra_settings", Context.MODE_PRIVATE)
 
     val storage = MutableStateFlow<StorageState>(StorageState.Opening)
     val identity = MutableStateFlow<IdentityState>(IdentityState.Loading)
@@ -67,15 +82,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val groups = MutableStateFlow<List<GroupEntity>>(emptyList())
     val groupSummaries = MutableStateFlow<List<GroupSummary>>(emptyList())
     val nostrKey = MutableStateFlow<String?>(null)
+    val chatPrefs = MutableStateFlow<Map<String, ChatPrefEntity>>(emptyMap())
+    val pendingShare = MutableStateFlow<ShareRequest?>(null)
+    val openRequest = MutableStateFlow<OpenRequest?>(null)
+    val diagnostics = MutableStateFlow<DiagnosticsReport?>(null)
+    val usage = MutableStateFlow<StorageUsage?>(null)
+    val vaultItems = MutableStateFlow<List<VaultItemEntity>>(emptyList())
+    /** The vault asks for biometrics or the screen lock each time; this is cleared whenever the app leaves the screen. */
+    val vaultUnlocked = MutableStateFlow(false)
+    val settings get() = rely.container.settings
     val relays get() = rely.container.network.relays
     val relayConnected get() = rely.container.nostr.connections
     val relayStatus get() = rely.container.network.status
     val fileServers get() = rely.container.blossom.servers
     val fileServerStatus get() = rely.container.blossom.status
     val downloadProgress get() = rely.container.transfers.progress
-    val readReceipts = MutableStateFlow(settings.getBoolean(KEY_RECEIPTS, true))
+    val readReceipts = MutableStateFlow(prefs.getBoolean(KEY_RECEIPTS, true))
 
-    val lockEnabled = MutableStateFlow(settings.getBoolean(KEY_LOCK, false))
+    val lockEnabled = MutableStateFlow(prefs.getBoolean(KEY_LOCK, false))
     val unlocked = MutableStateFlow(false)
     val busy = MutableStateFlow(false)
     val message = MutableStateFlow<UiMessage?>(null)
@@ -96,6 +120,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             storage.value = StorageState.Ready
+            if (rely.restoreApplied) message.value = UiMessage(R.string.backup_applied)
             launch {
                 container.identities.observe().collect { e ->
                     identity.value = if (e == null) IdentityState.None else IdentityState.Present(e)
@@ -111,6 +136,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             launch { container.messages.observePending().collect { pendingCount.value = it } }
             launch { container.groupStore.observeGroups().collect { groups.value = it } }
             launch { container.groupStore.observeSummaries().collect { groupSummaries.value = it } }
+            launch { container.vault.observe().collect { vaultItems.value = it } }
+            launch { container.data.observePrefs().collect { list -> chatPrefs.value = list.associateBy { it.chatId } } }
+            if (container.settings.keepConnected.value) ConnectionService.start(rely)
             container.messages.resetStaleDownloads()
             container.delivery.processOutbox()
             // While the app is open, retry whatever is due (the engine's backoff decides what is actually sent).
@@ -158,7 +186,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
                 ctr().identities.reset()
-                settings.edit { putBoolean(KEY_LOCK, false) }
+                prefs.edit { putBoolean(KEY_LOCK, false) }
                 lockEnabled.value = false
                 unlocked.value = false
                 myCard.value = null
@@ -180,7 +208,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun deleteContact(c: ContactEntity) { viewModelScope.launch(Dispatchers.IO) { ctr().contacts.delete(c) } }
 
     fun setLockEnabled(enabled: Boolean) {
-        settings.edit { putBoolean(KEY_LOCK, enabled) }
+        prefs.edit { putBoolean(KEY_LOCK, enabled) }
         lockEnabled.value = enabled
         unlocked.value = true
         viewModelScope.launch(Dispatchers.IO) {
@@ -243,6 +271,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     /** Downloads are always started by the user, never automatically. */
     fun downloadAttachment(messageId: String) {
+        if (settings.wifiOnlyDownloads.value && !DeviceInfo.onUnlimitedLink(rely)) {
+            message.value = UiMessage(R.string.err_wifi_only)
+            return
+        }
         ctr().transfers.startDownload(messageId) { r ->
             if (r is DownloadResult.Failed) message.value = UiMessage(R.string.err_download, listOf(r.reason))
         }
@@ -321,19 +353,23 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         groupOp(onDone = { if (it == GroupResult.OK) onDone() }) { ctr().groups.deleteLocal(groupId) }
 
     fun markGroupRead(groupId: String) {
-        viewModelScope.launch(Dispatchers.IO) { runCatching { ctr().groupStore.markRead(groupId) } }
+        viewModelScope.launch(Dispatchers.IO) {
+            ctr().notifier.cancel(groupId)
+            runCatching { ctr().groupStore.markRead(groupId) }
+        }
     }
 
     fun cancelMessage(id: String) { viewModelScope.launch(Dispatchers.IO) { ctr().delivery.cancel(id) } }
 
     fun markChatRead(chatId: String) {
         viewModelScope.launch(Dispatchers.IO) {
+            ctr().notifier.cancel(chatId)
             runCatching { ctr().delivery.markChatRead(chatId, readReceipts.value) }
         }
     }
 
     fun setReadReceipts(enabled: Boolean) {
-        settings.edit { putBoolean(KEY_RECEIPTS, enabled) }
+        prefs.edit { putBoolean(KEY_RECEIPTS, enabled) }
         readReceipts.value = enabled
     }
 
@@ -342,7 +378,145 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setRelayEnabled(url: String, enabled: Boolean) = rely.container.network.setEnabled(url, enabled)
     fun testRelay(url: String) = rely.container.network.test(url)
 
-    fun relock() { if (lockEnabled.value) unlocked.value = false }
+    // ---- conversation housekeeping ---------------------------------------------------------------------------
+
+    private fun housekeeping(block: suspend () -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) { try { block() } catch (t: Throwable) { fail(t) } }
+    }
+
+    fun notificationsAllowed(): Boolean = ctr().notifier.systemAllows()
+    fun cancelNotification(id: String) { ctr().notifier.cancel(id) }
+    fun deleteMessage(id: String) = housekeeping { ctr().data.deleteMessage(id) }
+    fun deleteGroupMessage(id: String) = housekeeping { ctr().data.deleteGroupMessage(id) }
+    fun clearChat(chatId: String) = housekeeping { ctr().data.clearChat(chatId); message.value = UiMessage(R.string.chat_cleared) }
+    fun clearGroupChat(groupId: String) = housekeeping { ctr().data.clearGroupChat(groupId); message.value = UiMessage(R.string.chat_cleared) }
+    fun setPinned(id: String, v: Boolean) = housekeeping { ctr().data.setPinned(id, v) }
+    fun setArchived(id: String, v: Boolean) = housekeeping { ctr().data.setArchived(id, v) }
+    fun setMuted(id: String, v: Boolean) = housekeeping { ctr().data.setMuted(id, v) }
+
+    // ---- settings ----------------------------------------------------------------------------------------------
+
+    fun setKeepConnected(v: Boolean) {
+        settings.setKeepConnected(v)
+        if (v) ConnectionService.start(rely) else ConnectionService.stop(rely)
+    }
+
+    fun setTheme(m: ThemeMode) = settings.setTheme(m)
+
+    fun refreshUsage() {
+        viewModelScope.launch(Dispatchers.IO) { usage.value = runCatching { ctr().data.usage() }.getOrNull() }
+    }
+
+    fun clearCache() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val freed = ctr().data.clearCache()
+            usage.value = runCatching { ctr().data.usage() }.getOrNull()
+            message.value = UiMessage(R.string.cache_cleared, listOf(android.text.format.Formatter.formatShortFileSize(rely, freed)))
+        }
+    }
+
+    fun deleteOlderThan(days: Int) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val n = ctr().data.deleteOlderThan(days)
+                usage.value = runCatching { ctr().data.usage() }.getOrNull()
+                message.value = UiMessage(R.string.retention_done, listOf(n))
+            } catch (t: Throwable) { fail(t) }
+        }
+    }
+
+    // ---- vault -------------------------------------------------------------------------------------------------
+
+    fun vaultImport(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            busy.value = true
+            try {
+                message.value = when (val r = ctr().vault.import(getApplication<Application>().contentResolver, uri)) {
+                    is VaultImport.Ok -> UiMessage(R.string.vault_added)
+                    VaultImport.Empty -> UiMessage(R.string.err_file_empty)
+                    VaultImport.TooLarge -> UiMessage(R.string.err_file_too_large, listOf(org.relyra.app.core.vault.VaultEngine.MAX_BYTES / (1024 * 1024)))
+                    VaultImport.Unreadable -> UiMessage(R.string.err_file_unreadable)
+                }
+            } catch (t: Throwable) { fail(t) } finally { busy.value = false }
+        }
+    }
+
+    fun vaultExport(id: String, dest: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = try { ctr().vault.export(getApplication<Application>().contentResolver, id, dest) } catch (t: Throwable) { false }
+            message.value = UiMessage(if (ok) R.string.file_saved else R.string.err_file_save)
+        }
+    }
+
+    fun vaultVerify(id: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = try { ctr().vault.verify(id) } catch (t: Throwable) { false }
+            message.value = UiMessage(if (ok) R.string.vault_intact else R.string.vault_damaged)
+        }
+    }
+
+    fun vaultRename(id: String, name: String) = housekeeping { ctr().vault.rename(id, name) }
+    fun vaultDelete(id: String) = housekeeping { ctr().vault.delete(id) }
+
+    // ---- backup and restore ------------------------------------------------------------------------------------
+
+    /** True once a verified backup is waiting for the app to be restarted. */
+    val restorePending = MutableStateFlow(false)
+
+    fun exportBackup(dest: Uri, passphrase: CharArray) {
+        viewModelScope.launch(Dispatchers.IO) {
+            busy.value = true
+            try {
+                val out = getApplication<Application>().contentResolver.openOutputStream(dest, "w")
+                    ?: throw java.io.IOException("cannot write to the chosen location")
+                ctr().backup.export(out, passphrase)
+                message.value = UiMessage(R.string.backup_saved)
+            } catch (t: Throwable) {
+                message.value = UiMessage(R.string.err_backup, listOf(t.message ?: t.javaClass.simpleName))
+            } finally {
+                passphrase.fill('\u0000')
+                busy.value = false
+            }
+        }
+    }
+
+    fun stageRestore(source: Uri, passphrase: CharArray) {
+        viewModelScope.launch(Dispatchers.IO) {
+            busy.value = true
+            try {
+                val input = getApplication<Application>().contentResolver.openInputStream(source)
+                    ?: throw java.io.IOException("cannot read the chosen file")
+                ctr().backup.stageRestore(input, passphrase)
+                restorePending.value = true
+            } catch (t: Throwable) {
+                message.value = UiMessage(R.string.err_restore, listOf(t.message ?: t.javaClass.simpleName))
+            } finally {
+                passphrase.fill('\u0000')
+                busy.value = false
+            }
+        }
+    }
+
+    fun cancelRestore() {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { ctr().backup.cancelPending() }
+            restorePending.value = false
+        }
+    }
+
+    fun runDiagnostics() {
+        viewModelScope.launch {
+            busy.value = true
+            try {
+                diagnostics.value = Diagnostics.collect(ctr(), rely)
+            } catch (t: Throwable) { fail(t) } finally { busy.value = false }
+        }
+    }
+
+    fun relock() {
+        vaultUnlocked.value = false
+        if (lockEnabled.value) unlocked.value = false
+    }
     fun markUnlocked() { unlocked.value = true }
 }
 

@@ -34,6 +34,7 @@ class DeliveryEngine(
     private val newId: () -> String = { UUID.randomUUID().toString() },
     private val uploader: BlobUploader? = null,
     private val groups: GroupInbound? = null,
+    private val incoming: IncomingListener? = null,
 ) {
     private val lock = Mutex()
     private val uploadLock = Mutex()
@@ -228,22 +229,24 @@ class DeliveryEngine(
         when (env) {
             is Envelope.Chat -> {
                 // Save first, acknowledge second. A repeat of a known ID is only re-acknowledged.
-                store.recordIncoming(
+                val fresh = store.recordIncoming(
                     StoredMessage(env.messageId, env.from, false, env.body, clock(),
                         MessageState.DELIVERED, 0, Long.MAX_VALUE, false)
                 )
+                if (fresh) runCatching { incoming?.onMessage(env.from, false, env.from, env.body) }
                 transmit(env.from, EnvelopeCodec.encode(Envelope.Ack(env.messageId, me, env.from, AckKind.DELIVERED)))
             }
             is Envelope.Attachment -> {
                 if (!AttachmentLimits.validSizes(env.size, env.blobSize)) return
                 val url = BlossomUrl.normalize(env.serverUrl, allowPrivate = false) ?: return
                 val name = FileNames.sanitize(env.name)
-                store.recordIncomingAttachment(
+                val fresh = store.recordIncomingAttachment(
                     StoredMessage(env.messageId, env.from, false, name, clock(),
                         MessageState.DELIVERED, 0, Long.MAX_VALUE, false),
                     StoredAttachment(env.messageId, name, FileNames.sanitizeMime(env.mime), env.size, env.blobSize,
                         env.plainSha256, env.blobSha256, env.key, url, null, AttachmentPhase.REMOTE),
                 )
+                if (fresh) runCatching { incoming?.onMessage(env.from, false, env.from, null) }
                 transmit(env.from, EnvelopeCodec.encode(Envelope.Ack(env.messageId, me, env.from, AckKind.DELIVERED)))
             }
             is Envelope.GroupChat, is Envelope.GroupSync, is Envelope.GroupLeave -> groups?.onEnvelope(env)

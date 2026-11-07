@@ -89,3 +89,10 @@ interface PayloadProtector {
     /** Null when the packet is not for us, not from a known contact, or fails authentication. */
     suspend fun open(wire: ByteArray): Opened?
 }
+
+/** Told about every NEW incoming message (a replayed copy is not new). Used for notifications; must not block. */
+interface IncomingListener {
+    /** [conversation] is the sender's public ID for a one-to-one chat, or the group ID. [body] is null for files. */
+    fun onMessage(conversation: String, group: Boolean, sender: String, body: String?)
+    fun onInvited(groupId: String, name: String, invitedBy: String)
+}

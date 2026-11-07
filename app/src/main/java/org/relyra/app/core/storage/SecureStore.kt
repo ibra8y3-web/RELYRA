@@ -28,6 +28,12 @@ class SecureStore(context: Context) {
     fun loadSeed(): ByteArray? = read(SEED)
     fun clearSeed() { prefs.edit().remove(SEED).commit() }
 
+    /** Used only when a backup is applied: replaces both secrets, re-wrapped by this device's Keystore key. */
+    fun restoreKeys(seed: ByteArray?, dbKey: ByteArray) {
+        write(DB_KEY, dbKey)
+        if (seed != null && seed.isNotEmpty()) saveSeed(seed) else clearSeed()
+    }
+
     private companion object {
         const val DB_KEY = "db_key_v1"
         const val SEED = "identity_seed_v1"
