@@ -1,14 +1,6 @@
 package org.relyra.app
 
 import android.content.Intent
-import android.net.Uri
-import android.view.WindowManager
-import androidx.compose.runtime.LaunchedEffect
-import androidx.compose.ui.platform.LocalContext
-import androidx.core.content.IntentCompat
-import org.relyra.app.core.notify.Foreground
-import org.relyra.app.core.notify.Notifier
-import org.relyra.app.ui.components.findActivity
 import android.os.Bundle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -50,8 +42,7 @@ class MainActivity : FragmentActivity() {
         splash.setKeepOnScreenCondition { vm.storage.value is StorageState.Opening }
         if (savedInstanceState == null) handleIntent(intent)
         setContent {
-            val themeMode by vm.settings.theme.collectAsStateWithLifecycle()
-            RelyraTheme(themeMode) {
+            RelyraTheme {
                 Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                     RelyraRoot(vm, ::authenticate)
                 }
@@ -69,35 +60,14 @@ class MainActivity : FragmentActivity() {
         vm.externalInFlight = false
     }
 
-    override fun onStart() {
-        super.onStart()
-        Foreground.visible = true
-    }
-
     override fun onStop() {
         super.onStop()
-        Foreground.visible = false
         if (!isChangingConfigurations && !vm.externalInFlight) vm.relock()
     }
 
     private fun handleIntent(i: Intent?) {
-        if (i == null) return
-        val data = i.dataString
-        if (data != null && data.startsWith("relyra://contact")) {
-            vm.incomingLink.value = data
-            return
-        }
-        when (i.action) {
-            Intent.ACTION_SEND -> {
-                val text = i.getCharSequenceExtra(Intent.EXTRA_TEXT)?.toString()
-                val uri = IntentCompat.getParcelableExtra(i, Intent.EXTRA_STREAM, Uri::class.java)
-                if (!text.isNullOrBlank() || uri != null) vm.pendingShare.value = ShareRequest(text, uri)
-            }
-            Notifier.ACTION_OPEN_CHAT -> {
-                val id = i.getStringExtra(Notifier.EXTRA_CHAT)
-                if (id != null) vm.openRequest.value = OpenRequest(id, i.getBooleanExtra(Notifier.EXTRA_IS_GROUP, false))
-            }
-        }
+        val data = i?.dataString
+        if (data != null && data.startsWith("relyra://contact")) vm.incomingLink.value = data
     }
 
     /** Device biometrics or screen-lock credential. Never falls back to anything weaker. */
@@ -128,12 +98,6 @@ private fun RelyraRoot(
     val identity by vm.identity.collectAsStateWithLifecycle()
     val lockEnabled by vm.lockEnabled.collectAsStateWithLifecycle()
     val unlocked by vm.unlocked.collectAsStateWithLifecycle()
-    val blockShots by vm.settings.blockScreenshots.collectAsStateWithLifecycle()
-    val ctx = LocalContext.current
-    LaunchedEffect(blockShots) {
-        val w = ctx.findActivity()?.window
-        if (blockShots) w?.addFlags(WindowManager.LayoutParams.FLAG_SECURE) else w?.clearFlags(WindowManager.LayoutParams.FLAG_SECURE)
-    }
 
     when {
         storage is StorageState.Failed -> Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = androidx.compose.foundation.layout.Arrangement.Center) {

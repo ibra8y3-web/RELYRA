@@ -18,7 +18,6 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
-import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
@@ -33,20 +32,14 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.relyra.app.IdentityState
@@ -54,13 +47,11 @@ import org.relyra.app.MainViewModel
 import org.relyra.app.R
 import org.relyra.app.core.database.ContactEntity
 import org.relyra.app.core.database.GroupMemberEntity
-import org.relyra.app.core.database.GroupEntity
 import org.relyra.app.core.messaging.EnvelopeCodec
 import org.relyra.app.core.messaging.GroupKind
 import org.relyra.app.core.messaging.GroupLimits
 import org.relyra.app.core.messaging.GroupRole
 import org.relyra.app.core.messaging.GroupState
-import org.relyra.app.core.notify.Foreground
 import org.relyra.app.ui.components.Avatar
 import java.text.DateFormat
 import java.util.Date
@@ -84,22 +75,11 @@ private fun myPublicId(vm: MainViewModel): String? {
 // ---- list --------------------------------------------------------------------------------------------------
 
 @Composable
-fun GroupsList(vm: MainViewModel, query: String, onOpen: (String) -> Unit, onCreate: () -> Unit) {
+fun GroupsList(vm: MainViewModel, onOpen: (String) -> Unit, onCreate: () -> Unit) {
     val groups by vm.groups.collectAsStateWithLifecycle()
     val sums by vm.groupSummaries.collectAsStateWithLifecycle()
-    val prefs by vm.chatPrefs.collectAsStateWithLifecycle()
-    var showArchived by rememberSaveable { mutableStateOf(false) }
-    var clearTarget by remember { mutableStateOf<String?>(null) }
     val byId = sums.associateBy { it.groupId }
-    val q = query.trim()
-    val matching = groups.filter { q.isEmpty() || it.name.contains(q, ignoreCase = true) }
-    val archivedCount = matching.count { prefs[it.groupId]?.archived == true }
-    val visible = matching
-        .filter { (prefs[it.groupId]?.archived == true) == showArchived }
-        .sortedWith(
-            compareByDescending<GroupEntity> { prefs[it.groupId]?.pinned == true }
-                .thenByDescending { byId[it.groupId]?.lastAt ?: it.createdAt }
-        )
+    val fmt = DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
     Box(Modifier.fillMaxSize()) {
         if (groups.isEmpty()) {
             Column(
@@ -112,42 +92,15 @@ fun GroupsList(vm: MainViewModel, query: String, onOpen: (String) -> Unit, onCre
                     modifier = Modifier.padding(top = 8.dp))
             }
         } else {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {
-                if (archivedCount > 0 || showArchived) {
-                    item(key = "archived-toggle") {
-                        TextButton(onClick = { showArchived = !showArchived }, modifier = Modifier.padding(horizontal = 8.dp)) {
-                            Text(
-                                if (showArchived) stringResource(R.string.chats_archived_hide)
-                                else stringResource(R.string.chats_archived_show, archivedCount)
-                            )
-                        }
-                    }
-                }
-                if (visible.isEmpty()) {
-                    item(key = "none") {
-                        Text(
-                            stringResource(if (q.isNotEmpty()) R.string.chats_no_match else R.string.chats_nothing_here),
-                            color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(24.dp),
-                        )
-                    }
-                }
-                items(visible, key = { it.groupId }) { g ->
+            LazyColumn(Modifier.fillMaxSize()) {
+                items(groups.sortedByDescending { byId[it.groupId]?.lastAt ?: it.createdAt }, key = { it.groupId }) { g ->
                     val s = byId[g.groupId]
-                    val pref = prefs[g.groupId]
                     val state = GroupState.valueOf(g.state)
                     val kind = stringResource(
                         if (GroupKind.valueOf(g.kind) == GroupKind.CHANNEL) R.string.groups_kind_channel_short else R.string.groups_kind_group_short
                     )
                     ListItem(
-                        headlineContent = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(g.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                                if (pref?.pinned == true) {
-                                    Icon(Icons.Default.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(start = 6.dp))
-                                }
-                            }
-                        },
+                        headlineContent = { Text(g.name) },
                         supportingContent = {
                             Text(
                                 when {
@@ -155,26 +108,12 @@ fun GroupsList(vm: MainViewModel, query: String, onOpen: (String) -> Unit, onCre
                                     state == GroupState.LEFT -> stringResource(R.string.groups_state_left)
                                     state == GroupState.REMOVED -> stringResource(R.string.groups_state_removed)
                                     s != null && s.unread > 0 -> kind + " · " + stringResource(R.string.chat_unread_count, s.unread)
+                                    s != null -> kind + " · " + fmt.format(Date(s.lastAt))
                                     else -> kind
                                 }
                             )
                         },
                         leadingContent = { Avatar(g.name) },
-                        trailingContent = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Column(horizontalAlignment = Alignment.End) {
-                                    if (s != null) TimeLabel(s.lastAt)
-                                    if (s != null && s.unread > 0) UnreadBadge(s.unread)
-                                }
-                                ConversationMenu(
-                                    pref,
-                                    onPin = { vm.setPinned(g.groupId, it) },
-                                    onMute = { vm.setMuted(g.groupId, it) },
-                                    onArchive = { vm.setArchived(g.groupId, it) },
-                                    onClear = { clearTarget = g.groupId },
-                                )
-                            }
-                        },
                         modifier = Modifier.clickable { onOpen(g.groupId) },
                     )
                     HorizontalDivider()
@@ -188,15 +127,12 @@ fun GroupsList(vm: MainViewModel, query: String, onOpen: (String) -> Unit, onCre
             modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
         )
     }
-    clearTarget?.let { id ->
-        ClearChatDialog(onConfirm = { vm.clearGroupChat(id); clearTarget = null }, onDismiss = { clearTarget = null })
-    }
 }
 
 // ---- create ------------------------------------------------------------------------------------------------
 
 @Composable
-fun CreateGroupScreen(vm: MainViewModel, onCreated: (String) -> Unit, onAddContact: () -> Unit) {
+fun CreateGroupScreen(vm: MainViewModel, onCreated: (String) -> Unit) {
     val contacts by vm.contacts.collectAsStateWithLifecycle()
     val candidates = contacts.filter { usable(it) }
     var name by remember { mutableStateOf("") }
@@ -221,7 +157,6 @@ fun CreateGroupScreen(vm: MainViewModel, onCreated: (String) -> Unit, onAddConta
         Text(stringResource(R.string.groups_pick_members), style = MaterialTheme.typography.titleSmall)
         if (candidates.isEmpty()) {
             Text(stringResource(R.string.groups_no_contacts), color = MaterialTheme.colorScheme.onSurfaceVariant)
-            OutlinedButton(onClick = onAddContact) { Text(stringResource(R.string.chats_add_contact_cta)) }
         }
         LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
             items(candidates, key = { it.publicId }) { c ->
@@ -266,13 +201,6 @@ fun GroupChatScreen(vm: MainViewModel, groupId: String) {
         else -> contacts.find { it.publicId == id }?.displayName ?: unknownLabel
     }
 
-    val clipboard = LocalClipboardManager.current
-    var actionMsg by remember { mutableStateOf<org.relyra.app.core.database.GroupMessageEntity?>(null) }
-    DisposableEffect(groupId) {
-        Foreground.openChat = groupId
-        vm.cancelNotification(groupId)
-        onDispose { if (Foreground.openChat == groupId) Foreground.openChat = null }
-    }
     LaunchedEffect(unread) { if (unread > 0) vm.markGroupRead(groupId) }
     LaunchedEffect(messages.size) { if (messages.isNotEmpty()) listState.animateScrollToItem(messages.lastIndex) }
 
@@ -305,11 +233,10 @@ fun GroupChatScreen(vm: MainViewModel, groupId: String) {
                 val mine = m.outgoing
                 Column(Modifier.fillMaxWidth(), horizontalAlignment = if (mine) Alignment.End else Alignment.Start) {
                     Column(
-                        Modifier
-                            .clip(RoundedCornerShape(16.dp))
-                            .background(if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh)
-                            .clickable { actionMsg = m }
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                        Modifier.background(
+                            if (mine) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceContainerHigh,
+                            RoundedCornerShape(16.dp),
+                        ).padding(horizontal = 12.dp, vertical = 8.dp)
                     ) {
                         if (!mine) Text(nameOf(m.senderId), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         Text(m.body)
@@ -343,23 +270,6 @@ fun GroupChatScreen(vm: MainViewModel, groupId: String) {
             Text(stringResource(R.string.groups_inactive), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
         }
-    }
-
-    actionMsg?.let { m ->
-        AlertDialog(
-            onDismissRequest = { actionMsg = null },
-            confirmButton = { TextButton(onClick = { actionMsg = null }) { Text(stringResource(R.string.close)) } },
-            text = {
-                Column {
-                    TextButton(onClick = { clipboard.setText(AnnotatedString(m.body)); actionMsg = null }) {
-                        Text(stringResource(R.string.msg_copy))
-                    }
-                    TextButton(onClick = { vm.deleteGroupMessage(m.messageId); actionMsg = null }) {
-                        Text(stringResource(R.string.msg_delete), color = MaterialTheme.colorScheme.error)
-                    }
-                }
-            },
-        )
     }
 }
 
@@ -531,7 +441,7 @@ fun GroupInfoScreen(vm: MainViewModel, groupId: String, onGone: () -> Unit) {
             title = { Text(stringResource(R.string.groups_add_members)) },
             text = {
                 if (candidates.isEmpty()) {
-                    Text(stringResource(if (contacts.none { usable(it) }) R.string.groups_add_no_contacts else R.string.groups_add_none))
+                    Text(stringResource(R.string.groups_add_none))
                 } else {
                     LazyColumn(Modifier.fillMaxWidth()) {
                         items(candidates, key = { it.publicId }) { c ->

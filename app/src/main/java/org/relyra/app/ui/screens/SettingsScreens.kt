@@ -39,8 +39,6 @@ fun SettingsScreen(
     authenticate: (title: String, allowIfUnavailable: Boolean, onSuccess: () -> Unit) -> Unit,
     onOpenLog: () -> Unit,
     onOpenNetwork: () -> Unit,
-    onOpenTools: () -> Unit,
-    onOpenDiagnostics: () -> Unit,
 ) {
     val lock by vm.lockEnabled.collectAsStateWithLifecycle()
     val receipts by vm.readReceipts.collectAsStateWithLifecycle()
@@ -73,27 +71,11 @@ fun SettingsScreen(
                 modifier = Modifier.clickable(onClick = onOpenLog),
             )
         }
-        NotificationSettingsCard(vm)
-        PrivacyAppearanceCards(vm)
         SectionCard(stringResource(R.string.net_title)) {
             ListItem(
                 headlineContent = { Text(stringResource(R.string.net_title)) },
                 supportingContent = { Text(stringResource(R.string.settings_network_desc)) },
                 modifier = Modifier.clickable(onClick = onOpenNetwork),
-            )
-        }
-        DataStorageCard(vm, onOpenDiagnostics)
-        SectionCard(stringResource(R.string.tools_title)) {
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.tools_title)) },
-                supportingContent = { Text(stringResource(R.string.tools_desc)) },
-                modifier = Modifier.clickable(onClick = onOpenTools),
-            )
-            HorizontalDivider()
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.diag_title)) },
-                supportingContent = { Text(stringResource(R.string.diag_desc)) },
-                modifier = Modifier.clickable(onClick = onOpenDiagnostics),
             )
         }
         SectionCard(stringResource(R.string.settings_about)) {

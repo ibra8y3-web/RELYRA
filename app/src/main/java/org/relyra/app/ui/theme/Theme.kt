@@ -6,11 +6,6 @@ import androidx.compose.material3.Typography
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.SideEffect
-import androidx.compose.ui.platform.LocalView
-import androidx.core.view.WindowCompat
-import org.relyra.app.core.storage.ThemeMode
-import org.relyra.app.ui.components.findActivity
 import androidx.compose.ui.graphics.Color
 
 private val Light = lightColorScheme(
@@ -41,34 +36,11 @@ private val Dark = darkColorScheme(
     error = Color(0xFFFDA29B),
 )
 
-private val Amoled = Dark.copy(
-    background = Color.Black, surface = Color.Black,
-    surfaceVariant = Color(0xFF14181F),
-    surfaceContainerLowest = Color.Black, surfaceContainerLow = Color(0xFF0A0A0A),
-    surfaceContainer = Color(0xFF101010), surfaceContainerHigh = Color(0xFF161616),
-    surfaceContainerHighest = Color(0xFF1C1C1C),
-)
-
 @Composable
-fun RelyraTheme(mode: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -> Unit) {
-    val dark = when (mode) {
-        ThemeMode.SYSTEM -> isSystemInDarkTheme()
-        ThemeMode.LIGHT -> false
-        ThemeMode.DARK, ThemeMode.AMOLED -> true
-    }
-    val scheme = when {
-        mode == ThemeMode.AMOLED -> Amoled
-        dark -> Dark
-        else -> Light
-    }
-    val view = LocalView.current
-    if (!view.isInEditMode) {
-        SideEffect {
-            val window = view.context.findActivity()?.window ?: return@SideEffect
-            val c = WindowCompat.getInsetsController(window, view)
-            c.isAppearanceLightStatusBars = !dark
-            c.isAppearanceLightNavigationBars = !dark
-        }
-    }
-    MaterialTheme(colorScheme = scheme, typography = Typography(), content = content)
+fun RelyraTheme(content: @Composable () -> Unit) {
+    MaterialTheme(
+        colorScheme = if (isSystemInDarkTheme()) Dark else Light,
+        typography = Typography(),
+        content = content,
+    )
 }

@@ -34,16 +34,7 @@ data class ProcessedIdEntity(
     val receivedAt: Long,
 )
 
-data class ChatSummary(val chatId: String, val lastAt: Long, val unread: Int, val lastBody: String)
-
-/** Local-only choices about a conversation (a contact's public ID or a group ID). Never sent to anyone. */
-@Entity(tableName = "chat_prefs")
-data class ChatPrefEntity(
-    @PrimaryKey val chatId: String,
-    val pinned: Boolean,
-    val archived: Boolean,
-    val muted: Boolean,
-)
+data class ChatSummary(val chatId: String, val lastAt: Long, val unread: Int)
 
 /** File descriptor of a message. The file key lives only in this encrypted database. */
 @Entity(tableName = "attachments")

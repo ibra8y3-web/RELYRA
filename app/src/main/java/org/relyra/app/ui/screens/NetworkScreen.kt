@@ -151,34 +151,11 @@ fun NetworkScreen(vm: MainViewModel) {
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(stringResource(R.string.files_add_action)) }
         }
-        val suggestedRelays = SUGGESTED_RELAYS.filter { u -> relays.none { it.url.trimEnd('/') == u } }
-        val suggestedServers = SUGGESTED_FILE_SERVERS.filter { u -> fileServers.none { it.url.trimEnd('/') == u } }
-        if (suggestedRelays.isNotEmpty() || suggestedServers.isNotEmpty()) {
-            SectionCard(stringResource(R.string.net_suggested_title)) {
-                Text(stringResource(R.string.net_suggested_body), style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant)
-                suggestedRelays.forEach { u ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(u, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { vm.addRelay(u) }) { Text(stringResource(R.string.net_suggested_add)) }
-                    }
-                }
-                suggestedServers.forEach { u ->
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(u, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall, modifier = Modifier.weight(1f))
-                        TextButton(onClick = { vm.addFileServer(u) }) { Text(stringResource(R.string.net_suggested_add)) }
-                    }
-                }
-            }
-        }
     }
 }
 
-private val SUGGESTED_RELAYS = listOf("wss://relay.damus.io", "wss://nos.lol", "wss://relay.primal.net")
-private val SUGGESTED_FILE_SERVERS = listOf("https://blossom.primal.net")
-
 @Composable
-internal fun statusText(s: RelayStatus): String = when (s) {
+private fun statusText(s: RelayStatus): String = when (s) {
     RelayStatus.Untested -> stringResource(R.string.net_status_untested)
     RelayStatus.Testing -> stringResource(R.string.net_status_testing)
     is RelayStatus.Ok -> stringResource(R.string.net_status_ok, s.connectMs, s.eoseMs)
@@ -186,7 +163,7 @@ internal fun statusText(s: RelayStatus): String = when (s) {
 }
 
 @Composable
-internal fun fileStatusText(s: ServerStatus): String = when (s) {
+private fun fileStatusText(s: ServerStatus): String = when (s) {
     ServerStatus.Untested -> stringResource(R.string.net_status_untested)
     ServerStatus.Testing -> stringResource(R.string.net_status_testing)
     is ServerStatus.Reachable -> stringResource(R.string.files_status_reachable, s.httpCode, s.ms)

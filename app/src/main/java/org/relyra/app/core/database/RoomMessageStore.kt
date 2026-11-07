@@ -49,15 +49,6 @@ class RoomMessageStore(private val db: AppDatabase) : MessageStore {
     suspend fun resetStaleDownloads() = db.attachmentDao().resetStaleDownloads()
     fun observeAttachments(chatId: String) = db.attachmentDao().observeChat(chatId)
 
-    suspend fun deleteMessage(id: String): String? {
-        val path = db.attachmentDao().get(id)?.localPath
-        db.withTransaction {
-            db.attachmentDao().deleteOne(id)
-            dao.deleteOne(id)
-        }
-        return path
-    }
-
     fun observeChat(chatId: String) = dao.observeChat(chatId)
     fun observeSummaries() = dao.observeSummaries()
     fun observePending() = dao.observePending()

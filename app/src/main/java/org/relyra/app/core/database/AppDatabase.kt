@@ -14,9 +14,8 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         MessageEntity::class, ProcessedIdEntity::class, AttachmentEntity::class,
         RatchetEntity::class,
         GroupEntity::class, GroupMemberEntity::class, GroupMessageEntity::class, GroupOutboxEntity::class,
-        ChatPrefEntity::class,
     ],
-    version = 7,
+    version = 6,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -27,7 +26,6 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun attachmentDao(): AttachmentDao
     abstract fun ratchetDao(): RatchetDao
     abstract fun groupDao(): GroupDao
-    abstract fun chatPrefDao(): ChatPrefDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -98,20 +96,11 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
-        val MIGRATION_6_7 = object : Migration(6, 7) {
-            override fun migrate(db: SupportSQLiteDatabase) {
-                db.execSQL(
-                    "CREATE TABLE IF NOT EXISTS `chat_prefs` (`chatId` TEXT NOT NULL, `pinned` INTEGER NOT NULL, " +
-                        "`archived` INTEGER NOT NULL, `muted` INTEGER NOT NULL, PRIMARY KEY(`chatId`))"
-                )
-            }
-        }
-
         /** SQLCipher-encrypted. Never uses destructive migration: user data must survive updates. */
         fun build(context: Context, passphrase: ByteArray): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "relyra.db")
                 .openHelperFactory(SupportOpenHelperFactory(passphrase))
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
                 .build()
     }
 }
