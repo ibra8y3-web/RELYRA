@@ -41,6 +41,9 @@ interface ContactDao {
     @Query("UPDATE contacts SET encKey = :enc, nostrKey = :nostr WHERE publicId = :id")
     suspend fun setKeys(id: String, enc: ByteArray, nostr: ByteArray)
 
+    @Query("UPDATE contacts SET signedPreKeyId = :signedId, signedPreKey = :signedKey, signedPreKeyExpiresAt = :expiresAt, signedPreKeySignature = :signature, oneTimePreKeyId = :oneTimeId, oneTimePreKey = :oneTimeKey WHERE publicId = :id")
+    suspend fun setPreKeys(id: String, signedId: Long, signedKey: ByteArray, expiresAt: Long, signature: ByteArray, oneTimeId: Long?, oneTimeKey: ByteArray?)
+
     @Query("DELETE FROM contacts WHERE publicId = :id")
     suspend fun delete(id: String)
 }
