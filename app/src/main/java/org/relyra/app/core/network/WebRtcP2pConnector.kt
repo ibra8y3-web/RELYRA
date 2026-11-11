@@ -373,6 +373,6 @@ class WebRtcP2pConnector(
     }
 
     companion object {
-        const val MAX_DATA_CHANNEL_MESSAGE = 256 * 1024
+        const val MAX_DATA_CHANNEL_MESSAGE = 64 * 1024
     }
 }
