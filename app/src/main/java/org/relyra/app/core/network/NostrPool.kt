@@ -36,9 +36,9 @@ class NostrPool(
     val connected = MutableStateFlow<Map<String, Boolean>>(emptyMap())
 
     @Synchronized
-    fun configure(newSecret: ByteArray?, urls: Set<String>) {
+    fun configure(newSecret: ByteArray?, urls: Set<String>, forceReconnect: Boolean = false) {
         val newPub = newSecret?.let { Hex.encode(NostrCrypto.publicKeyX(it)) }
-        if (newPub != pubHex) { conns.values.forEach { it.stop() }; conns.clear() }
+        if (forceReconnect || newPub != pubHex) { conns.values.forEach { it.stop() }; conns.clear() }
         secret = newSecret
         pubHex = newPub
         if (newSecret != null) {
