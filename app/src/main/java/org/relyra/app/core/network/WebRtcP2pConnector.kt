@@ -31,6 +31,7 @@ import java.nio.ByteBuffer
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.UUID
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
 
@@ -54,6 +55,14 @@ data class InternetPeerSession(
     val type: String,
     val sdp: String,
     val issuedAt: Long,
+    val sessionId: String,
+)
+
+data class IncomingP2pOffer(
+    val peerId: String,
+    val sessionId: String,
+    val signedSignal: String,
+    val receivedAtMillis: Long,
 )
 
 /**
@@ -71,16 +80,19 @@ object InternetSignalCodec {
         type: String,
         sdp: String,
         issuedAt: Long,
+        sessionId: String,
         sign: (ByteArray) -> ByteArray?,
     ): String? {
         val from = fromId.trim().lowercase()
         val to = toId.trim().lowercase()
-        if (IdentityCrypto.parsePublicId(from) == null ||
+        val canonicalSession = runCatching { UUID.fromString(sessionId).toString() }.getOrNull() ?: return null
+        if (canonicalSession != sessionId.lowercase() ||
+            IdentityCrypto.parsePublicId(from) == null ||
             IdentityCrypto.parsePublicId(to) == null ||
             from == to || type !in setOf("offer", "answer") ||
             sdp.isBlank() || sdp.length > MAX_SDP_CHARS
         ) return null
-        val signature = sign(transcript(from, to, type, sdp, issuedAt)) ?: return null
+        val signature = sign(transcript(from, to, type, sdp, issuedAt, canonicalSession)) ?: return null
         if (signature.size != 64) return null
         return JSONObject()
             .put("v", 1)
@@ -89,6 +101,7 @@ object InternetSignalCodec {
             .put("type", type)
             .put("sdp", sdp)
             .put("issuedAt", issuedAt)
+            .put("sessionId", canonicalSession)
             .put("sig", Base64.getUrlEncoder().withoutPadding().encodeToString(signature))
             .toString()
     }
@@ -108,7 +121,10 @@ object InternetSignalCodec {
             val type = json.getString("type")
             val sdp = json.getString("sdp")
             val issuedAt = json.getLong("issuedAt")
-            if (to != ownId.lowercase() || from != expectedPeerId.lowercase() ||
+            val sessionId = json.getString("sessionId").lowercase()
+            val canonicalSession = runCatching { UUID.fromString(sessionId).toString() }.getOrNull() ?: return null
+            if (canonicalSession != sessionId ||
+                to != ownId.lowercase() || from != expectedPeerId.lowercase() ||
                 type !in setOf("offer", "answer") || sdp.isBlank() ||
                 sdp.length > MAX_SDP_CHARS || issuedAt > nowSeconds + 60 ||
                 nowSeconds - issuedAt > MAX_AGE_SECONDS
@@ -116,26 +132,33 @@ object InternetSignalCodec {
             val publicKey = IdentityCrypto.parsePublicId(from) ?: return null
             val signature = Base64.getUrlDecoder().decode(json.getString("sig"))
             if (signature.size != 64 ||
-                !IdentityCrypto.verify(publicKey, signature, transcript(from, to, type, sdp, issuedAt))
+                !IdentityCrypto.verify(publicKey, signature, transcript(from, to, type, sdp, issuedAt, sessionId))
             ) return null
-            InternetPeerSession(from, type, sdp, issuedAt)
+            InternetPeerSession(from, type, sdp, issuedAt, sessionId)
         } catch (_: Exception) {
             null
         }
     }
 
-    private fun transcript(from: String, to: String, type: String, sdp: String, issuedAt: Long): ByteArray =
-        ByteArrayOutputStream().use { bytes ->
-            DataOutputStream(bytes).use { out ->
-                out.writeUTF(DOMAIN)
-                out.writeUTF(from)
-                out.writeUTF(to)
-                out.writeUTF(type)
-                out.writeLong(issuedAt)
-                out.writeUTF(sdp)
-            }
-            bytes.toByteArray()
+    private fun transcript(
+        from: String,
+        to: String,
+        type: String,
+        sdp: String,
+        issuedAt: Long,
+        sessionId: String,
+    ): ByteArray = ByteArrayOutputStream().use { bytes ->
+        DataOutputStream(bytes).use { out ->
+            out.writeUTF(DOMAIN)
+            out.writeUTF(from)
+            out.writeUTF(to)
+            out.writeUTF(type)
+            out.writeUTF(sessionId)
+            out.writeLong(issuedAt)
+            out.writeUTF(sdp)
         }
+        bytes.toByteArray()
+    }
 }
 
 /**
@@ -159,7 +182,9 @@ class WebRtcP2pConnector(
     private val peers = ConcurrentHashMap<String, Peer>()
     private val pendingAcks = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
     private val states = MutableStateFlow<Map<String, InternetPeerState>>(emptyMap())
+    private val _incomingOffers = MutableStateFlow<Map<String, IncomingP2pOffer>>(emptyMap())
     val peerStates: StateFlow<Map<String, InternetPeerState>> = states
+    val incomingOffers: StateFlow<Map<String, IncomingP2pOffer>> = _incomingOffers
     private val initialized = AtomicBoolean(false)
     @Volatile private var iceServers: List<IceServerConfig> = listOf(
         IceServerConfig("stun:stun.l.google.com:19302"),
@@ -167,10 +192,12 @@ class WebRtcP2pConnector(
     )
 
     private data class Peer(
+        val sessionId: String,
         val connection: PeerConnection,
         @Volatile var channel: DataChannel? = null,
         val gathering: CompletableDeferred<Unit> = CompletableDeferred(),
         val receiveMutex: Mutex = Mutex(),
+        val sendMutex: Mutex = Mutex(),
     )
 
     fun setIceServers(servers: List<IceServerConfig>): Boolean {
@@ -195,7 +222,8 @@ class WebRtcP2pConnector(
         }
     }
 
-    private fun createPeer(peerId: String): Peer? {
+    private fun createPeer(peerId: String, sessionId: String): Peer? {
+        if (peers[peerId] == null && peers.size >= MAX_PEER_SESSIONS) return null
         val servers = iceServers.map { cfg ->
             val builder = PeerConnection.IceServer.builder(cfg.url)
             if (cfg.username.isNotBlank()) builder.setUsername(cfg.username).setPassword(cfg.credential)
@@ -211,7 +239,8 @@ class WebRtcP2pConnector(
             override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
                 val mapped = when (state) {
                     PeerConnection.IceConnectionState.CONNECTED,
-                    PeerConnection.IceConnectionState.COMPLETED -> InternetPeerState.CONNECTED
+                    PeerConnection.IceConnectionState.COMPLETED ->
+                        if (peer.channel?.state() == DataChannel.State.OPEN) InternetPeerState.CONNECTED else InternetPeerState.CONNECTING
                     PeerConnection.IceConnectionState.CHECKING -> InternetPeerState.CONNECTING
                     PeerConnection.IceConnectionState.DISCONNECTED -> InternetPeerState.DISCONNECTED
                     PeerConnection.IceConnectionState.FAILED,
@@ -237,7 +266,7 @@ class WebRtcP2pConnector(
             override fun onStandardizedIceConnectionChange(newState: PeerConnection.IceConnectionState) = Unit
         }
         val connection = factory().createPeerConnection(config, observer) ?: return null
-        peer = Peer(connection)
+        peer = Peer(sessionId, connection)
         peers.put(peerId, peer)?.let { closePeer(it) }
         states.value = states.value + (peerId to InternetPeerState.NEW)
         return peer
@@ -247,18 +276,21 @@ class WebRtcP2pConnector(
         val me = ownId() ?: return null
         val targetId = peerId.trim().lowercase()
         if (IdentityCrypto.parsePublicId(targetId) == null || !knownPeer(targetId)) return null
-        return safely {
+        val sessionId = UUID.randomUUID().toString()
+        val result = safely {
             withContext(Dispatchers.IO) {
-                val peer = createPeer(targetId) ?: return@withContext null
+                val peer = createPeer(targetId, sessionId) ?: return@withContext null
                 val init = DataChannel.Init().apply { ordered = true }
                 attachChannel(targetId, peer, peer.connection.createDataChannel("relyra-wire-v1", init))
                 val offer = createDescription(peer.connection, true)
                 setDescription(peer.connection, true, offer)
                 awaitGathering(peer)
                 val local = peer.connection.localDescription?.description ?: return@withContext null
-                InternetSignalCodec.encode(me, targetId, "offer", local, System.currentTimeMillis() / 1000, sign)
+                InternetSignalCodec.encode(me, targetId, "offer", local, System.currentTimeMillis() / 1000, sessionId, sign)
             }
         }
+        if (result == null) close(targetId)
+        return result
     }
 
     suspend fun acceptOffer(peerId: String, encodedOffer: String): String? {
@@ -267,18 +299,22 @@ class WebRtcP2pConnector(
         if (!knownPeer(targetId)) return null
         val signal = InternetSignalCodec.decode(encodedOffer, me, targetId) ?: return null
         if (signal.type != "offer") return null
-        return safely {
+        val pending = _incomingOffers.value[targetId]
+        if (pending != null && pending.sessionId != signal.sessionId) return null
+        val answer = safely {
             withContext(Dispatchers.IO) {
-                val peer = createPeer(targetId) ?: return@withContext null
+                val peer = createPeer(targetId, signal.sessionId) ?: return@withContext null
                 val remote = SessionDescription(SessionDescription.Type.OFFER, signal.sdp)
                 setDescription(peer.connection, false, remote)
-                val answer = createDescription(peer.connection, false)
-                setDescription(peer.connection, true, answer)
+                val answerDescription = createDescription(peer.connection, false)
+                setDescription(peer.connection, true, answerDescription)
                 awaitGathering(peer)
                 val local = peer.connection.localDescription?.description ?: return@withContext null
-                InternetSignalCodec.encode(me, targetId, "answer", local, System.currentTimeMillis() / 1000, sign)
+                InternetSignalCodec.encode(me, targetId, "answer", local, System.currentTimeMillis() / 1000, signal.sessionId, sign)
             }
         }
+        if (answer != null) dismissIncomingOffer(targetId) else close(targetId)
+        return answer
     }
 
     suspend fun acceptAnswer(peerId: String, encodedAnswer: String): Boolean {
@@ -288,6 +324,7 @@ class WebRtcP2pConnector(
         val signal = InternetSignalCodec.decode(encodedAnswer, me, targetId) ?: return false
         if (signal.type != "answer") return false
         val peer = peers[targetId] ?: return false
+        if (signal.sessionId != peer.sessionId) return false
         return try {
             setDescription(peer.connection, false, SessionDescription(SessionDescription.Type.ANSWER, signal.sdp))
             true
@@ -298,42 +335,68 @@ class WebRtcP2pConnector(
         }
     }
 
+    suspend fun requestIncomingOffer(peerId: String, signedOffer: String): Boolean {
+        val me = ownId() ?: return false
+        val targetId = peerId.trim().lowercase()
+        if (!knownPeer(targetId)) return false
+        val signal = InternetSignalCodec.decode(signedOffer, me, targetId) ?: return false
+        if (signal.type != "offer") return false
+        val current = peers[targetId]
+        if (current?.sessionId == signal.sessionId) return false
+        val existing = _incomingOffers.value[targetId]
+        if (existing?.sessionId == signal.sessionId) return true
+        _incomingOffers.value = _incomingOffers.value + (
+            targetId to IncomingP2pOffer(targetId, signal.sessionId, signedOffer, System.currentTimeMillis())
+        )
+        return true
+    }
+
+    fun dismissIncomingOffer(peerId: String) {
+        val key = peerId.trim().lowercase()
+        _incomingOffers.value = _incomingOffers.value - key
+    }
+
     override fun isReady(): Boolean = peers.values.any { it.channel?.state() == DataChannel.State.OPEN }
 
     override suspend fun send(toPeer: String, payload: ByteArray): SendOutcome {
-        val channel = peers[toPeer]?.channel ?: return SendOutcome.Unavailable
-        if (channel.state() != DataChannel.State.OPEN) return SendOutcome.Unavailable
-        val frame = WebRtcFrameCodec.encodeMessage(payload) ?: return SendOutcome.Unavailable
-        if (channel.bufferedAmount() > MAX_BUFFERED_BYTES - frame.remaining()) return SendOutcome.Unavailable
+        val peer = peers[toPeer] ?: return SendOutcome.Unavailable
+        return peer.sendMutex.withLock {
+            val channel = peer.channel ?: return@withLock SendOutcome.Unavailable
+            if (channel.state() != DataChannel.State.OPEN) return@withLock SendOutcome.Unavailable
+            val frame = WebRtcFrameCodec.encodeMessage(payload) ?: return@withLock SendOutcome.Unavailable
+            if (channel.bufferedAmount() > MAX_BUFFERED_BYTES - frame.remaining()) return@withLock SendOutcome.Unavailable
 
-        val digest = WebRtcFrameCodec.digestKey(WebRtcFrameCodec.digestPayload(payload))
-        val ackKey = "$toPeer:$digest"
-        val candidate = CompletableDeferred<Boolean>()
-        val waiter = pendingAcks.putIfAbsent(ackKey, candidate) ?: candidate
-        val queued = runCatching { channel.send(DataChannel.Buffer(frame, true)) }.getOrDefault(false)
-        if (!queued) {
-            pendingAcks.remove(ackKey, waiter)
-            return SendOutcome.Unavailable
-        }
-
-        return try {
-            if (withTimeoutOrNull(ACK_TIMEOUT_MS) { waiter.await() } == true) {
-                SendOutcome.Accepted
-            } else {
-                SendOutcome.Unavailable
+            val digest = WebRtcFrameCodec.digestKey(WebRtcFrameCodec.digestPayload(payload))
+            val ackKey = "$toPeer:$digest"
+            val candidate = CompletableDeferred<Boolean>()
+            val waiter = pendingAcks.putIfAbsent(ackKey, candidate) ?: candidate
+            val queued = runCatching { channel.send(DataChannel.Buffer(frame, true)) }.getOrDefault(false)
+            if (!queued) {
+                pendingAcks.remove(ackKey, waiter)
+                return@withLock SendOutcome.Unavailable
             }
-        } finally {
-            pendingAcks.remove(ackKey, waiter)
+
+            try {
+                if (withTimeoutOrNull(ACK_TIMEOUT_MS) { waiter.await() } == true) {
+                    SendOutcome.Accepted
+                } else {
+                    SendOutcome.Unavailable
+                }
+            } finally {
+                pendingAcks.remove(ackKey, waiter)
+            }
         }
     }
 
     fun close(peerId: String) {
-        peers.remove(peerId)?.let(::closePeer)
-        pendingAcks.entries.filter { it.key.startsWith("$peerId:") }.forEach { entry ->
+        val key = peerId.trim().lowercase()
+        peers.remove(key)?.let(::closePeer)
+        dismissIncomingOffer(key)
+        pendingAcks.entries.filter { it.key.startsWith("$key:") }.forEach { entry ->
             entry.value.complete(false)
             pendingAcks.remove(entry.key, entry.value)
         }
-        states.value = states.value - peerId
+        states.value = states.value - key
     }
 
     fun closeAll() {
@@ -342,6 +405,7 @@ class WebRtcP2pConnector(
         peers.clear()
         pendingAcks.values.forEach { it.complete(false) }
         pendingAcks.clear()
+        _incomingOffers.value = emptyMap()
         states.value = emptyMap()
     }
 
@@ -349,7 +413,14 @@ class WebRtcP2pConnector(
         peer.channel = channel
         channel.registerObserver(object : DataChannel.Observer {
             override fun onBufferedAmountChange(previousAmount: Long) = Unit
-            override fun onStateChange() = Unit
+            override fun onStateChange() {
+                states.value = states.value + (peerId to when (channel.state()) {
+                    DataChannel.State.OPEN -> InternetPeerState.CONNECTED
+                    DataChannel.State.CONNECTING -> InternetPeerState.CONNECTING
+                    DataChannel.State.CLOSING -> InternetPeerState.DISCONNECTED
+                    DataChannel.State.CLOSED -> InternetPeerState.FAILED
+                })
+            }
             override fun onMessage(buffer: DataChannel.Buffer) {
                 if (!buffer.binary || buffer.data.remaining() !in WebRtcFrameCodec.ACK_BYTES..MAX_DATA_CHANNEL_MESSAGE) return
                 val decoded = WebRtcFrameCodec.decode(buffer.data) ?: return
@@ -396,7 +467,8 @@ class WebRtcP2pConnector(
     }
 
     private suspend fun createDescription(connection: PeerConnection, offer: Boolean): SessionDescription =
-        suspendCancellableCoroutine { continuation ->
+        withTimeout(SDP_CALLBACK_TIMEOUT_MS) {
+            suspendCancellableCoroutine { continuation ->
             val observer = object : SdpObserver {
                 override fun onCreateSuccess(description: SessionDescription) {
                     if (continuation.isActive) continuation.resume(description)
@@ -409,13 +481,15 @@ class WebRtcP2pConnector(
             }
             if (offer) connection.createOffer(observer, MediaConstraints())
             else connection.createAnswer(observer, MediaConstraints())
+            }
         }
 
     private suspend fun setDescription(
         connection: PeerConnection,
         local: Boolean,
         description: SessionDescription,
-    ) = suspendCancellableCoroutine<Unit> { continuation ->
+    ) = withTimeout(SDP_CALLBACK_TIMEOUT_MS) {
+        suspendCancellableCoroutine<Unit> { continuation ->
         val observer = object : SdpObserver {
             override fun onCreateSuccess(description: SessionDescription) = Unit
             override fun onSetSuccess() {
@@ -428,6 +502,7 @@ class WebRtcP2pConnector(
         }
         if (local) connection.setLocalDescription(observer, description)
         else connection.setRemoteDescription(observer, description)
+        }
     }
 
     private fun closePeer(peer: Peer) {
@@ -439,7 +514,9 @@ class WebRtcP2pConnector(
 
     companion object {
         const val MAX_DATA_CHANNEL_MESSAGE = 64 * 1024
+        private const val MAX_PEER_SESSIONS = 12
         private const val MAX_BUFFERED_BYTES = 512L * 1024L
         private const val ACK_TIMEOUT_MS = 8_000L
+        private const val SDP_CALLBACK_TIMEOUT_MS = 12_000L
     }
 }
