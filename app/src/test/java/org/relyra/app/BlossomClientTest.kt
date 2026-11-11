@@ -47,12 +47,18 @@ class BlossomClientTest {
         val data = Random(3).nextBytes(5000)
         val file = tmp().also { it.writeBytes(data) }
         val hex = Hex.encode(sha(data))
-        server.enqueue(MockResponse().setResponseCode(200).setBody("{\"sha256\":\"$hex\",\"size\":5000}"))
+        server.enqueue(MockResponse().setResponseCode(204)) // BUD-06 preflight accepted
+        server.enqueue(MockResponse().setResponseCode(201).setBody(descriptor(hex, data.size)))
 
         val result = client.upload(base(), file, hex, NostrCrypto.randomSecret(), 1_700_000_000)
         assertTrue(result is BlossomUpload.Ok)
         assertEquals(base(), (result as BlossomUpload.Ok).server)
 
+        val preflight = server.takeRequest()
+        assertEquals("HEAD", preflight.method)
+        assertEquals("/upload", preflight.path)
+        assertEquals(data.size.toString(), preflight.getHeader("X-Content-Length"))
+        assertEquals("application/octet-stream", preflight.getHeader("X-Content-Type"))
         val req = server.takeRequest()
         assertEquals("PUT", req.method)
         assertEquals("/upload", req.path)
@@ -88,7 +94,8 @@ class BlossomClientTest {
         server.enqueue(MockResponse().setResponseCode(429))
         assertTrue(client.upload(base(), file, hex, secret, 1) is BlossomUpload.Unavailable)
 
-        server.enqueue(MockResponse().setResponseCode(200).setBody("{\"sha256\":\"${"0".repeat(64)}\"}"))
+        enqueuePreflightUnsupported()
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"sha256":"${"0".repeat(64)}","size":10,"url":"https://cdn.example.test/x","type":"application/octet-stream","uploaded":1}"""))
         assertTrue(client.upload(base(), file, hex, secret, 1) is BlossomUpload.Rejected)
     }
 
