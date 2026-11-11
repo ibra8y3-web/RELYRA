@@ -208,4 +208,14 @@
     <string name="diag_app_tx">App send rate</string>
     <string name="diag_filesystem_free">Free storage on app filesystem</string>
     <string name="diag_resources_note">CPU is the RELYRA process share of total available CPU capacity. Network rates count traffic for this app UID only; they are not total device traffic.</string>
+    <string name="net_nearby_title">Nearby local network</string>
+    <string name="net_nearby_toggle">Enable nearby LAN discovery</string>
+    <string name="net_nearby_desc">When enabled, RELYRA advertises your public contact ID on the current local network and looks for known contacts. Only enable this on a network you trust. Both devices must share the same Wi-Fi or local hotspot. This is not Bluetooth, Wi-Fi Direct, or Internet P2P.</string>
+    <string name="net_nearby_peers">Known contacts found</string>
+    <string name="net_nearby_empty">No known RELYRA contacts have been discovered on this local network.</string>
+    <string name="net_nearby_status_disabled">Nearby discovery is off.</string>
+    <string name="net_nearby_status_starting">Starting local discovery…</string>
+    <string name="net_nearby_status_searching">Searching this local network for known contacts…</string>
+    <string name="net_nearby_status_active">Local network transport is ready.</string>
+    <string name="net_nearby_status_failed">Local network discovery could not start. Check Wi-Fi and Android network restrictions.</string>
 </resources>

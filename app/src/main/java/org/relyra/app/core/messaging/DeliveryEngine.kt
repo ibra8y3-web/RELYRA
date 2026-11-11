@@ -214,10 +214,23 @@ class DeliveryEngine(
 
     /** Entry point for encrypted packets from a transport: authenticate and decrypt, then process. */
     suspend fun onWire(wire: ByteArray) {
-        val opened = protector.open(wire) ?: return
-        val env = EnvelopeCodec.decode(opened.plaintext) ?: return
-        if (env.from != opened.senderId) return      // inner sender must match the authenticated one
+        acceptWire(wire)
+    }
+
+    /**
+     * Authenticates a transport frame and reports whether it was a valid packet for this identity.
+     * Local transports use the result to avoid treating malformed/spoofed frames as accepted sends.
+     * Duplicate but authentic packets return true because they are safely re-acknowledged by [onPacket].
+     */
+    suspend fun acceptWire(wire: ByteArray): Boolean {
+        val opened = protector.open(wire) ?: return false
+        val env = EnvelopeCodec.decode(opened.plaintext) ?: return false
+        if (env.from != opened.senderId) return false
+        val me = ownId() ?: return false
+        if (env.to != me || env.from == me) return false
+        if (peers.status(env.from) != PeerStatus.Known) return false
         onPacket(opened.plaintext)
+        return true
     }
 
     /** Entry point for every decrypted packet a transport receives. Malformed or unwanted packets are dropped silently. */

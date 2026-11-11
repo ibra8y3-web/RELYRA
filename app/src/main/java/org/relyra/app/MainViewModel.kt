@@ -96,6 +96,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val relays get() = rely.container.network.relays
     val relayConnected get() = rely.container.nostr.connections
     val relayStatus get() = rely.container.network.status
+    val nearbyEnabled get() = rely.container.network.nearbyEnabled
+    val nearbyPeers get() = rely.container.nearby.peers
+    val nearbyStatus get() = rely.container.nearby.status
     val fileServers get() = rely.container.blossom.servers
     val fileServerStatus get() = rely.container.blossom.status
     val downloadProgress get() = rely.container.transfers.progress
@@ -129,6 +132,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     myCard.value = e?.let { runCatching { container.identities.cardUri(it) }.getOrNull() }
                     container.nostr.setIdentity(if (e == null) null else runCatching { container.identities.nostrSecret() }.getOrNull())
                     nostrKey.value = e?.let { runCatching { container.identities.nostrPublicKeyHex() }.getOrNull() }
+                    container.nearby.configure(e?.publicId, container.network.nearbyEnabled.value)
+                }
+            }
+            launch {
+                container.network.nearbyEnabled.collect { enabled ->
+                    val publicId = container.database.identityDao().get()?.publicId
+                    container.nearby.configure(publicId, enabled)
                 }
             }
             launch { container.contacts.observeAll().collect { contacts.value = it } }
@@ -379,6 +389,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun removeRelay(url: String) = rely.container.network.remove(url)
     fun setRelayEnabled(url: String, enabled: Boolean) = rely.container.network.setEnabled(url, enabled)
     fun testRelay(url: String) = rely.container.network.test(url)
+    fun setNearbyEnabled(enabled: Boolean) = ctr().network.setNearbyEnabled(enabled)
 
     // ---- conversation housekeeping ---------------------------------------------------------------------------
 

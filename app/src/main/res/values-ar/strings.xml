@@ -208,4 +208,14 @@
     <string name="diag_app_tx">معدل إرسال التطبيق</string>
     <string name="diag_filesystem_free">المساحة الحرة على نظام ملفات التطبيق</string>
     <string name="diag_resources_note">نسبة المعالج تمثل استهلاك عملية RELYRA من إجمالي قدرة المعالجات المتاحة. حركة الشبكة تخص التطبيق نفسه فقط وليست إجمالي حركة الجهاز.</string>
+    <string name="net_nearby_title">الشبكة المحلية القريبة</string>
+    <string name="net_nearby_toggle">تفعيل اكتشاف الأجهزة القريبة</string>
+    <string name="net_nearby_desc">عند التفعيل، يعلن RELYRA عن معرّف الاتصال العام الخاص بك على الشبكة المحلية الحالية ويبحث عن جهات الاتصال المعروفة. فعّلها فقط على شبكة تثق بها. يجب أن يكون الجهازان على نفس Wi-Fi أو نقطة اتصال محلية. هذه الميزة ليست Bluetooth أو Wi-Fi Direct أو اتصال P2P عبر الإنترنت.</string>
+    <string name="net_nearby_peers">جهات الاتصال المعروفة المكتشفة</string>
+    <string name="net_nearby_empty">لم يتم اكتشاف جهات اتصال RELYRA معروفة على هذه الشبكة المحلية.</string>
+    <string name="net_nearby_status_disabled">اكتشاف الأجهزة القريبة متوقف.</string>
+    <string name="net_nearby_status_starting">جارٍ تشغيل الاكتشاف المحلي…</string>
+    <string name="net_nearby_status_searching">جارٍ البحث عن جهات الاتصال المعروفة على الشبكة المحلية…</string>
+    <string name="net_nearby_status_active">مسار الاتصال المحلي جاهز.</string>
+    <string name="net_nearby_status_failed">تعذر بدء اكتشاف الشبكة المحلية. تحقق من Wi-Fi وقيود الشبكة في Android.</string>
 </resources>

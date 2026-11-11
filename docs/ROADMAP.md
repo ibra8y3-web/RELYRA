@@ -12,6 +12,7 @@ This roadmap separates source code that is already present from features that st
 | One-to-one payload encryption and Double Ratchet | Implemented in source |
 | Persistent delivery queue and acknowledgements | Implemented in source |
 | Nostr WSS relay transport | Implemented in source |
+| Optional same-LAN transport via NSD/mDNS and TCP | Added in current implementation batch; real-device verification required |
 | Groups/channels using per-member one-to-one sessions | Implemented in source; not MLS |
 | Blossom encrypted attachment transfer | Implemented in source |
 | Background notifications and optional foreground connection service | Implemented in source; Android restrictions apply |
@@ -36,7 +37,7 @@ Acceptance criteria:
 **Goal:** add a real direct transport without breaking the current relay route.
 
 Work items:
-- Select and evaluate a maintained Android-compatible libp2p implementation.
+- Select and evaluate a maintained Android-compatible libp2p implementation. The existing Nearby LAN connector covers only same-LAN discovery and direct sockets; it does not satisfy Internet P2P or NAT traversal.
 - Define peer discovery and authenticated peer-to-identity binding.
 - Design NAT traversal using ICE/STUN/TURN where supported.
 - Add connection lifecycle, timeouts, cancellation, retry/backoff and bounded resource usage.

@@ -15,7 +15,7 @@ This document describes the implementation currently present in the repository. 
 | Messaging | Queue, envelope validation, delivery state, group fan-out | DeliveryEngine, Group engine and persistent Room records |
 | Cryptography | Identity, peer authentication, payload protection and ratchet state | Tink-backed crypto, X25519 and Double Ratchet |
 | Persistence | Private application state | Room + SQLCipher; key material wrapped by Android Keystore |
-| Transport | Carry already encrypted wire payloads | Transport contract, Connector contract, AdaptiveRouter and NostrConnector |
+| Transport | Carry already encrypted wire payloads | Transport/Connector contracts, AdaptiveRouter, Nearby LAN connector and NostrConnector |
 | File transfer | Encrypt, upload and retrieve file blobs | FileCrypto and Blossom client |
 | Local utilities and resources | Diagnostics, safe file inspection and live app resource samples | Diagnostics, tools, vault and resources packages |
 
@@ -87,7 +87,7 @@ At present, NostrConnector is the registered transport. The abstraction does not
 - `core/crypto`: identity, contact cards, payload crypto and ratchet.
 - `core/database`: Room entities, DAOs, migrations and SQLCipher initialization.
 - `core/messaging`: message contracts, delivery engine, envelope codec and groups.
-- `core/network`: relay URL manager, relay WebSocket client, Nostr protocol and router.
+- `core/network`: relay URL manager, relay WebSocket client, Nostr protocol, optional NSD/mDNS local connector and adaptive router.
 - `core/transfer`: file encryption and Blossom transfer.
 - `core/backup` and `core/vault`: backup/restore and encrypted local files.
 - `ui`: Compose screens and user workflows.
