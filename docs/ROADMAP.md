@@ -43,8 +43,10 @@ Acceptance criteria:
 Implemented in source:
 - Android WebRTC DataChannel transport using ICE connectivity checks and default STUN servers.
 - Optional user-supplied TURN URI and credentials for networks that require relay candidates.
-- Signed, recipient-bound, ten-minute offer/answer envelopes using RELYRA Ed25519 identities.
+- Signed, recipient-bound, ten-minute offer/answer envelopes using RELYRA Ed25519 identities, with a signed random session ID to reject answers from stale connection attempts.
 - Signed offers/answers are exchanged automatically inside E2EE RELYRA control envelopes over an enabled Nostr route; manual copy/paste remains fallback. Existing known-contact checks are required.
+- Incoming offers are queued for explicit user approval; a verified signature alone does not create a WebRTC peer connection.
+- Per-peer sends are serialized; DataChannel success requires a bounded receiver ACK. Peer count, buffered bytes, SDP callback and ICE gathering waits are bounded.
 - Binary encrypted DeliveryEngine payloads pass through the DataChannel; AdaptiveRouter prefers a connected direct path and retains Nostr fallback.
 - DataChannel frame size is bounded and larger attachments remain on the Blossom path.
 
@@ -65,7 +67,7 @@ Acceptance criteria remain:
 - The UI reports the actual path, never a simulated connection status.
 - Tested devices, Android versions, ICE candidate pair types and exact workflow run are recorded.
 
-See INTERNET_P2P_WEBRTC.md for protocol workflow, privacy implications and validation steps.
+See INTERNET_P2P_WEBRTC.md for protocol workflow, consent model, privacy implications and validation steps.
 
 ## Priority 3 — group protocol and community layer
 
