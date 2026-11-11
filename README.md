@@ -1,126 +1,157 @@
-# RELYRA
+<p align="center"><img src="docs/assets/relyra-cover.svg" alt="RELYRA — Private by design. Connected by choice." width="100%"></p>
+<p align="center"><a href="README_AR.md">العربية</a> · <a href="docs/ARCHITECTURE.md">Architecture</a> · <a href="docs/NETWORKING.md">Networking</a> · <a href="docs/ROADMAP.md">Roadmap</a></p>
+<p align="center">
+<a href="https://github.com/ibra8y3-web/RELYRA/actions/workflows/build.yml"><img src="https://github.com/ibra8y3-web/RELYRA/actions/workflows/build.yml/badge.svg?branch=main" alt="Build status"></a>
+<img src="https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white" alt="Android 10+">
+<img src="https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 2.0.21">
+<img src="https://img.shields.io/badge/Release-0.9.0-64748b" alt="Version 0.9.0">
+</p>
 
-**Private, Android-first communication built around local identity, end-to-end encrypted messaging, and user-controlled relays.**
+<h1 align="center">RELYRA</h1>
+<p align="center"><strong>Private by design. Connected by choice.</strong></p>
+<p align="center">An Android communication project built around local identity, end-to-end encrypted messaging, and user-controlled network relays.</p>
 
-[العربية](README_AR.md) · [Architecture](docs/ARCHITECTURE.md) · [Networking](docs/NETWORKING.md) · [Roadmap](docs/ROADMAP.md)
+> **Current implementation:** Version 0.9.0. The live message transport is Nostr over user-configured secure WebSocket relays (WSS). The diagrams below separate working paths from planned capabilities. They are system illustrations, not screenshots of the running app.
 
-![RELYRA architecture](docs/assets/relyra-architecture.svg)
+## At a glance
 
-![Build](https://github.com/ibra8y3-web/RELYRA/actions/workflows/build.yml/badge.svg?branch=main)
+| **What works today** | **How it connects** | **Build & explore** |
+|:--|:--|:--|
+| Local identity and encrypted storage | Nostr over user-managed WSS relays | Kotlin · Jetpack Compose |
+| Direct messages and groups | Encrypted payloads before transport | Android 10+ · JDK 17 |
+| Encrypted attachments and local vault | Blossom for file blobs | Gradle 8.10.2 · CI workflow |
 
-> **Project status:** source currently reports version **0.9.0** (Phase 8b). This describes implemented code paths, not a claim that every feature has passed real-device testing or an independent security audit.
+## What is RELYRA?
 
-## What RELYRA is
+RELYRA is a native Android app written in **Kotlin** with **Jetpack Compose and Material 3**. It keeps identity and private app data on the device, encrypts message contents before transport, and lets the user choose the relay and file servers the app connects to.
 
-RELYRA is a native Android messaging application built with Kotlin, Jetpack Compose and Material 3. It keeps identity and encrypted application data on the device, lets the user choose secure WebSocket relays, and encrypts attachments before sending them to a file server.
+The current source includes local identity, SQLCipher storage, direct conversations, groups and channels, Nostr relay transport, encrypted file transfer, diagnostics, passphrase-protected backup/restore, and an encrypted local vault.
 
-The current network path is **Nostr over user-configured WSS relays**. RELYRA has extension points for more transports, but direct peer-to-peer networking is not implemented yet.
+## Features implemented in the current source
 
-## Implemented capabilities
-
-| Area | Present in the current source |
+| Area | Included |
 |---|---|
-| Android app | Kotlin, Jetpack Compose, Material 3; Android 10+ (minSdk 29) |
-| Languages & appearance | Arabic RTL and English; light, dark and AMOLED themes |
-| Identity | On-device Ed25519 identity, public ID, fingerprint, signed contact card and recovery key |
-| Local security | SQLCipher-encrypted Room database; database secret protected by Android Keystore; biometric/device-credential app lock |
-| Direct messaging | Persistent outbox, delivery state machine, retries, deduplication and authenticated encrypted payloads |
-| Message encryption | X25519/HKDF/AES-GCM payload protection and one-to-one Double Ratchet sessions |
-| Network | User-added WSS relays, Nostr event signing/verification, relay probing, inbox subscription, reconnect and publish acknowledgement |
-| Groups & channels | Membership roles and delivery to members using separate one-to-one ratchet sessions |
-| Attachments | Client-side encrypted files transferred through configured Blossom-compatible servers |
-| Background work | WorkManager retries and optional visible foreground connection service |
-| Local tools | Hashing, hex view, strings, MIME detection, EXIF inspection, archive listing/extraction and APK metadata inspection |
-| Diagnostics | Relay/server checks, queue counts, database integrity, storage/device status and a redacted diagnostic report |
-| Backup & vault | Passphrase-protected database backup/restore and a separate encrypted local file vault |
+| **Identity** | On-device Ed25519 identity, public ID and fingerprint, signed contact cards, QR/link exchange and recovery key |
+| **Local security** | Room + SQLCipher; database key protected with Android Keystore; biometric/device-credential lock |
+| **Direct messages** | Persistent outbox, acknowledgements, delivery states, retries, backoff and duplicate suppression |
+| **Message encryption** | X25519/HKDF/AES-GCM and one-to-one Double Ratchet sessions |
+| **Network** | User-added WSS relays, Nostr event signing/verification, relay probing, inbox subscription and reconnect |
+| **Groups / channels** | Membership roles and per-member message delivery using individual sessions |
+| **File transfer** | Client-side encrypted files over user-configured Blossom-compatible servers |
+| **Background work** | WorkManager retries and optional visible foreground connection service (subject to Android restrictions) |
+| **On-device tools** | Hashes, hex/strings inspection, MIME detection, EXIF, archive inspection and APK metadata |
+| **Diagnostics** | Relay/server tests, queue status, database integrity, storage/device status and redacted report |
+| **Backup / vault** | Passphrase-protected database backup/restore and encrypted local file vault |
+| **UI** | Arabic RTL and English; light, dark and AMOLED themes |
 
-### Important implementation boundaries
+## Visual system maps
 
-- Group messages are encrypted separately for each recipient using the existing one-to-one sessions. **MLS is not implemented.**
-- Nostr relays can observe connection metadata such as IP address, timing and routing information. Payload encryption does not hide all metadata.
-- Attachments are encrypted on the device before upload. The configured file server stores ciphertext, not the original file.
-- Remote delivery while the app is closed is subject to Android background limits, battery policy and user force-stop.
-- Backups do not include downloaded attachments, vault files or relay/file-server configuration. Restoring an old ratchet-session snapshot can affect conversations that continued after the backup was created.
-- The app has not had an independent cryptographic/security audit. Review the security notes before relying on it for high-risk communications.
+### 1. Network map — what is connected today
 
-## Message and attachment flow
+Nostr is the registered messaging transport in this build. Dashed/grey nodes are future work, not active connections.
 
-1. The sender creates a new message ID and stores the outgoing item in the encrypted local outbox.
-2. The payload protector encrypts the message for the recipient.
-3. The adaptive router selects a ready registered transport. In this build, the registered transport is Nostr.
-4. The Nostr connector signs an event and publishes it to enabled WSS relays.
-5. The recipient verifies the event, authenticates and decrypts the payload, stores the message, then sends an acknowledgement.
-6. Retries reuse the same message ID; a new user send always receives a fresh ID.
+<p align="center"><img src="docs/assets/relyra-network-map.svg" alt="RELYRA current network map" width="100%"></p>
 
-For files, the app encrypts the file locally, uploads the encrypted blob to a configured Blossom server, then sends the encrypted file descriptor through the messaging path.
+### 2. Application architecture
 
-See [the architecture guide](docs/ARCHITECTURE.md) and [networking guide](docs/NETWORKING.md) for diagrams and boundaries.
+<p align="center"><img src="docs/assets/relyra-architecture.svg" alt="RELYRA architecture map" width="100%"></p>
 
-## Build
+### 3. Message and attachment flow
 
-### Requirements
+<p align="center"><img src="docs/assets/relyra-message-flow.svg" alt="RELYRA message and encrypted file flow" width="100%"></p>
 
-- Android SDK platform 35 and build-tools 35.0.0
-- JDK 17
-- Gradle 8.10.2
-- Android Studio compatible with the Android Gradle Plugin 8.7.3
+Read the [Architecture guide](docs/ARCHITECTURE.md) and [Networking guide](docs/NETWORKING.md) for implementation detail.
 
-The repository currently does **not** include the Gradle wrapper. On a machine with Gradle 8.10.2 installed, run:
+## How a message travels
 
-    gradle --no-daemon assembleDebug
-    gradle --no-daemon testDebugUnitTest
+1. Create a fresh message ID and persist the outgoing message in the encrypted outbox.
+2. Encrypt the payload for the recipient.
+3. Select a ready registered transport. Nostr is the active connector in this source.
+4. Sign a Nostr event and publish it to the user's enabled WSS relays.
+5. The recipient verifies, decrypts and stores the message before acknowledging it.
+6. Automatic retries reuse the same message ID; a new user send gets a new ID.
 
-The debug APK is produced under:
+**Attachments use a separate path:** encrypt the file locally, upload only ciphertext to a configured Blossom server, then send the file descriptor inside the end-to-end encrypted message. Downloads are manual and verified before use.
 
-    app/build/outputs/apk/debug/
+## Security and privacy
 
-GitHub Actions runs the same debug build and JVM unit-test tasks for pushes, pull requests and manual dispatch. Download the APK and test reports from the workflow run's **Artifacts** section. Check the latest workflow run before treating a build as verified.
-
-## Repository layout
-
-    app/src/main/java/org/relyra/app/
-      core/
-        backup/       Passphrase-protected backup and staged restore
-        crypto/       Identity, payload, ratchet and contact-card cryptography
-        database/     SQLCipher Room database, entities and DAOs
-        diagnostics/  Device and application diagnostics
-        identity/     Identity and contact repositories
-        messaging/    Delivery engine, envelopes and group messaging
-        network/      Nostr, relay client, pool and adaptive router
-        notify/       Message notification handling
-        storage/      Encrypted local attachment storage
-        tools/        On-device file inspection tools
-        transfer/     Blossom transfer and file encryption
-        vault/        Encrypted local vault
-      ui/             Compose screens, navigation and theme
-    app/src/test/     JVM tests for core behaviours
-    docs/             Architecture, networking, roadmap and diagrams
+- Message content is encrypted before it reaches a relay.
+- Local app data is stored in an SQLCipher-encrypted database; key material is protected with Android Keystore.
+- Only known contacts with usable key material can exchange accepted messages.
+- A relay transports encrypted events; it is not trusted with plaintext.
+- WSS does **not** hide your IP address from the relay. Relays may observe connection timing, routing tags and ciphertext size.
+- File servers can observe transfer metadata (such as IP, time and size) but receive encrypted blobs.
+- RELYRA has not had an independent cryptographic security audit. This README is not a security certification.
 
 ## Not implemented yet
 
-These are planned capabilities, not hidden or partially working UI controls:
+The following are **not** present in the current build:
 
-- Direct peer-to-peer transport, libp2p and ICE/STUN/TURN traversal
-- Tor routing and Bluetooth/Wi-Fi Direct mesh
-- MLS group encryption, group file attachments and group read receipts
-- Communities, public group discovery and a community relay/node network
-- Voice/video calls and multi-device synchronization
-- Matrix/XMPP interoperability
-- Plugin SDK/runtime, local API, browser, PDF reader and Server Studio
-- Independent security audit and broader real-device validation
+- Direct device-to-device P2P, libp2p and ICE/STUN/TURN traversal.
+- Tor routing, Bluetooth mesh and Wi-Fi Direct.
+- MLS group encryption. Current group messages are encrypted separately for each member using one-to-one sessions.
+- Group file attachments and group read receipts.
+- Communities, public group discovery and a RELYRA-operated relay/node network.
+- Voice/video calls and multi-device synchronization.
+- Matrix/XMPP interoperability, plugin runtime, Local API, browser, PDF reader and Server Studio.
 
-The delivery sequence and acceptance criteria are tracked in [ROADMAP.md](docs/ROADMAP.md).
+Other limits: Android may defer background work due to battery policy or force-stop; backups exclude downloaded attachments, vault files and relay/file-server settings; restoring an older ratchet snapshot can affect conversations that continued after backup creation. See [Networking](docs/NETWORKING.md) and [Roadmap](docs/ROADMAP.md).
+
+## Build from source
+
+**Requirements:** Android SDK Platform 35, Build Tools 35.0.0, JDK 17 and Gradle 8.10.2. The repository does not currently include a Gradle Wrapper.
+
+Run from the repository root:
+
+```bash
+gradle --no-daemon assembleDebug
+gradle --no-daemon testDebugUnitTest
+```
+
+Debug APK output:
+
+```text
+app/build/outputs/apk/debug/
+```
+
+GitHub Actions builds the debug APK and runs JVM tests on pushes, pull requests and manual dispatch. Download APK and test reports from the run's **Artifacts** section. Check the latest workflow result before treating a build as verified.
+
+## Repository map
+
+```text
+app/src/main/java/org/relyra/app/
+├── core/
+│   ├── backup/       Passphrase-protected backup and staged restore
+│   ├── crypto/       Identity, payload crypto, contact cards and ratchet
+│   ├── database/     Room entities, DAOs, migrations and SQLCipher
+│   ├── diagnostics/  Device and application diagnostics
+│   ├── identity/     Identity and contact repositories
+│   ├── messaging/    Delivery engine, envelopes and groups
+│   ├── network/      Nostr protocol, relay clients and adaptive router
+│   ├── notify/       Message notifications
+│   ├── storage/      Private attachment storage
+│   ├── tools/        On-device file inspection tools
+│   ├── transfer/     File encryption and Blossom transfer
+│   └── vault/        Encrypted local file vault
+└── ui/               Compose screens, navigation and theme
+
+app/src/test/          JVM tests
+docs/                  Architecture, networking, roadmap and visual maps
+.github/workflows/     Build and test automation
+```
+
+## Development principles
+
+- **Real functionality only:** no fake connection indicators, demo messages or placeholder buttons.
+- **Security first:** encrypt before transport; validate identities and inputs; document metadata exposure.
+- **Tests with each feature:** success, failure, retry, malformed input and recovery.
+- **Honest status:** a planned class or UI screen is not a completed capability.
+- **Arabic and English:** new user-facing strings should support both languages and correct RTL layout.
 
 ## Contributing
 
-Please keep new capabilities real and testable:
+Issues and pull requests are welcome. For substantial changes, describe the threat model, protocol choice, Android lifecycle impact and test plan. Do not publish exploitable security details in a public issue; coordinate disclosure privately.
 
-1. Implement the feature behind a clear core contract.
-2. Add unit tests for success, failure, retry and malformed input paths.
-3. Connect it to the UI only after the real implementation exists.
-4. Document platform limits, metadata exposure and recovery behaviour.
-5. Do not add demo data, fake connection states or placeholder actions.
+---
 
-## Security reports
-
-Do not publish exploitable details in a public issue. Use GitHub's private vulnerability reporting for this repository when available, or contact the maintainers privately before disclosure.
+<p align="center"><strong>RELYRA · Private by design. Connected by choice.</strong></p>
