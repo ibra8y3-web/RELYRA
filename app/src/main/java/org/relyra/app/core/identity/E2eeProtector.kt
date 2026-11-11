@@ -11,7 +11,10 @@ import org.relyra.app.core.crypto.X3dh
 import org.relyra.app.core.crypto.X3dhRatchetBootstrap
 import org.relyra.app.core.database.AppDatabase
 import org.relyra.app.core.database.RatchetEntity
+import org.relyra.app.core.database.EncryptedPacketEntity
 import org.relyra.app.core.messaging.Opened
+import org.relyra.app.core.messaging.Envelope
+import org.relyra.app.core.messaging.EnvelopeCodec
 import org.relyra.app.core.messaging.PayloadProtector
 import org.relyra.app.core.storage.SecureStore
 
@@ -25,7 +28,30 @@ class E2eeProtector(private val db: AppDatabase, private val secure: SecureStore
     private suspend fun save(peerId: String, state: RatchetState) =
         db.ratchetDao().put(RatchetEntity(peerId, DoubleRatchet.serialize(state)))
 
+    private suspend fun persistPacket(
+        peerId: String,
+        state: RatchetState?,
+        messageId: String?,
+        wire: ByteArray,
+    ) = db.withTransaction {
+        state?.let { save(peerId, it) }
+        messageId?.let { db.encryptedPacketDao().put(EncryptedPacketEntity(it, peerId, wire)) }
+    }
+
+    override suspend fun forget(messageId: String) {
+        db.encryptedPacketDao().delete(messageId)
+    }
+
     override suspend fun protect(peerId: String, plaintext: ByteArray): ByteArray? = lock.withLock {
+        val cacheId = when (val envelope = EnvelopeCodec.decode(plaintext)) {
+            is Envelope.Chat -> envelope.messageId
+            is Envelope.Attachment -> envelope.messageId
+            else -> null
+        }
+        if (cacheId != null) {
+            val cached = db.encryptedPacketDao().get(cacheId)
+            if (cached?.peerId == peerId) return@withLock cached.packet
+        }
         val me = db.identityDao().get() ?: return@withLock null
         val peer = db.contactDao().get(peerId) ?: return@withLock null
         if (peer.blocked) return@withLock null
@@ -48,7 +74,7 @@ class E2eeProtector(private val db: AppDatabase, private val secure: SecureStore
             } catch (_: Exception) {
                 return@withLock null
             }
-            save(peerId, initial.state)
+            persistPacket(peerId, initial.state, cacheId, initial.wire)
             return@withLock initial.wire
         }
 
@@ -63,11 +89,14 @@ class E2eeProtector(private val db: AppDatabase, private val secure: SecureStore
         if (current != null) {
             val encrypted = DoubleRatchet.encrypt(current, plaintext, DoubleRatchet.aad(me.publicId, peerId))
             if (encrypted != null) {
-                save(peerId, encrypted.newState)
-                return@withLock RatchetWire.pack(me.publicId, encrypted.header, encrypted.body)
+                val packet = RatchetWire.pack(me.publicId, encrypted.header, encrypted.body)
+                persistPacket(peerId, encrypted.newState, cacheId, packet)
+                return@withLock packet
             }
         }
-        PayloadCrypto.seal(me.publicId, ownDhPrivate, peerId, peerKey, plaintext)
+        val sealed = PayloadCrypto.seal(me.publicId, ownDhPrivate, peerId, peerKey, plaintext)
+        persistPacket(peerId, null, cacheId, sealed)
+        sealed
     }
 
     override suspend fun open(wire: ByteArray): Opened? {
