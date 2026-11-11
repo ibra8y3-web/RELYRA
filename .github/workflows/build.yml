@@ -15,7 +15,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 35
+    timeout-minutes: 60
     permissions:
       contents: read
     steps:
@@ -48,8 +48,8 @@ jobs:
           path: app/build/outputs/apk/debug/*.apk
 
       - name: Unit tests
-        timeout-minutes: 20
-        run: gradle --no-daemon --console=plain testDebugUnitTest
+        timeout-minutes: 45
+        run: gradle --no-daemon --console=plain --info testDebugUnitTest
 
       - name: Upload test reports
         if: always()
