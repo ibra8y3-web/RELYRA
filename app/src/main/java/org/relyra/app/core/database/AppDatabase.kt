@@ -28,7 +28,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun ratchetDao(): RatchetDao
     abstract fun groupDao(): GroupDao
     abstract fun chatPrefDao(): ChatPrefDao
-    abstract fun vaultDao(): VaultDao\n    abstract fun preKeyDao(): PreKeyDao
+    abstract fun vaultDao(): VaultDao
+    abstract fun preKeyDao(): PreKeyDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
