@@ -96,7 +96,8 @@ class E2eeProtector(private val db: AppDatabase, private val secure: SecureStore
         val accepted = db.withTransaction {
             val oneTimePrivate = if (oneTimeId != null) {
                 val row = db.preKeyDao().get("one-time:$oneTimeId") ?: return@withTransaction null
-                if (row.kind != "ONE_TIME" || row.consumed) return@withTransaction null
+                if (row.kind != "ONE_TIME" || row.consumed ||
+                    row.expiresAt < System.currentTimeMillis() / 1000 - SIGNED_PREKEY_GRACE_SECONDS) return@withTransaction null
                 secure.loadPreKeyPrivate(row.keyId) ?: return@withTransaction null
             } else null
             val result = X3dhRatchetBootstrap.accept(
