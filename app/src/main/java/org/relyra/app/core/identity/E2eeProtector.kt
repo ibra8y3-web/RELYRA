@@ -48,13 +48,13 @@ class E2eeProtector(private val db: AppDatabase, private val secure: SecureStore
             is Envelope.Attachment -> envelope.messageId
             else -> null
         }
+        val me = db.identityDao().get() ?: return@withLock null
+        val peer = db.contactDao().get(peerId) ?: return@withLock null
+        if (peer.blocked) return@withLock null
         if (cacheId != null) {
             val cached = db.encryptedPacketDao().get(cacheId)
             if (cached?.peerId == peerId) return@withLock cached.packet
         }
-        val me = db.identityDao().get() ?: return@withLock null
-        val peer = db.contactDao().get(peerId) ?: return@withLock null
-        if (peer.blocked) return@withLock null
         val seed = secure.loadSeed() ?: return@withLock null
         val ownDhPrivate = PayloadCrypto.deriveSecret(seed)
         val state = load(peerId)
