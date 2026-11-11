@@ -33,7 +33,8 @@ class E2eeProtector(private val db: AppDatabase, private val secure: SecureStore
         val ownDhPrivate = PayloadCrypto.deriveSecret(seed)
         val state = load(peerId)
 
-        if (state == null && peer.signedPreKeyId != null && peer.signedPreKey != null &&
+        // The lexicographically first identity is the sole initiator, preventing crossed X3DH sessions.
+        if (state == null && me.publicId < peerId && peer.signedPreKeyId != null && peer.signedPreKey != null &&
             peer.signedPreKeyExpiresAt != null && peer.signedPreKeySignature != null) {
             val bundle = X3dh.PreKeyBundle(
                 peer.publicId, peer.publicKey, peer.encKey ?: return@withLock null,
