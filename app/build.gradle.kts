@@ -67,6 +67,7 @@ dependencies {
 
     implementation(libs.tink)
     implementation(libs.okhttp)
+    implementation(libs.webrtc)
     implementation(libs.secp256k1)
     implementation(libs.secp256k1.android)
     implementation(libs.zxing.core)
