@@ -2,6 +2,9 @@ package org.relyra.app.core.network
 
 import android.content.Context
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -154,6 +157,7 @@ class WebRtcP2pConnector(
 
     private val appContext = context.applicationContext
     private val peers = ConcurrentHashMap<String, Peer>()
+    private val pendingAcks = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
     private val states = MutableStateFlow<Map<String, InternetPeerState>>(emptyMap())
     val peerStates: StateFlow<Map<String, InternetPeerState>> = states
     private val initialized = AtomicBoolean(false)
@@ -166,6 +170,7 @@ class WebRtcP2pConnector(
         val connection: PeerConnection,
         @Volatile var channel: DataChannel? = null,
         val gathering: CompletableDeferred<Unit> = CompletableDeferred(),
+        val receiveMutex: Mutex = Mutex(),
     )
 
     fun setIceServers(servers: List<IceServerConfig>): Boolean {
@@ -296,25 +301,51 @@ class WebRtcP2pConnector(
     override fun isReady(): Boolean = peers.values.any { it.channel?.state() == DataChannel.State.OPEN }
 
     override suspend fun send(toPeer: String, payload: ByteArray): SendOutcome {
-        if (payload.isEmpty() || payload.size > MAX_DATA_CHANNEL_MESSAGE) {
-            return SendOutcome.Rejected("WebRTC frame exceeds the supported message size")
-        }
         val channel = peers[toPeer]?.channel ?: return SendOutcome.Unavailable
         if (channel.state() != DataChannel.State.OPEN) return SendOutcome.Unavailable
-        val accepted = runCatching {
-            channel.send(DataChannel.Buffer(ByteBuffer.wrap(payload), true))
-        }.getOrDefault(false)
-        return if (accepted) SendOutcome.Accepted else SendOutcome.Unavailable
+        val frame = WebRtcFrameCodec.encodeMessage(payload) ?: return SendOutcome.Unavailable
+        if (channel.bufferedAmount() > MAX_BUFFERED_BYTES - frame.remaining()) return SendOutcome.Unavailable
+
+        val digest = WebRtcFrameCodec.digestKey(
+            WebRtcFrameCodec.decode(frame.duplicate())?.let {
+                (it as? WebRtcFrameCodec.Frame.Message)?.digest
+            } ?: return SendOutcome.Unavailable
+        )
+        val ackKey = "$toPeer:$digest"
+        val candidate = CompletableDeferred<Boolean>()
+        val waiter = pendingAcks.putIfAbsent(ackKey, candidate) ?: candidate
+        val queued = runCatching { channel.send(DataChannel.Buffer(frame, true)) }.getOrDefault(false)
+        if (!queued) {
+            pendingAcks.remove(ackKey, waiter)
+            return SendOutcome.Unavailable
+        }
+
+        return try {
+            if (withTimeoutOrNull(ACK_TIMEOUT_MS) { waiter.await() } == true) {
+                SendOutcome.Accepted
+            } else {
+                SendOutcome.Unavailable
+            }
+        } finally {
+            pendingAcks.remove(ackKey, waiter)
+        }
     }
 
     fun close(peerId: String) {
         peers.remove(peerId)?.let(::closePeer)
+        pendingAcks.entries.filter { it.key.startsWith("$peerId:") }.forEach { entry ->
+            entry.value.complete(false)
+            pendingAcks.remove(entry.key, entry.value)
+        }
         states.value = states.value - peerId
     }
 
     fun closeAll() {
+        peers.keys.toList().forEach(::close)
         peers.values.toList().forEach(::closePeer)
         peers.clear()
+        pendingAcks.values.forEach { it.complete(false) }
+        pendingAcks.clear()
         states.value = emptyMap()
     }
 
@@ -324,16 +355,27 @@ class WebRtcP2pConnector(
             override fun onBufferedAmountChange(previousAmount: Long) = Unit
             override fun onStateChange() = Unit
             override fun onMessage(buffer: DataChannel.Buffer) {
-                if (!buffer.binary || buffer.data.remaining() !in 1..MAX_DATA_CHANNEL_MESSAGE) return
-                val bytes = ByteArray(buffer.data.remaining())
-                buffer.data.get(bytes)
-                scope.launch(Dispatchers.IO) {
-                    try {
-                        onWire(bytes)
-                    } catch (cancelled: CancellationException) {
-                        throw cancelled
-                    } catch (_: Exception) {
-                        false
+                if (!buffer.binary || buffer.data.remaining() !in WebRtcFrameCodec.ACK_BYTES..MAX_DATA_CHANNEL_MESSAGE) return
+                val decoded = WebRtcFrameCodec.decode(buffer.data) ?: return
+                when (decoded) {
+                    is WebRtcFrameCodec.Frame.Ack -> {
+                        val key = "$peerId:${WebRtcFrameCodec.digestKey(decoded.digest)}"
+                        pendingAcks[key]?.complete(decoded.accepted)
+                    }
+                    is WebRtcFrameCodec.Frame.Message -> {
+                        scope.launch(Dispatchers.IO) {
+                            val accepted = try {
+                                peer.receiveMutex.withLock { onWire(decoded.payload) }
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                false
+                            }
+                            val ack = WebRtcFrameCodec.encodeAck(decoded.digest, accepted) ?: return@launch
+                            if (channel.state() == DataChannel.State.OPEN) {
+                                runCatching { channel.send(DataChannel.Buffer(ack, true)) }
+                            }
+                        }
                     }
                 }
             }
@@ -401,5 +443,7 @@ class WebRtcP2pConnector(
 
     companion object {
         const val MAX_DATA_CHANNEL_MESSAGE = 64 * 1024
+        private const val MAX_BUFFERED_BYTES = 512L * 1024L
+        private const val ACK_TIMEOUT_MS = 8_000L
     }
 }
