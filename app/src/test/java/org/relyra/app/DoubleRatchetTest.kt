@@ -165,7 +165,7 @@ class DoubleRatchetTest {
         val good = DoubleRatchet.serialize(session().alice)
         assertNull(DoubleRatchet.deserialize(good.copyOf(good.size - 5)))
         assertNull(DoubleRatchet.deserialize(good + byteArrayOf(0)))
-        val negativeCounter = good.copyOf().also { ByteBuffer.wrap(it).putInt(100, -1) }
+        val negativeCounter = good.copyOf().also { ByteBuffer.wrap(it).putInt(164, -1) }
         assertNull(DoubleRatchet.deserialize(negativeCounter))
     }
 
