@@ -12,6 +12,8 @@ Thanks for considering a contribution.
 
 ## Validation
 
+Requirements: JDK 17, Android SDK Platform 35 and Gradle 9.6.0 (the current Android Gradle Plugin line requires this Gradle version).
+
 Run from the repository root:
 
 ```bash

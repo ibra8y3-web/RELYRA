@@ -3,8 +3,9 @@
 <p align="center">
 <a href="https://github.com/ibra8y3-web/RELYRA/actions/workflows/build.yml"><img src="https://github.com/ibra8y3-web/RELYRA/actions/workflows/build.yml/badge.svg?branch=main" alt="Build status"></a>
 <img src="https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white" alt="Android 10+">
-<img src="https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 2.0.21">
-<img src="https://img.shields.io/badge/Release-0.9.0-64748b" alt="Version 0.9.0">\n<img src="https://img.shields.io/badge/License-Apache--2.0-blue" alt="Apache License 2.0">
+<img src="https://img.shields.io/badge/Kotlin-2.4.21-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 2.4.21">
+<img src="https://img.shields.io/badge/Release-0.9.0-64748b" alt="Version 0.9.0">
+<img src="https://img.shields.io/badge/License-Apache--2.0-blue" alt="Apache License 2.0">
 </p>
 
 <h1 align="center">RELYRA</h1>
@@ -19,7 +20,7 @@
 |:--|:--|:--|
 | Local identity and encrypted storage | Nostr over user-managed WSS relays | Kotlin · Jetpack Compose |
 | Direct messages and groups | Encrypted payloads before transport | Android 10+ · JDK 17 |
-| Encrypted attachments and local vault | Blossom for file blobs | Gradle 8.10.2 · CI workflow |
+| Encrypted attachments and local vault | Blossom for file blobs | Gradle 9.6.0 · CI workflow |
 
 ## What is RELYRA?
 
@@ -103,7 +104,7 @@ Other limits: Android may defer background work due to battery policy or force-s
 
 ## Build from source
 
-**Requirements:** Android SDK Platform 35, Build Tools 35.0.0, JDK 17 and Gradle 8.10.2. The repository does not currently include a Gradle Wrapper.
+**Requirements:** Android SDK Platform 35, Build Tools 35.0.0, JDK 17 and Gradle 9.6.0. The repository does not currently include a Gradle Wrapper.
 
 Run from the repository root:
 
