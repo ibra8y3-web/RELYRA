@@ -242,6 +242,27 @@ class GroupEngineTest {
         assertEquals(epoch, bob.store.group(gid)!!.epoch)
     }
 
+
+    @Test fun concurrentAdminEditsAtSameEpochConvergeOnEveryReplica() = runBlocking {
+        val gid = groupWith(GroupKind.GROUP, bob, carol, dave)
+        assertEquals(GroupResult.OK, alice.engine.setAdmin(gid, "bob", true))
+        assertEquals(GroupResult.OK, alice.engine.setAdmin(gid, "carol", true))
+        pump()
+
+        // Both admins edit the same epoch while disconnected, creating genuinely concurrent snapshots.
+        net.down += setOf("alice", "bob", "carol", "dave")
+        assertEquals(GroupResult.OK, bob.engine.rename(gid, "Bob's edit"))
+        assertEquals(GroupResult.OK, carol.engine.rename(gid, "Carol's edit"))
+        net.down.clear()
+        pump()
+
+        val names = listOf(alice, bob, carol, dave).map { it.store.group(gid)!!.name }.toSet()
+        assertEquals(1, names.size)
+        assertTrue(names.single() == "Bob's edit" || names.single() == "Carol's edit")
+        val epochs = listOf(alice, bob, carol, dave).map { it.store.group(gid)!!.epoch }.toSet()
+        assertEquals(setOf(4L), epochs)
+    }
+
     @Test fun codecRoundTripAndMalformedInput() {
         val gid = UUID.randomUUID().toString()
         val id = UUID.randomUUID().toString()
