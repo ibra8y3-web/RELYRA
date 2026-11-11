@@ -33,6 +33,8 @@ data class StoredMessage(
     val attempts: Int,
     val nextAttemptAt: Long,
     val readLocally: Boolean,
+    /** Exact encrypted transport packet reused for every retry; prevents ratchet advancement on retransmission. */
+    val wirePayload: ByteArray? = null,
 )
 
 enum class AckKind { DELIVERED, READ }
