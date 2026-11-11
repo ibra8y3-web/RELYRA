@@ -15,7 +15,7 @@ jobs:
       - name: Validate docs and Arabic/English resources
         run: python3 scripts/verify_project.py
 
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: 17
