@@ -6,6 +6,7 @@ import org.relyra.app.core.crypto.ContactCardCodec
 import org.relyra.app.core.crypto.IdentityCrypto
 import org.relyra.app.core.crypto.KeyMaterial
 import org.relyra.app.core.crypto.PayloadCrypto
+import org.relyra.app.core.crypto.PreKeyRepository
 import org.relyra.app.core.network.NostrCrypto
 import org.relyra.app.core.database.AppDatabase
 import org.relyra.app.core.database.ContactEntity
@@ -28,6 +29,7 @@ class IdentityRepository(
     private val log: SecurityLog,
     private val wipeFiles: () -> Unit = {},
 ) {
+    private val prekeys = PreKeyRepository(db, secure)
     fun observe(): Flow<IdentityEntity?> = db.identityDao().observe()
 
     suspend fun create(name: String) {
@@ -58,12 +60,15 @@ class IdentityRepository(
 
     suspend fun rename(name: String) = db.identityDao().rename(ContactCardCodec.sanitizeName(name))
 
-    fun cardUri(identity: IdentityEntity): String? {
+    suspend fun cardUri(identity: IdentityEntity): String? {
         val seed = secure.loadSeed() ?: return null
-        return ContactCardCodec.encode(
-            identity.displayName, seed, identity.publicKey,
-            PayloadCrypto.publicKey(PayloadCrypto.deriveSecret(seed)),
-            NostrCrypto.publicKeyX(NostrCrypto.deriveSecret(seed)),
+        val encKey = PayloadCrypto.publicKey(PayloadCrypto.deriveSecret(seed))
+        val bundle = prekeys.currentBundle(
+            identity.publicId, seed, identity.publicKey, encKey, System.currentTimeMillis() / 1000,
+        )
+        return ContactCardCodec.encodeV3(
+            identity.displayName, seed, identity.publicKey, encKey,
+            NostrCrypto.publicKeyX(NostrCrypto.deriveSecret(seed)), bundle,
         )
     }
 
@@ -128,11 +133,12 @@ class ContactRepository(
         val signed: Boolean
         var enc: ByteArray? = null
         var nostr: ByteArray? = null
+        var preKeyBundle: org.relyra.app.core.crypto.X3dh.PreKeyBundle? = null
         if (text.startsWith("relyra://")) {
             when (val d = ContactCardCodec.decode(text)) {
                 is CardDecode.Ok -> {
                     key = d.card.publicKey; name = d.card.name; signed = true
-                    enc = d.card.encKey; nostr = d.card.nostrKey
+                    enc = d.card.encKey; nostr = d.card.nostrKey; preKeyBundle = d.card.preKeyBundle
                 }
                 CardDecode.Malformed -> return AddResult.Malformed
                 CardDecode.BadSignature -> return AddResult.BadSignature
@@ -148,8 +154,13 @@ class ContactRepository(
         val existing = db.contactDao().get(id)
         if (existing != null) {
             // A newer signed card can add the encryption keys an older contact is missing.
-            if (signed && enc != null && nostr != null && (existing.encKey == null || existing.nostrKey == null)) {
+            if (signed && enc != null && nostr != null &&
+                (existing.encKey == null || existing.nostrKey == null || preKeyBundle != null)) {
                 db.contactDao().setKeys(id, enc, nostr)
+                preKeyBundle?.let {
+                    db.contactDao().setPreKeys(id, it.signedPreKeyId, it.signedPreKey, it.signedPreKeyExpiresAt,
+                        it.signedPreKeySignature, it.oneTimePreKeyId, it.oneTimePreKey)
+                }
                 log.log(EventType.CONTACT_ADDED, name)
                 return AddResult.Updated(existing.displayName)
             }
@@ -157,7 +168,13 @@ class ContactRepository(
         }
         db.contactDao().insert(
             ContactEntity(id, name, key, verified = false, blocked = false, cardSigned = signed,
-                addedAt = System.currentTimeMillis(), encKey = enc, nostrKey = nostr)
+                addedAt = System.currentTimeMillis(), encKey = enc, nostrKey = nostr,
+                signedPreKeyId = preKeyBundle?.signedPreKeyId,
+                signedPreKey = preKeyBundle?.signedPreKey,
+                signedPreKeyExpiresAt = preKeyBundle?.signedPreKeyExpiresAt,
+                signedPreKeySignature = preKeyBundle?.signedPreKeySignature,
+                oneTimePreKeyId = preKeyBundle?.oneTimePreKeyId,
+                oneTimePreKey = preKeyBundle?.oneTimePreKey)
         )
         log.log(EventType.CONTACT_ADDED, name)
         return AddResult.Added(name)
