@@ -45,6 +45,12 @@ class SecureStore(context: Context) {
     fun loadSeed(): ByteArray? = read(SEED)
     fun clearSeed() { prefs.edit().remove(SEED).commit() }
 
+    fun clearPreKeys() {
+        val edit = prefs.edit()
+        prefs.all.keys.filter { it.startsWith("prekey_") }.forEach(edit::remove)
+        check(edit.commit()) { "secure prekey cleanup failed" }
+    }
+
     /** Used only when a backup is applied: replaces both secrets, re-wrapped by this device's Keystore key. */
     fun restoreKeys(seed: ByteArray?, dbKey: ByteArray) {
         write(DB_KEY, dbKey)
