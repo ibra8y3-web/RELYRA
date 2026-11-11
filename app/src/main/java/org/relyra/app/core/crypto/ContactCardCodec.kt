@@ -110,6 +110,7 @@ object ContactCardCodec {
                 IdentityCrypto.publicId(key), key, x, signedId, signed, expiry, signedSig, oneTimeId, oneTime, oneTimes,
             )
             if (!IdentityCrypto.verify(key, sig, messageV3(name, key, x, m, bundle))) CardDecode.BadSignature
+            else if (!X3dh.verifyBundle(bundle, System.currentTimeMillis() / 1000)) CardDecode.BadSignature
             else CardDecode.Ok(ContactCard(name, key, x, m, bundle))
         } catch (_: IllegalArgumentException) {
             CardDecode.Malformed
