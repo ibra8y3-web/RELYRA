@@ -279,20 +279,25 @@ class WebRtcP2pConnector(
         val targetId = peerId.trim().lowercase()
         if (IdentityCrypto.parsePublicId(targetId) == null || !knownPeer(targetId)) return null
         val sessionId = UUID.randomUUID().toString()
-        val result = safely {
-            withContext(Dispatchers.IO) {
-                val peer = createPeer(targetId, sessionId) ?: return@withContext null
-                val init = DataChannel.Init().apply { ordered = true }
-                attachChannel(targetId, peer, peer.connection.createDataChannel("relyra-wire-v1", init))
-                val offer = createDescription(peer.connection, true)
-                setDescription(peer.connection, true, offer)
-                awaitGathering(peer)
-                val local = peer.connection.localDescription?.description ?: return@withContext null
-                InternetSignalCodec.encode(me, targetId, "offer", local, System.currentTimeMillis() / 1000, sessionId, sign)
+        return try {
+            val result = safely {
+                withContext(Dispatchers.IO) {
+                    val peer = createPeer(targetId, sessionId) ?: return@withContext null
+                    val init = DataChannel.Init().apply { ordered = true }
+                    attachChannel(targetId, peer, peer.connection.createDataChannel("relyra-wire-v1", init))
+                    val offer = createDescription(peer.connection, true)
+                    setDescription(peer.connection, true, offer)
+                    awaitGathering(peer)
+                    val local = peer.connection.localDescription?.description ?: return@withContext null
+                    InternetSignalCodec.encode(me, targetId, "offer", local, System.currentTimeMillis() / 1000, sessionId, sign)
+                }
             }
+            if (result == null) close(targetId)
+            result
+        } catch (cancelled: CancellationException) {
+            close(targetId)
+            throw cancelled
         }
-        if (result == null) close(targetId)
-        return result
     }
 
     suspend fun acceptOffer(peerId: String, encodedOffer: String): String? {
@@ -303,20 +308,25 @@ class WebRtcP2pConnector(
         if (signal.type != "offer") return null
         val pending = _incomingOffers.value[targetId]
         if (pending != null && pending.sessionId != signal.sessionId) return null
-        val answer = safely {
-            withContext(Dispatchers.IO) {
-                val peer = createPeer(targetId, signal.sessionId) ?: return@withContext null
-                val remote = SessionDescription(SessionDescription.Type.OFFER, signal.sdp)
-                setDescription(peer.connection, false, remote)
-                val answerDescription = createDescription(peer.connection, false)
-                setDescription(peer.connection, true, answerDescription)
-                awaitGathering(peer)
-                val local = peer.connection.localDescription?.description ?: return@withContext null
-                InternetSignalCodec.encode(me, targetId, "answer", local, System.currentTimeMillis() / 1000, signal.sessionId, sign)
+        return try {
+            val answer = safely {
+                withContext(Dispatchers.IO) {
+                    val peer = createPeer(targetId, signal.sessionId) ?: return@withContext null
+                    val remote = SessionDescription(SessionDescription.Type.OFFER, signal.sdp)
+                    setDescription(peer.connection, false, remote)
+                    val answerDescription = createDescription(peer.connection, false)
+                    setDescription(peer.connection, true, answerDescription)
+                    awaitGathering(peer)
+                    val local = peer.connection.localDescription?.description ?: return@withContext null
+                    InternetSignalCodec.encode(me, targetId, "answer", local, System.currentTimeMillis() / 1000, signal.sessionId, sign)
+                }
             }
+            if (answer != null) dismissIncomingOffer(targetId) else close(targetId)
+            answer
+        } catch (cancelled: CancellationException) {
+            close(targetId)
+            throw cancelled
         }
-        if (answer != null) dismissIncomingOffer(targetId) else close(targetId)
-        return answer
     }
 
     suspend fun acceptAnswer(peerId: String, encodedAnswer: String): Boolean {
