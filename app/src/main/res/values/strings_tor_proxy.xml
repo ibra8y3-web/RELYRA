@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="net_tor_title">Tor SOCKS proxy</string>
-    <string name="net_tor_desc">Connect RELYRA's shared HTTP/WebSocket/file clients to an external Tor SOCKS service such as Orbot. The local default is 127.0.0.1:9050. RELYRA does not bundle or start Tor, and bridge configuration stays in the Tor app.</string>
+    <string name="net_tor_desc">Connect RELYRA\'s shared HTTP/WebSocket/file clients to an external Tor SOCKS service such as Orbot. The local default is 127.0.0.1:9050. RELYRA does not bundle or start Tor, and bridge configuration stays in the Tor app.</string>
     <string name="net_tor_enable">Use local Tor SOCKS proxy</string>
     <string name="net_tor_strict">Strict mode (no direct fallback)</string>
     <string name="net_tor_strict_note">Strict mode sends new OkHttp relay and file-server requests only through SOCKS. If Tor is unavailable, those requests fail closed. The built-in WebView is blocked while Tor proxy mode is enabled.</string>
