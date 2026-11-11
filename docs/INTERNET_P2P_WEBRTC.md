@@ -16,13 +16,15 @@ The Android app now contains a real WebRTC DataChannel transport behind the exis
 
 ## Signaling workflow
 
-This branch intentionally uses explicit, out-of-band signaling:
+The signaling path has two options:
 
-1. Alice enters Bob's RELYRA ID and creates an offer.
-2. Alice sends the signed offer text privately to Bob.
-3. Bob enters Alice's RELYRA ID, pastes the offer and accepts it. RELYRA verifies the signature, intended recipient, age and contact status, then creates a signed answer.
-4. Bob sends the answer privately to Alice.
-5. Alice pastes and accepts the answer. Both peers perform ICE checks and open the RELYRA DataChannel when a path is available.
+1. Alice chooses a known RELYRA contact and creates an offer.
+2. RELYRA wraps the signed offer in a dedicated control envelope and encrypts the complete envelope through the existing E2EE protector.
+3. When an enabled Nostr relay route is connected, the encrypted control envelope is delivered automatically. The receiving device verifies the contact and signed offer, creates a signed answer, and returns it in another E2EE control envelope. The initiating device verifies and applies the answer.
+4. If no encrypted transport route is available, the app exposes the signed offer/answer for manual private copy/paste.
+5. ICE checks then open the RELYRA DataChannel when a direct path is available.
+
+Nostr is used only as a user-enabled rendezvous/signaling transport here; it does not carry WebRTC data once the direct channel is established. SDP signaling is bounded to 40,000 characters and the containing control envelope is E2EE-protected before reaching a relay.
 
 SDP contains ICE candidates and can expose local/public network addresses. The app warns users to share it only with the intended contact. Direct WebRTC sockets do not use the app's Tor SOCKS proxy and can reveal the device's network address to the remote peer and network observers. The offer/answer is signed but not itself encrypted by this signaling envelope; use a private channel when exchanging it.
 
@@ -34,8 +36,8 @@ A TURN server requires deployment, authentication, quotas, abuse controls and op
 
 ## Deliberate limitations — not release-complete yet
 
-- No automatic signaling/rendezvous service. Manual offer/answer exchange is required.
-- No automatic peer discovery over the public Internet and no DHT.
+- Automatic signaling is available over an enabled Nostr route. If no relay route is connected, manual private exchange remains the fallback.
+- No DHT or automatic discovery of unknown people over the public Internet. Rendezvous is restricted to existing RELYRA contacts.
 - No libp2p host, Kademlia DHT or Circuit Relay v2 is included; WebRTC is the selected direct transport for this Android stage.
 - TURN fallback works only when a valid reachable TURN server and credentials are supplied. RELYRA does not provision one.
 - No verified real-device connectivity result is claimed in this branch. ICE success must be tested across separate Wi-Fi and carrier NATs, including symmetric NAT and IPv6.
