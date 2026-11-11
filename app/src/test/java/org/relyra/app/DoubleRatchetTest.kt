@@ -166,7 +166,7 @@ class DoubleRatchetTest {
         assertNull(DoubleRatchet.deserialize(good.copyOf(good.size - 5)))
         assertNull(DoubleRatchet.deserialize(good + byteArrayOf(0)))
         val negativeCounter = good.copyOf().also { ByteBuffer.wrap(it).putInt(100, -1) }
-        assertNull(DoubleRatchet.deserialize(negativeCounter)))
+        assertNull(DoubleRatchet.deserialize(negativeCounter))
     }
 
     @Test fun ratchetKeysChangeAfterEachRoundTrip() {
