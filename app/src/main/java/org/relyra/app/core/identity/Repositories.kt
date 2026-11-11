@@ -60,11 +60,11 @@ class IdentityRepository(
 
     suspend fun rename(name: String) = db.identityDao().rename(ContactCardCodec.sanitizeName(name))
 
-    suspend fun cardUri(identity: IdentityEntity): String? {
+    suspend fun cardUri(identity: IdentityEntity, rotateOneTime: Boolean = false): String? {
         val seed = secure.loadSeed() ?: return null
         val encKey = PayloadCrypto.publicKey(PayloadCrypto.deriveSecret(seed))
         val bundle = prekeys.currentBundle(
-            identity.publicId, seed, identity.publicKey, encKey, System.currentTimeMillis() / 1000,
+            identity.publicId, seed, identity.publicKey, encKey, System.currentTimeMillis() / 1000, rotateOneTime,
         )
         return ContactCardCodec.encodeV3(
             identity.displayName, seed, identity.publicKey, encKey,
