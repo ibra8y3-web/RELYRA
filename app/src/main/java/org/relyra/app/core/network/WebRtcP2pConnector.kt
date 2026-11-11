@@ -71,7 +71,8 @@ data class IncomingP2pOffer(
  */
 object InternetSignalCodec {
     private const val DOMAIN = "RELYRA-WEBRTC-SIGNAL-V1"
-    private const val MAX_SDP_CHARS = 40_000
+    private const val MAX_SDP_CHARS = 20_000
+    private const val MAX_ENCODED_SIGNAL_CHARS = 48_000
     private const val MAX_AGE_SECONDS = 10 * 60L
 
     fun encode(
@@ -94,7 +95,7 @@ object InternetSignalCodec {
         ) return null
         val signature = sign(transcript(from, to, type, sdp, issuedAt, canonicalSession)) ?: return null
         if (signature.size != 64) return null
-        return JSONObject()
+        val encoded = JSONObject()
             .put("v", 1)
             .put("from", from)
             .put("to", to)
@@ -104,6 +105,7 @@ object InternetSignalCodec {
             .put("sessionId", canonicalSession)
             .put("sig", Base64.getUrlEncoder().withoutPadding().encodeToString(signature))
             .toString()
+        return encoded.takeIf { it.length <= MAX_ENCODED_SIGNAL_CHARS }
     }
 
     fun decode(
@@ -112,7 +114,7 @@ object InternetSignalCodec {
         expectedPeerId: String,
         nowSeconds: Long = System.currentTimeMillis() / 1000,
     ): InternetPeerSession? {
-        if (encoded.length !in 1..80_000) return null
+        if (encoded.length !in 1..MAX_ENCODED_SIGNAL_CHARS) return null
         return try {
             val json = JSONObject(encoded)
             if (json.getInt("v") != 1) return null
