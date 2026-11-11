@@ -36,6 +36,13 @@ class BlossomClientTest {
     private fun sha(b: ByteArray) = MessageDigest.getInstance("SHA-256").digest(b)
     private fun body(b: ByteArray) = Buffer().write(b)
 
+    private fun descriptor(hash: String, size: Int) =
+        """{"url":"https://cdn.example.test/$hash","sha256":"$hash","size":$size,"type":"application/octet-stream","uploaded":1700000000}"""
+
+    private fun enqueuePreflightUnsupported() {
+        server.enqueue(MockResponse().setResponseCode(404))
+    }
+
     @Test fun uploadSendsSignedAuthorizationAndTheExactBytes() = runBlocking {
         val data = Random(3).nextBytes(5000)
         val file = tmp().also { it.writeBytes(data) }
@@ -68,13 +75,16 @@ class BlossomClientTest {
         val hex = Hex.encode(sha(ByteArray(10) { 1 }))
         val secret = NostrCrypto.randomSecret()
 
+        enqueuePreflightUnsupported()
         server.enqueue(MockResponse().setResponseCode(401).addHeader("X-Reason", "not allowed"))
         val denied = client.upload(base(), file, hex, secret, 1) as BlossomUpload.Rejected
         assertTrue(denied.reason.contains("401") && denied.reason.contains("not allowed"))
 
+        enqueuePreflightUnsupported()
         server.enqueue(MockResponse().setResponseCode(500))
         assertTrue(client.upload(base(), file, hex, secret, 1) is BlossomUpload.Unavailable)
 
+        enqueuePreflightUnsupported()
         server.enqueue(MockResponse().setResponseCode(429))
         assertTrue(client.upload(base(), file, hex, secret, 1) is BlossomUpload.Unavailable)
 
@@ -88,9 +98,11 @@ class BlossomClientTest {
         val hex = Hex.encode(sha(data))
         val secret = NostrCrypto.randomSecret()
 
+        enqueuePreflightUnsupported()
         server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
         assertTrue(client.upload(base(), file, hex, secret, 1) is BlossomUpload.Rejected)
 
+        enqueuePreflightUnsupported()
         server.enqueue(MockResponse().setResponseCode(200).setBody("""{"sha256":"not-a-hash"}"""))
         assertTrue(client.upload(base(), file, hex, secret, 1) is BlossomUpload.Rejected)
     }
