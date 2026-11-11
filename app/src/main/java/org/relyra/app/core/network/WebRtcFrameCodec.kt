@@ -53,7 +53,7 @@ object WebRtcFrameCodec {
 
     fun decode(source: ByteBuffer): Frame? {
         val input = source.slice()
-        if (input.remaining() !in (ACK_BYTES + 1)..WebRtcP2pConnector.MAX_DATA_CHANNEL_MESSAGE) return null
+        if (input.remaining() !in ACK_BYTES..WebRtcP2pConnector.MAX_DATA_CHANNEL_MESSAGE) return null
         if (input.int != MAGIC) return null
         val type = input.get()
         val transferId = UUID(input.long, input.long).toString()
