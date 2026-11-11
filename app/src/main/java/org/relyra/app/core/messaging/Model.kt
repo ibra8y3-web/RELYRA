@@ -163,7 +163,7 @@ object EnvelopeCodec {
     /** Returns null for anything malformed; never throws. */
     fun decode(bytes: ByteArray): Envelope? {
         if (bytes.size > MAX_PACKET) return null
-        try {
+        return try {
             DataInputStream(ByteArrayInputStream(bytes)).use { i ->
                 if (i.readUnsignedByte() != M1 || i.readUnsignedByte() != M2 || i.readUnsignedByte() != VERSION) return null
                 val type = i.readUnsignedByte()
