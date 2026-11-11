@@ -19,6 +19,7 @@ class PreKeyRepository(private val db: AppDatabase, private val secure: SecureSt
         signingPublic: ByteArray,
         identityDhPublic: ByteArray,
         nowSeconds: Long,
+        forceFreshOneTime: Boolean = false,
     ): X3dh.PreKeyBundle = lock.withLock {
         val dao = db.preKeyDao()
         var signed = dao.byKind("SIGNED").filter {
@@ -35,7 +36,13 @@ class PreKeyRepository(private val db: AppDatabase, private val secure: SecureSt
             secure.savePreKeyPrivate(signed.keyId, key.privateKey)
             dao.put(signed)
         }
-        var oneTime = dao.byKind("ONE_TIME").firstOrNull {
+        var oneTime = if (forceFreshOneTime) {
+            val key = X3dh.createOneTimePreKey(nextId())
+            val row = PreKeyEntity("one-time:${key.id}", "ONE_TIME", key.publicKey, 0L)
+            secure.savePreKeyPrivate(row.keyId, key.privateKey)
+            dao.put(row)
+            row
+        } else dao.byKind("ONE_TIME").firstOrNull {
             !it.consumed && secure.loadPreKeyPrivate(it.keyId) != null
         }
         if (oneTime == null) {
