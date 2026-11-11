@@ -52,7 +52,6 @@ Implemented in source:
 
 Still missing before Priority 2 can be declared complete:
 - No automatic Internet DHT or unknown-peer discovery; signaling uses known contacts and the user's enabled Nostr relay route.
-- Public Internet peer discovery / DHT.
 - Project-operated TURN service, short-lived credentials and operational abuse controls.
 - Automatic ICE restart after network changes and full disconnect-mid-send delivery regression tests.
 - Real-device verification across independent Wi-Fi and mobile carrier NATs, including TURN-only and symmetric NAT cases.
