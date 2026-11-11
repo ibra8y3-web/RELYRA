@@ -10,6 +10,7 @@ import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody.Companion.asRequestBody
 import okhttp3.Response
+import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import org.json.JSONException
 import org.json.JSONObject
 import org.relyra.app.core.network.Hex
@@ -162,7 +163,7 @@ class BlossomClient(base: OkHttpClient = Http.client) {
             if (size != expectedSize || url.isBlank() || type.isBlank() || uploaded < 0L) {
                 return BlossomUpload.Rejected("the server returned an incomplete or inconsistent blob descriptor")
             }
-            val parsedUrl = try { okhttp3.HttpUrl.get(url) } catch (_: IllegalArgumentException) { null }
+            val parsedUrl = try { url.toHttpUrlOrNull() } catch (_: IllegalArgumentException) { null }
             if (parsedUrl == null || parsedUrl.scheme != "https" || !parsedUrl.encodedPath.contains(sha256Hex, ignoreCase = true)) {
                 return BlossomUpload.Rejected("the server returned an invalid blob URL")
             }
