@@ -21,9 +21,9 @@ All three use the shared NearbyHandshakeProtocol: each side signs a fresh nonce-
 - Source implementation and JVM handshake tests are present in this change; actual two-device tests, Android vendor compatibility and background behaviour remain release gates.
 - These transports do not provide Internet P2P, libp2p, NAT traversal, BLE mesh or multi-hop forwarding.
 
-## Implemented transport
+## Internet relay transport
 
-The current connected transport is **Nostr over user-configured secure WebSockets (WSS)**.
+The current relay-based Internet transport is **Nostr over user-configured secure WebSockets (WSS)**. It is used after nearby direct transports or when no nearby path is available.
 
 - No relay is silently enabled by default; users manage their own relay list.
 - Relay URLs are normalized to WSS and can be probed with a WebSocket connection plus a Nostr REQ/EOSE exchange.
@@ -43,7 +43,8 @@ The presence of a Connector interface and AdaptiveRouter is only an extension po
 | libp2p | Not implemented |
 | ICE/STUN/TURN traversal | Not implemented |
 | Peer-to-peer multi-hop Store & Forward | Not implemented |
-| Tor routing | Not implemented |
+| Embedded Tor daemon, bridge configuration inside RELYRA and Onion Services | Not implemented |
+| External Tor SOCKS proxy for shared OkHttp traffic | Implemented in source; requires a running local Tor service and a successful Tor exit check |
 | Bluetooth Low Energy discovery/mesh | Not implemented |
 | Matrix / XMPP bridges | Not implemented |
 | Push relay infrastructure operated by RELYRA | Not implemented |
@@ -68,11 +69,24 @@ AdaptiveRouter attempts ready connectors in their configured order. The successf
 - End-to-end encryption protects message contents, but does not make the network anonymous.
 - A malicious relay can withhold, delay, reorder or replay events. Application-level authentication, message identifiers and deduplication are still required.
 - File servers observe file transfer metadata. Attachment encryption protects file contents and keys from the server.
-- Do not describe RELYRA as Tor-protected, fully P2P or anonymous in the current release.
+- Do not describe RELYRA as globally Tor-protected or anonymous. The Tor SOCKS option is an opt-in integration with an external local Tor service (for example, Orbot).
 - When Nearby LAN is enabled, the public RELYRA ID is visible to devices on the local network. Enable it only on a trusted LAN; application message content remains end-to-end encrypted.
 - Wi-Fi Direct discovery exposes Android device names and Wi-Fi P2P device addresses to the local discovery layer; neither value is accepted as a RELYRA identity. The Ed25519 challenge is required.
 - Bluetooth currently uses Android's bonded-device list and RFCOMM service UUID. It does not perform BLE scans and does not accept an unpaired device.
 - The durable local outbox retries messages when a configured transport becomes available, and Nostr relays can store events for later inbox retrieval. This is not an intermediary-device mesh: nearby peers do not yet hold and forward third-party messages.
+
+## External Tor SOCKS integration
+
+RELYRA can use a local Tor SOCKS5 endpoint supplied by another Android app/service, such as Orbot. Orbot's default SOCKS endpoint is 127.0.0.1:9050. RELYRA does not bundle a Tor daemon or configure bridges itself; bridge and transport setup stays in the Tor service.
+
+- The shared OkHttp client uses a live ProxySelector, covering Nostr WSS connections, Blossom file-server requests and other OkHttp traffic.
+- The proxy selector keeps destination hostnames unresolved for SOCKS routes so target DNS resolution is performed through the SOCKS proxy.
+- **Strict mode** returns only the SOCKS route. It does not provide a direct fallback; if the local proxy is unavailable, new OkHttp requests fail closed.
+- Non-strict mode tries SOCKS first and then explicitly allows a direct connection. It can expose the device IP and must not be described as strict Tor routing.
+- A change to Tor settings restarts existing Nostr relay WebSockets so they do not remain on an older route. In-flight HTTP requests may finish on their already-selected connection; new requests use the current setting.
+- The embedded WebView does not use RELYRA's OkHttp proxy and is blocked while Tor SOCKS mode is enabled. Use a Tor-enabled browser or the Tor service's VPN mode for browser traffic.
+- Bluetooth Classic, Wi-Fi Direct and Nearby LAN are local direct transports, not Tor routes. They remain separate and are not hidden by the Tor SOCKS option.
+- The app verifies the external route by requesting the Tor Project IP-check API and requiring its IsTor response. This is a route check, not a cryptographic anonymity audit or a guarantee against all traffic correlation.
 
 ## libp2p integration decision
 
