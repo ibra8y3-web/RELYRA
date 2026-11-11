@@ -51,6 +51,7 @@
     <string name="home_blocked">Blocked</string>
     <string name="home_build">This build</string>
     <string name="home_build_body">Identity, contacts, local security, the delivery engine, Nostr relays and encrypted file transfer through file servers you add all work. Messages and files are end-to-end encrypted.</string>
+    <string name="contacts_search_hint">Search contacts or public IDs</string>
     <string name="contacts_add">Add contact</string>
     <string name="contacts_empty_title">No contacts yet</string>
     <string name="contacts_empty_body">Scan a contact\'s QR code in person to add them with a verified signature.</string>

@@ -3,6 +3,8 @@ package org.relyra.app.ui.theme
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Typography
+import androidx.compose.material3.Shapes
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
@@ -12,6 +14,7 @@ import androidx.core.view.WindowCompat
 import org.relyra.app.core.storage.ThemeMode
 import org.relyra.app.ui.components.findActivity
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 
 private val Light = lightColorScheme(
     primary = Color(0xFF2563EB), onPrimary = Color.White,
@@ -39,6 +42,14 @@ private val Dark = darkColorScheme(
     surfaceContainerHighest = Color(0xFF22304D),
     outline = Color(0xFF667085), outlineVariant = Color(0xFF2B3750),
     error = Color(0xFFFDA29B),
+)
+
+private val AppShapes = Shapes(
+    extraSmall = RoundedCornerShape(8.dp),
+    small = RoundedCornerShape(12.dp),
+    medium = RoundedCornerShape(16.dp),
+    large = RoundedCornerShape(20.dp),
+    extraLarge = RoundedCornerShape(24.dp),
 )
 
 private val Amoled = Dark.copy(
@@ -70,5 +81,5 @@ fun RelyraTheme(mode: ThemeMode = ThemeMode.SYSTEM, content: @Composable () -> U
             c.isAppearanceLightNavigationBars = !dark
         }
     }
-    MaterialTheme(colorScheme = scheme, typography = Typography(), content = content)
+    MaterialTheme(colorScheme = scheme, typography = Typography(), shapes = AppShapes, content = content)
 }

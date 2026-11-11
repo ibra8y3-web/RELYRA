@@ -51,6 +51,7 @@
     <string name="home_blocked">محظورة</string>
     <string name="home_build">هذا الإصدار</string>
     <string name="home_build_body">الهوية وجهات الاتصال والأمان المحلي ومحرك التسليم ومرحّلات Nostr ونقل الملفات المشفّرة عبر خوادم الملفات التي تضيفها كلها تعمل. الرسائل والملفات مشفّرة من طرف إلى طرف.</string>
+    <string name="contacts_search_hint">ابحث بالاسم أو المعرّف العام</string>
     <string name="contacts_add">إضافة جهة اتصال</string>
     <string name="contacts_empty_title">لا توجد جهات اتصال</string>
     <string name="contacts_empty_body">امسح رمز QR الخاص بجهة الاتصال وجهًا لوجه لإضافتها بتوقيع موثّق.</string>

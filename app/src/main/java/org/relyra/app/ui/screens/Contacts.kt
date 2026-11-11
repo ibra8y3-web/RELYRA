@@ -18,6 +18,8 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -25,8 +27,11 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -56,8 +61,17 @@ import org.relyra.app.ui.components.InfoRow
 fun ContactsScreen(vm: MainViewModel, onAdd: () -> Unit) {
     val contacts by vm.contacts.collectAsStateWithLifecycle()
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
+    var query by rememberSaveable { mutableStateOf("") }
+    val visibleContacts = contacts.filter { query.isBlank() || it.displayName.contains(query, true) || it.publicId.contains(query, true) }
 
-    Box(Modifier.fillMaxSize()) {
+    Column(Modifier.fillMaxSize()) {
+        OutlinedTextField(
+            value = query, onValueChange = { query = it.take(80) },
+            placeholder = { Text(stringResource(R.string.contacts_search_hint)) },
+            leadingIcon = { androidx.compose.material3.Icon(Icons.Default.Search, contentDescription = null) },
+            singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+        )
+        Box(Modifier.weight(1f).fillMaxWidth()) {
         if (contacts.isEmpty()) {
             Column(
                 Modifier.fillMaxSize().padding(32.dp),
@@ -72,15 +86,22 @@ fun ContactsScreen(vm: MainViewModel, onAdd: () -> Unit) {
                 )
             }
         } else {
-            LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 88.dp)) {
-                items(contacts, key = { it.publicId }) { c ->
-                    ListItem(
-                        headlineContent = { Text(c.displayName) },
-                        supportingContent = { Text(stringResource(statusRes(c))) },
-                        leadingContent = { Avatar(c.displayName) },
-                        modifier = Modifier.clickable { selectedId = c.publicId },
-                    )
-                    HorizontalDivider()
+            LazyColumn(Modifier.fillMaxSize(), contentPadding = androidx.compose.foundation.layout.PaddingValues(bottom = 88.dp, top = 4.dp)) {
+                if (visibleContacts.isEmpty()) {
+                    item { Text(stringResource(R.string.chats_no_match), color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(20.dp)) }
+                }
+                items(visibleContacts, key = { it.publicId }) { c ->
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp).clickable { selectedId = c.publicId },
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                    ) {
+                        ListItem(
+                            headlineContent = { Text(c.displayName, maxLines = 1) },
+                            supportingContent = { Text(stringResource(statusRes(c))) },
+                            leadingContent = { Avatar(c.displayName, 44.dp) },
+                        )
+                    }
                 }
             }
         }
