@@ -8,7 +8,7 @@ on:
 
 # One build lane for the whole repository: a newer run cancels older work.
 concurrency:
-  group: relyra-single-latest-build
+  group: relyra-build-${{ github.workflow }}
   cancel-in-progress: true
 
 jobs:
