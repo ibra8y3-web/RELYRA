@@ -158,7 +158,9 @@ class ContactRepository(
             if (signed && enc != null && nostr != null &&
                 (existing.encKey == null || existing.nostrKey == null || preKeyBundle != null)) {
                 db.contactDao().setKeys(id, enc, nostr)
-                preKeyBundle?.let {
+                preKeyBundle?.takeIf {
+                    it.signedPreKeyExpiresAt > (existing.signedPreKeyExpiresAt ?: 0L)
+                }?.let {
                     db.contactDao().setPreKeys(id, it.signedPreKeyId, it.signedPreKey, it.signedPreKeyExpiresAt,
                         it.signedPreKeySignature, it.oneTimePreKeyId, it.oneTimePreKey)
                 }
