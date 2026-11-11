@@ -50,7 +50,7 @@ class NetworkManager(context: Context, private val client: RelayClient = RelayCl
     val torProxyStatus: StateFlow<TorProxyStatus> = _torProxyStatus
 
     init {
-        TorSocksProxySelector.configure(_torProxySettings.value)
+        Http.configureTorProxy(_torProxySettings.value)
     }
 
     private fun loadTorProxySettings(): TorSocksSettings = TorSocksSettings(
@@ -68,7 +68,7 @@ class NetworkManager(context: Context, private val client: RelayClient = RelayCl
             putBoolean("tor_socks_strict", settings.strict)
             putInt("tor_socks_port", settings.port)
         }
-        TorSocksProxySelector.configure(settings)
+        Http.configureTorProxy(settings)
         _torProxySettings.value = settings
         _torProxyStatus.value = if (enabled) TorProxyStatus.ReadyToTest else TorProxyStatus.Disabled
         return true
