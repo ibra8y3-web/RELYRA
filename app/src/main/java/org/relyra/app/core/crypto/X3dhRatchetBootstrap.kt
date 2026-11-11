@@ -14,7 +14,7 @@ object X3dhRatchetBootstrap {
     private const val MIN_BODY_BYTES = 28
 
     data class Initial(val wire: ByteArray, val state: RatchetState)
-    data class Accepted(val senderId: String, val plaintext: ByteArray, val state: RatchetState)
+    data class Accepted(val senderId: String, val plaintext: ByteArray, val state: RatchetState, val consumedOneTimePreKeyId: Long?)
 
     fun initiate(
         senderId: String,
@@ -76,7 +76,7 @@ object X3dhRatchetBootstrap {
                 state, packet.ratchetHeader, packet.body,
                 DoubleRatchet.aad(expectedSenderId, ownId),
             ) ?: return null
-            Accepted(expectedSenderId, decrypted.plaintext, decrypted.newState)
+            Accepted(expectedSenderId, decrypted.plaintext, decrypted.newState, packet.oneTimePreKeyId)
         } catch (_: Exception) {
             null
         }
