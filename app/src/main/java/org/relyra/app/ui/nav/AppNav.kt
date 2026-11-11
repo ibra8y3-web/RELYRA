@@ -208,6 +208,10 @@ fun AppNav(
                     vm,
                     onOpenNetwork = { nav.navigate(Routes.NETWORK) },
                     onAddContact = { nav.navigate(Routes.ADD) },
+                    onOpenTools = { nav.navigate(Routes.TOOLS) },
+                    onOpenVault = { nav.navigate(Routes.VAULT) },
+                    onOpenBrowser = { nav.navigate(Routes.BROWSER) },
+                    onOpenPdfReader = { nav.navigate(Routes.PDF) },
                 )
             }
             composable(Routes.CHATS) {
@@ -242,7 +246,7 @@ fun AppNav(
             composable(Routes.TOOLS) { ToolsScreen(vm) }
             composable(Routes.DIAG) { DiagnosticsScreen(vm) }
             composable(Routes.VAULT) { VaultScreen(vm, authenticate) }
-            composable(Routes.BROWSER) { BrowserScreen() }
+            composable(Routes.BROWSER) { BrowserScreen(onOpenNetwork = { nav.navigate(Routes.NETWORK) }) }
             composable(Routes.PDF) { PdfReaderScreen() }
             composable(Routes.SHARE) {
                 ShareScreen(vm, onDone = { id ->
