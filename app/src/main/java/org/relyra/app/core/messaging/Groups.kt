@@ -2,6 +2,9 @@ package org.relyra.app.core.messaging
 
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
+import java.security.MessageDigest
 import java.util.UUID
 
 data class GroupRecord(
@@ -84,7 +87,7 @@ class GroupOutcome(val result: GroupResult, val groupId: String? = null)
  *  - a snapshot is applied only if its sender is OWNER/ADMIN locally and its epoch is higher;
  *  - admins can add/remove plain members and rename, but cannot touch the owner/admin set;
  *  - in a channel only OWNER/ADMIN may post.
- * Known limit: two admins editing at the same moment can briefly diverge (higher epoch wins, equal epochs are ignored).
+ * Concurrent admin edits at the same epoch are resolved deterministically by the SHA-256 fingerprint of the canonical snapshot.
  */
 class GroupEngine(
     private val store: GroupStore,
@@ -293,6 +296,23 @@ class GroupEngine(
             env.members.any { it.id == env.from && (it.role == GroupRole.OWNER || it.role == GroupRole.ADMIN) }
     }
 
+    private fun snapshotFingerprint(name: String, kind: GroupKind, owner: String, members: List<GroupMemberRef>): String {
+        val bytes = ByteArrayOutputStream()
+        DataOutputStream(bytes).use { out ->
+            out.writeUTF(name)
+            out.writeInt(kind.ordinal)
+            out.writeUTF(owner)
+            val ordered = members.sortedBy { it.id }
+            out.writeInt(ordered.size)
+            ordered.forEach { member ->
+                out.writeUTF(member.id)
+                out.writeInt(member.role.ordinal)
+            }
+        }
+        return MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray())
+            .joinToString("") { "%02x".format(it) }
+    }
+
     private suspend fun onSync(me: String, env: Envelope.GroupSync) {
         if (!validSnapshot(env)) return
         val name = GroupLimits.sanitizeName(env.name)
@@ -309,7 +329,7 @@ class GroupEngine(
             ack(me, env.from, env.messageId)
             return
         }
-        if (env.epoch <= local.epoch) { ack(me, env.from, env.messageId); return }   // old or duplicate
+        if (env.epoch < local.epoch) { ack(me, env.from, env.messageId); return }
 
         val localMembers = store.members(env.groupId)
         val senderRole = roleOf(localMembers, env.from)
@@ -319,6 +339,12 @@ class GroupEngine(
             val before = localMembers.filter { it.role != GroupRole.MEMBER }.associate { it.id to it.role }
             val after = env.members.filter { it.role != GroupRole.MEMBER }.associate { it.id to it.role }
             if (before != after || env.owner != local.owner) return
+        }
+        if (env.epoch == local.epoch) {
+            val incoming = snapshotFingerprint(name, env.kind, env.owner, env.members)
+            val current = snapshotFingerprint(local.name, local.kind, local.owner, localMembers)
+            // All replicas choose the same winner for concurrent edits based on identical canonical bytes.
+            if (incoming <= current) { ack(me, env.from, env.messageId); return }
         }
         val state = when {
             !iAmIn -> if (local.state == GroupState.LEFT) GroupState.LEFT else GroupState.REMOVED
