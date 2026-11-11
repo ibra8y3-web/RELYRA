@@ -198,6 +198,32 @@ class DeliveryEngineTest {
         assertEquals(MessageState.EXPIRED, a.store.rows[id]!!.state)
     }
 
+
+    @Test fun unavailableTransportRetryReusesPersistedCiphertextWithoutAdvancingProtector() = runBlocking {
+        val store = FakeStore()
+        val link = Link().also { it.up = false }
+        var protectCalls = 0
+        val protector = object : PayloadProtector {
+            override suspend fun protect(peerId: String, plaintext: ByteArray): ByteArray {
+                protectCalls++
+                return byteArrayOf(protectCalls.toByte())
+            }
+            override suspend fun open(wire: ByteArray): Opened? = null
+        }
+        val engine = DeliveryEngine(
+            store, Peers(mapOf("bob" to PeerStatus.Known)), protector, { listOf(link) }, { "alice" }, clock,
+        )
+        val id = (engine.enqueue("bob", "persist me") as EnqueueResult.Queued).messageId
+        engine.processOutbox()
+        assertEquals(1, protectCalls)
+        assertEquals(byteArrayOf(1), store.rows[id]!!.wirePayload)
+        now += DeliveryEngine.backoff(1) + 1
+        link.up = true
+        engine.processOutbox()
+        assertEquals(1, protectCalls)
+        assertEquals(byteArrayOf(1), link.sent.single())
+    }
+
     @Test fun backoffGrowsAndIsCapped() {
         assertTrue(DeliveryEngine.backoff(2) > DeliveryEngine.backoff(1))
         assertEquals(900_000L, DeliveryEngine.backoff(40))
