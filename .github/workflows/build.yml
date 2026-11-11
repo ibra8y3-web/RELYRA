@@ -53,9 +53,10 @@ jobs:
         with:
           gradle-version: 9.6.0
 
-      # Tests run first; failing tests must not leave a misleading ready-to-install APK.
+      # Tests run first; a hung suite must fail with a diagnosable log instead of holding the build forever.
       - name: Unit tests
-        run: gradle --no-daemon testDebugUnitTest
+        timeout-minutes: 12
+        run: gradle --no-daemon --console=plain --info testDebugUnitTest
 
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
