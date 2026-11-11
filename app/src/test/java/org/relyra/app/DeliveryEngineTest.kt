@@ -216,12 +216,12 @@ class DeliveryEngineTest {
         val id = (engine.enqueue("bob", "persist me") as EnqueueResult.Queued).messageId
         engine.processOutbox()
         assertEquals(1, protectCalls)
-        assertEquals(byteArrayOf(1), store.rows[id]!!.wirePayload)
+        assertTrue(store.rows[id]!!.wirePayload!!.contentEquals(byteArrayOf(1)))
         now += DeliveryEngine.backoff(1) + 1
         link.up = true
         engine.processOutbox()
         assertEquals(1, protectCalls)
-        assertEquals(byteArrayOf(1), link.sent.single())
+        assertTrue(link.sent.single().contentEquals(byteArrayOf(1)))
     }
 
     @Test fun backoffGrowsAndIsCapped() {
