@@ -147,4 +147,7 @@ interface EncryptedPacketDao {
 
     @Query("DELETE FROM encrypted_packets WHERE messageId = :messageId")
     suspend fun delete(messageId: String)
+
+    @Query("DELETE FROM encrypted_packets WHERE messageId IN (SELECT messageId FROM messages WHERE chatId = :chatId)")
+    suspend fun deleteForChat(chatId: String)
 }
