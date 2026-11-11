@@ -14,9 +14,9 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         MessageEntity::class, ProcessedIdEntity::class, AttachmentEntity::class,
         RatchetEntity::class,
         GroupEntity::class, GroupMemberEntity::class, GroupMessageEntity::class, GroupOutboxEntity::class,
-        ChatPrefEntity::class, VaultItemEntity::class,
+        ChatPrefEntity::class, VaultItemEntity::class, PreKeyEntity::class,
     ],
-    version = 8,
+    version = 9,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -28,7 +28,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun ratchetDao(): RatchetDao
     abstract fun groupDao(): GroupDao
     abstract fun chatPrefDao(): ChatPrefDao
-    abstract fun vaultDao(): VaultDao
+    abstract fun vaultDao(): VaultDao\n    abstract fun preKeyDao(): PreKeyDao
 
     companion object {
         val MIGRATION_1_2 = object : Migration(1, 2) {
@@ -118,11 +118,21 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `prekeys` (`keyId` TEXT NOT NULL, `kind` TEXT NOT NULL, " +
+                        "`publicKey` BLOB NOT NULL, `expiresAt` INTEGER NOT NULL, `consumed` INTEGER NOT NULL, " +
+                        "PRIMARY KEY(`keyId`))"
+                )
+            }
+        }
+
         /** SQLCipher-encrypted. Never uses destructive migration: user data must survive updates. */
         fun build(context: Context, passphrase: ByteArray): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "relyra.db")
                 .openHelperFactory(SupportOpenHelperFactory(passphrase))
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
                 .build()
     }
 }
