@@ -236,7 +236,7 @@ class WebRtcP2pConnector(
     }
 
     suspend fun createOffer(peerId: String): String? {
-        if (ownId() == null || !IdentityCrypto.isValidPeerId(peerId) || !knownPeer(peerId)) return null
+        if (ownId() == null || IdentityCrypto.parsePublicId(peerId) == null || !knownPeer(peerId)) return null
         return runCatching {
             withContext(Dispatchers.IO) {
                 val peer = createPeer(peerId) ?: return@withContext null
