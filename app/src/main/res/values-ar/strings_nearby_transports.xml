@@ -28,4 +28,28 @@
     <string name="net_wifi_direct_refresh">إعادة البحث</string>
     <string name="net_wifi_direct_unknown_name">جهاز أندرويد بدون اسم</string>
     <string name="net_wifi_direct_connect">اتصال</string>
+
+    <string name="net_p2p_title">اتصال مباشر عبر الإنترنت (WebRTC)</string>
+    <string name="net_p2p_desc">ينشئ قناة بيانات مباشرة باستخدام ICE وSTUN، ويدعم TURN عند توفير خادم وبيانات اعتماد. تبادل العرض والإجابة يدويًا مع جهة الاتصال عبر قناة خاصة؛ بيانات SDP قد تكشف عناوين الشبكة. يجب أن تكون جهة الاتصال معروفة وموقعة.</string>
+    <string name="net_p2p_peer_id">معرّف جهة الاتصال RELYRA</string>
+    <string name="net_p2p_create_offer">إنشاء عرض اتصال</string>
+    <string name="net_p2p_remote_signal">الصق العرض أو الإجابة المستلمة</string>
+    <string name="net_p2p_accept_offer">قبول العرض وإنشاء إجابة</string>
+    <string name="net_p2p_accept_answer">قبول الإجابة</string>
+    <string name="net_p2p_generated">بيانات الإشارة الموقعة — انسخها وأرسلها للطرف المقصود فقط</string>
+    <string name="net_p2p_state_new">جديد</string>
+    <string name="net_p2p_state_connecting">جارٍ الاتصال</string>
+    <string name="net_p2p_state_connected">متصل مباشر</string>
+    <string name="net_p2p_state_disconnected">منقطع</string>
+    <string name="net_p2p_state_failed">فشل الاتصال</string>
+    <string name="net_p2p_close">إغلاق</string>
+    <string name="net_p2p_turn_optional">إعداد TURN اختياري للشبكات التي تمنع الاتصال المباشر</string>
+    <string name="net_p2p_turn_url">TURN URI (turn: أو turns:)</string>
+    <string name="net_p2p_turn_username">اسم مستخدم TURN</string>
+    <string name="net_p2p_turn_credential">كلمة مرور TURN</string>
+    <string name="net_p2p_turn_apply">تطبيق إعداد TURN لهذه الجلسات</string>
+    <string name="net_p2p_turn_reset">إزالة TURN</string>
+    <string name="net_p2p_turn_invalid">بيانات TURN غير صالحة؛ يجب إدخال URI واسم المستخدم وكلمة المرور.</string>
+    <string name="net_p2p_signal_failed">تعذر إنشاء/التحقق من إشارة الاتصال. تحقق من هوية جهة الاتصال وصلاحية العرض/الإجابة وإعدادات الشبكة.</string>
+    <string name="net_p2p_answer_accepted">تم قبول إجابة الاتصال؛ جارٍ التفاوض على مسار ICE.</string>
 </resources>
