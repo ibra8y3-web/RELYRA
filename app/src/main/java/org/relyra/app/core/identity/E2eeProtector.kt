@@ -85,7 +85,7 @@ class E2eeProtector(private val db: AppDatabase, private val secure: SecureStore
         val oneTimeId = X3dhRatchetBootstrap.oneTimePreKeyId(wire)
         val me = db.identityDao().get() ?: return@withLock null
         val sender = db.contactDao().get(senderId) ?: return@withLock null
-        if (sender.blocked || sender.encKey == null || load(senderId) != null) return@withLock null
+        if (sender.blocked || sender.encKey == null || db.ratchetDao().get(senderId) != null) return@withLock null
         val seed = secure.loadSeed() ?: return@withLock null
         val ownIdentityDh = PayloadCrypto.deriveSecret(seed)
         val signedRow = db.preKeyDao().get("signed:$signedId") ?: return@withLock null
