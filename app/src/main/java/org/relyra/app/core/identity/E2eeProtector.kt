@@ -44,7 +44,7 @@ class E2eeProtector(private val db: AppDatabase, private val secure: SecureStore
                 X3dhRatchetBootstrap.initiate(
                     me.publicId, bundle, ownDhPrivate, plaintext, System.currentTimeMillis() / 1000,
                 )
-            } catch (_: IllegalArgumentException) {
+            } catch (_: Exception) {
                 return@withLock null
             }
             save(peerId, initial.state)
