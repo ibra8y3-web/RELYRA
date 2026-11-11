@@ -56,6 +56,22 @@ class NetworkManager(context: Context, private val client: RelayClient = RelayCl
         _nearbyEnabled.value = enabled
     }
 
+    private val _bluetoothEnabled = MutableStateFlow(prefs.getBoolean("bluetooth_enabled", false))
+    val bluetoothEnabled: StateFlow<Boolean> = _bluetoothEnabled
+
+    fun setBluetoothEnabled(enabled: Boolean) {
+        prefs.edit { putBoolean("bluetooth_enabled", enabled) }
+        _bluetoothEnabled.value = enabled
+    }
+
+    private val _wifiDirectEnabled = MutableStateFlow(prefs.getBoolean("wifi_direct_enabled", false))
+    val wifiDirectEnabled: StateFlow<Boolean> = _wifiDirectEnabled
+
+    fun setWifiDirectEnabled(enabled: Boolean) {
+        prefs.edit { putBoolean("wifi_direct_enabled", enabled) }
+        _wifiDirectEnabled.value = enabled
+    }
+
     /** Newest relay event (seconds) already processed; used to resume the inbox subscription. */
     var inboxSince: Long
         get() = prefs.getLong("inbox_since", 0L)

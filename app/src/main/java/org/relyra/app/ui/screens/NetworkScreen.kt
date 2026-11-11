@@ -1,5 +1,12 @@
 package org.relyra.app.ui.screens
 
+import android.Manifest
+import android.content.Intent
+import android.os.Build
+import android.provider.Settings
+import android.content.pm.PackageManager
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -25,6 +32,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.LocalContext
+import androidx.core.content.ContextCompat
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -32,6 +41,8 @@ import org.relyra.app.MainViewModel
 import org.relyra.app.R
 import org.relyra.app.core.network.AddRelayResult
 import org.relyra.app.core.network.NearbyLanStatus
+import org.relyra.app.core.network.BluetoothTransportStatus
+import org.relyra.app.core.network.WifiDirectTransportStatus
 import org.relyra.app.core.network.RelayStatus
 import org.relyra.app.core.transfer.ServerStatus
 import org.relyra.app.ui.components.InfoRow
@@ -39,6 +50,7 @@ import org.relyra.app.ui.components.SectionCard
 
 @Composable
 fun NetworkScreen(vm: MainViewModel) {
+    val context = LocalContext.current
     val relays by vm.relays.collectAsStateWithLifecycle()
     val status by vm.relayStatus.collectAsStateWithLifecycle()
     val connected by vm.relayConnected.collectAsStateWithLifecycle()
@@ -46,12 +58,58 @@ fun NetworkScreen(vm: MainViewModel) {
     val nearbyEnabled by vm.nearbyEnabled.collectAsStateWithLifecycle()
     val nearbyPeers by vm.nearbyPeers.collectAsStateWithLifecycle()
     val nearbyStatus by vm.nearbyStatus.collectAsStateWithLifecycle()
+    val bluetoothEnabled by vm.bluetoothEnabled.collectAsStateWithLifecycle()
+    val bluetoothPeers by vm.bluetoothPeers.collectAsStateWithLifecycle()
+    val bluetoothStatus by vm.bluetoothStatus.collectAsStateWithLifecycle()
+    val wifiDirectEnabled by vm.wifiDirectEnabled.collectAsStateWithLifecycle()
+    val wifiDirectPeers by vm.wifiDirectPeers.collectAsStateWithLifecycle()
+    val wifiDirectVerifiedPeers by vm.wifiDirectVerifiedPeers.collectAsStateWithLifecycle()
+    val wifiDirectStatus by vm.wifiDirectStatus.collectAsStateWithLifecycle()
     val fileServers by vm.fileServers.collectAsStateWithLifecycle()
     val fileStatus by vm.fileServerStatus.collectAsStateWithLifecycle()
     var input by rememberSaveable { mutableStateOf("") }
     var error by rememberSaveable { mutableStateOf<Int?>(null) }
     var fileInput by rememberSaveable { mutableStateOf("") }
     var fileError by rememberSaveable { mutableStateOf<Int?>(null) }
+
+    val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> if (granted) vm.setBluetoothEnabled(true) }
+
+    val wifiPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission(),
+    ) { granted -> if (granted) vm.setWifiDirectEnabled(true) }
+
+    fun toggleBluetooth(enabled: Boolean) {
+        if (!enabled) {
+            vm.setBluetoothEnabled(false)
+            return
+        }
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S ||
+            ContextCompat.checkSelfPermission(context, Manifest.permission.BLUETOOTH_CONNECT) == PackageManager.PERMISSION_GRANTED
+        ) {
+            vm.setBluetoothEnabled(true)
+        } else {
+            bluetoothPermissionLauncher.launch(Manifest.permission.BLUETOOTH_CONNECT)
+        }
+    }
+
+    fun toggleWifiDirect(enabled: Boolean) {
+        if (!enabled) {
+            vm.setWifiDirectEnabled(false)
+            return
+        }
+        val permission = if (Build.VERSION.SDK_INT >= 33) {
+            Manifest.permission.NEARBY_WIFI_DEVICES
+        } else {
+            Manifest.permission.ACCESS_FINE_LOCATION
+        }
+        if (ContextCompat.checkSelfPermission(context, permission) == PackageManager.PERMISSION_GRANTED) {
+            vm.setWifiDirectEnabled(true)
+        } else {
+            wifiPermissionLauncher.launch(permission)
+        }
+    }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(16.dp),
@@ -64,6 +122,98 @@ fun NetworkScreen(vm: MainViewModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        SectionCard(stringResource(R.string.net_bt_title)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(stringResource(R.string.net_bt_toggle), modifier = Modifier.weight(1f))
+                Switch(checked = bluetoothEnabled, onCheckedChange = ::toggleBluetooth)
+            }
+            Text(
+                stringResource(R.string.net_bt_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                stringResource(
+                    when (bluetoothStatus) {
+                        BluetoothTransportStatus.Disabled -> R.string.net_bt_status_disabled
+                        BluetoothTransportStatus.PermissionRequired -> R.string.net_bt_status_permission
+                        BluetoothTransportStatus.Unsupported -> R.string.net_bt_status_unsupported
+                        BluetoothTransportStatus.BluetoothOff -> R.string.net_bt_status_off
+                        BluetoothTransportStatus.Listening -> R.string.net_bt_status_listening
+                        BluetoothTransportStatus.Active -> R.string.net_bt_status_active
+                        BluetoothTransportStatus.Failed -> R.string.net_bt_status_failed
+                    }
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(stringResource(R.string.net_bt_verified_count, bluetoothPeers.size))
+            TextButton(
+                onClick = vm::discoverBluetoothPeers,
+                enabled = bluetoothEnabled,
+            ) { Text(stringResource(R.string.net_bt_discover)) }
+            bluetoothPeers.forEach { id ->
+                Text(id, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+            }
+            TextButton(onClick = {
+                runCatching { context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) }
+            }) { Text(stringResource(R.string.net_bt_system_settings)) }
+        }
+
+        SectionCard(stringResource(R.string.net_wifi_direct_title)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(stringResource(R.string.net_wifi_direct_toggle), modifier = Modifier.weight(1f))
+                Switch(checked = wifiDirectEnabled, onCheckedChange = ::toggleWifiDirect)
+            }
+            Text(
+                stringResource(R.string.net_wifi_direct_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                stringResource(
+                    when (wifiDirectStatus) {
+                        WifiDirectTransportStatus.Disabled -> R.string.net_wifi_direct_status_disabled
+                        WifiDirectTransportStatus.PermissionRequired -> R.string.net_wifi_direct_status_permission
+                        WifiDirectTransportStatus.Unsupported -> R.string.net_wifi_direct_status_unsupported
+                        WifiDirectTransportStatus.WifiDirectUnavailable -> R.string.net_wifi_direct_status_unavailable
+                        WifiDirectTransportStatus.Discovering -> R.string.net_wifi_direct_status_discovering
+                        WifiDirectTransportStatus.Connecting -> R.string.net_wifi_direct_status_connecting
+                        WifiDirectTransportStatus.Connected -> R.string.net_wifi_direct_status_connected
+                        WifiDirectTransportStatus.Failed -> R.string.net_wifi_direct_status_failed
+                    }
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            InfoRow(stringResource(R.string.net_wifi_direct_verified), wifiDirectVerifiedPeers.size.toString())
+            wifiDirectVerifiedPeers.forEach { peer ->
+                Text(peer.publicId, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+            }
+            TextButton(onClick = vm::refreshWifiDirectPeers, enabled = wifiDirectEnabled) {
+                Text(stringResource(R.string.net_wifi_direct_refresh))
+            }
+            wifiDirectPeers.forEach { peer ->
+                HorizontalDivider(Modifier.padding(vertical = 4.dp))
+                Text(peer.name.ifBlank { stringResource(R.string.net_wifi_direct_unknown_name) })
+                Text(peer.deviceAddress, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                TextButton(
+                    onClick = { vm.connectWifiDirect(peer.deviceAddress) },
+                    enabled = wifiDirectEnabled,
+                ) {
+                    Text(stringResource(R.string.net_wifi_direct_connect))
+                }
+            }
+        }
+
         SectionCard(stringResource(R.string.net_nearby_title)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),

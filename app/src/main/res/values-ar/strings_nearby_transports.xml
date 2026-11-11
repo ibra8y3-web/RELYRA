@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="net_bt_title">اتصال قريب عبر Bluetooth</string>
+    <string name="net_bt_toggle">تفعيل نقل Bluetooth</string>
+    <string name="net_bt_desc">يستخدم أجهزة Bluetooth Classic المقترنة مسبقًا. اقترن بالأجهزة من إعدادات Bluetooth في أندرويد أولًا. يتحقق RELYRA من هوية جهة الاتصال بتحدٍ موقّع Ed25519 قبل إرسال الرسائل المشفرة. اكتشاف BLE غير متاح.</string>
+    <string name="net_bt_status_disabled">اتصال Bluetooth متوقف.</string>
+    <string name="net_bt_status_permission">يلزم منح إذن Bluetooth.</string>
+    <string name="net_bt_status_unsupported">هذا الجهاز لا يحتوي على محول Bluetooth.</string>
+    <string name="net_bt_status_off">شغّل Bluetooth من إعدادات أندرويد.</string>
+    <string name="net_bt_status_listening">في انتظار جهة اتصال موثوقة ومقترنة تستخدم RELYRA.</string>
+    <string name="net_bt_status_active">تم التحقق من هوية جهاز RELYRA واحد على الأقل عبر Bluetooth.</string>
+    <string name="net_bt_status_failed">تعذر تشغيل اتصال Bluetooth.</string>
+    <string name="net_bt_verified_count">أجهزة RELYRA التي تم التحقق منها: %1$d</string>
+    <string name="net_bt_system_settings">فتح إعدادات Bluetooth في أندرويد</string>
+    <string name="net_bt_discover">البحث عن RELYRA بين الأجهزة المقترنة</string>
+    <string name="net_wifi_direct_title">اتصال Wi-Fi Direct</string>
+    <string name="net_wifi_direct_toggle">تفعيل Wi-Fi Direct</string>
+    <string name="net_wifi_direct_desc">يكتشف أجهزة Wi-Fi Direct القريبة دون الحاجة إلى موجّه. اختر جهازًا لتكوين مجموعة اتصال مباشر. أسماء الأجهزة وعناوينها ليست هويات موثوقة؛ يتحقق RELYRA من جهات الاتصال بتوقيع Ed25519 قبل تبادل البيانات. قد يتطلب أندرويد تفعيل خدمة الموقع في الإصدارات الأقدم.</string>
+    <string name="net_wifi_direct_status_disabled">اتصال Wi-Fi Direct متوقف.</string>
+    <string name="net_wifi_direct_status_permission">يلزم منح إذن الأجهزة القريبة عبر Wi-Fi.</string>
+    <string name="net_wifi_direct_status_unsupported">ميزة Wi-Fi Direct غير مدعومة في هذا الجهاز.</string>
+    <string name="net_wifi_direct_status_unavailable">ميزة Wi-Fi Direct غير متاحة أو متوقفة.</string>
+    <string name="net_wifi_direct_status_discovering">جارٍ البحث عن أجهزة Wi-Fi Direct قريبة.</string>
+    <string name="net_wifi_direct_status_connecting">جارٍ التفاوض لتكوين مجموعة Wi-Fi Direct.</string>
+    <string name="net_wifi_direct_status_connected">تم تكوين مجموعة Wi-Fi Direct. لا تتبادل الرسائل إلا جهات الاتصال التي تم التحقق منها.</string>
+    <string name="net_wifi_direct_status_failed">فشلت عملية Wi-Fi Direct.</string>
+    <string name="net_wifi_direct_verified">أجهزة RELYRA التي تم التحقق منها</string>
+    <string name="net_wifi_direct_refresh">إعادة البحث</string>
+    <string name="net_wifi_direct_unknown_name">جهاز أندرويد بدون اسم</string>
+    <string name="net_wifi_direct_connect">اتصال</string>
+</resources>

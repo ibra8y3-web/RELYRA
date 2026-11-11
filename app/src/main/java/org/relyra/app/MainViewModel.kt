@@ -99,6 +99,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val nearbyEnabled get() = rely.container.network.nearbyEnabled
     val nearbyPeers get() = rely.container.nearby.peers
     val nearbyStatus get() = rely.container.nearby.status
+    val bluetoothEnabled get() = rely.container.network.bluetoothEnabled
+    val bluetoothPeers get() = rely.container.bluetooth.peers
+    val bluetoothStatus get() = rely.container.bluetooth.status
+    val wifiDirectEnabled get() = rely.container.network.wifiDirectEnabled
+    val wifiDirectPeers get() = rely.container.wifiDirect.discovered
+    val wifiDirectVerifiedPeers get() = rely.container.wifiDirect.verified
+    val wifiDirectStatus get() = rely.container.wifiDirect.status
     val fileServers get() = rely.container.blossom.servers
     val fileServerStatus get() = rely.container.blossom.status
     val downloadProgress get() = rely.container.transfers.progress
@@ -133,12 +140,34 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     container.nostr.setIdentity(if (e == null) null else runCatching { container.identities.nostrSecret() }.getOrNull())
                     nostrKey.value = e?.let { runCatching { container.identities.nostrPublicKeyHex() }.getOrNull() }
                     container.nearby.configure(e?.publicId, container.network.nearbyEnabled.value)
+                    val signer: ((ByteArray) -> ByteArray?)? =
+                        if (e == null) null else { bytes -> container.identities.sign(bytes) }
+                    container.bluetooth.configure(
+                        publicId = e?.publicId,
+                        sign = signer,
+                        shouldEnable = container.network.bluetoothEnabled.value,
+                    )
+                    container.wifiDirect.configure(e?.publicId, container.network.wifiDirectEnabled.value)
                 }
             }
             launch {
                 container.network.nearbyEnabled.collect { enabled ->
                     val publicId = container.database.identityDao().get()?.publicId
                     container.nearby.configure(publicId, enabled)
+                }
+            }
+            launch {
+                container.network.bluetoothEnabled.collect { enabled ->
+                    val identity = container.database.identityDao().get()
+                    val signer: ((ByteArray) -> ByteArray?)? =
+                        if (identity == null) null else { bytes -> container.identities.sign(bytes) }
+                    container.bluetooth.configure(identity?.publicId, signer, enabled)
+                }
+            }
+            launch {
+                container.network.wifiDirectEnabled.collect { enabled ->
+                    val publicId = container.database.identityDao().get()?.publicId
+                    container.wifiDirect.configure(publicId, enabled)
                 }
             }
             launch { container.contacts.observeAll().collect { contacts.value = it } }
@@ -390,6 +419,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setRelayEnabled(url: String, enabled: Boolean) = rely.container.network.setEnabled(url, enabled)
     fun testRelay(url: String) = rely.container.network.test(url)
     fun setNearbyEnabled(enabled: Boolean) = ctr().network.setNearbyEnabled(enabled)
+    fun setBluetoothEnabled(enabled: Boolean) = ctr().network.setBluetoothEnabled(enabled)
+    fun discoverBluetoothPeers() = ctr().bluetooth.discoverBondedPeers()
+    fun setWifiDirectEnabled(enabled: Boolean) = ctr().network.setWifiDirectEnabled(enabled)
+    fun refreshWifiDirectPeers() = ctr().wifiDirect.refreshPeers()
+    fun connectWifiDirect(deviceAddress: String) = ctr().wifiDirect.connect(deviceAddress)
 
     // ---- conversation housekeeping ---------------------------------------------------------------------------
 

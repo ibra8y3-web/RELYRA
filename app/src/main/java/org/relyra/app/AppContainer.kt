@@ -20,6 +20,8 @@ import org.relyra.app.core.network.AdaptiveRouter
 import org.relyra.app.core.network.NetworkManager
 import org.relyra.app.core.network.NostrConnector
 import org.relyra.app.core.network.NearbyLanConnector
+import org.relyra.app.core.network.BluetoothConnector
+import org.relyra.app.core.network.WifiDirectConnector
 import org.relyra.app.core.messaging.PeerStatus
 import org.relyra.app.core.storage.SecureStore
 import org.relyra.app.core.transfer.BlossomServers
@@ -88,13 +90,31 @@ class AppContainer(context: Context) {
         NearbyLanConnector(
             context = appContext,
             knownPeer = { id -> contacts.peers.status(id) == PeerStatus.Known },
+            sign = { bytes -> identities.sign(bytes) },
+            onWire = { delivery.acceptWire(it) },
+            scope = netScope,
+        )
+    }
+    val bluetooth by lazy {
+        BluetoothConnector(
+            context = appContext,
+            knownPeer = { id -> contacts.peers.status(id) == PeerStatus.Known },
+            onWire = { delivery.acceptWire(it) },
+            scope = netScope,
+        )
+    }
+    val wifiDirect by lazy {
+        WifiDirectConnector(
+            context = appContext,
+            knownPeer = { id -> contacts.peers.status(id) == PeerStatus.Known },
+            sign = { bytes -> identities.sign(bytes) },
             onWire = { delivery.acceptWire(it) },
             scope = netScope,
         )
     }
     val blossom by lazy { BlossomServers(appContext) }
     val transfers: TransferEngine by lazy { TransferEngine(appContext, blossom, messages, { identities.nostrSecret() }) }
-    val router by lazy { AdaptiveRouter { listOf(nearby, nostr) } }
+    val router by lazy { AdaptiveRouter { listOf(wifiDirect, bluetooth, nearby, nostr) } }
     val transports: List<Transport> by lazy { listOf(router) }
 
     val delivery: DeliveryEngine by lazy {

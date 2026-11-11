@@ -78,6 +78,10 @@ class IdentityRepository(
 
     fun recoveryKey(): String? = secure.loadSeed()?.let { IdentityCrypto.recoveryKey(it) }
 
+    /** Signs transport challenge transcripts with the existing RELYRA Ed25519 identity seed. */
+    fun sign(message: ByteArray): ByteArray? =
+        secure.loadSeed()?.let { IdentityCrypto.sign(it, message) }
+
     suspend fun reset() {
         db.clearAllTables()
         secure.clearSeed()
