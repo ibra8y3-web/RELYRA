@@ -247,7 +247,7 @@ class WebRtcP2pConnector(
         val me = ownId() ?: return null
         val targetId = peerId.trim().lowercase()
         if (IdentityCrypto.parsePublicId(targetId) == null || !knownPeer(targetId)) return null
-        safely {
+        return safely {
             withContext(Dispatchers.IO) {
                 val peer = createPeer(targetId) ?: return@withContext null
                 val init = DataChannel.Init().apply { ordered = true }
@@ -267,7 +267,7 @@ class WebRtcP2pConnector(
         if (!knownPeer(targetId)) return null
         val signal = InternetSignalCodec.decode(encodedOffer, me, targetId) ?: return null
         if (signal.type != "offer") return null
-        safely {
+        return safely {
             withContext(Dispatchers.IO) {
                 val peer = createPeer(targetId) ?: return@withContext null
                 val remote = SessionDescription(SessionDescription.Type.OFFER, signal.sdp)
