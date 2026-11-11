@@ -41,8 +41,6 @@ fun HomeScreen(
     vm: MainViewModel,
     onOpenNetwork: () -> Unit,
     onAddContact: () -> Unit,
-    onOpenTools: () -> Unit,
-    onOpenDiagnostics: () -> Unit,
 ) {
     val identity by vm.identity.collectAsStateWithLifecycle()
     val contacts by vm.contacts.collectAsStateWithLifecycle()
@@ -52,6 +50,10 @@ fun HomeScreen(
     val relays by vm.relays.collectAsStateWithLifecycle()
     val fileServers by vm.fileServers.collectAsStateWithLifecycle()
     val connected by vm.relayConnected.collectAsStateWithLifecycle()
+    val bluetoothEnabled by vm.bluetoothEnabled.collectAsStateWithLifecycle()
+    val wifiDirectEnabled by vm.wifiDirectEnabled.collectAsStateWithLifecycle()
+    val nearbyEnabled by vm.nearbyEnabled.collectAsStateWithLifecycle()
+    val torSettings by vm.torProxySettings.collectAsStateWithLifecycle()
     val notifOn by vm.settings.notifications.collectAsStateWithLifecycle()
     val keep by vm.settings.keepConnected.collectAsStateWithLifecycle()
     var tick by remember { mutableStateOf(0) }
@@ -117,18 +119,15 @@ fun HomeScreen(
             InfoRow(stringResource(R.string.home_keep), stringResource(if (keep) R.string.state_on else R.string.state_off))
             InfoRow(stringResource(R.string.net_transport), stringResource(if (relays.any { it.enabled }) R.string.net_transport_active_short else R.string.net_transport_inactive_short))
             InfoRow(stringResource(R.string.home_file_servers), "${fileServers.count { it.enabled }} / ${fileServers.size}")
-        }
-        SectionCard(stringResource(R.string.tools_title)) {
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.tools_title)) },
-                supportingContent = { Text(stringResource(R.string.tools_desc)) },
-                modifier = Modifier.clickable(onClick = onOpenTools),
-            )
+            InfoRow(stringResource(R.string.home_bluetooth), stringResource(if (bluetoothEnabled) R.string.state_on else R.string.state_off))
+            InfoRow(stringResource(R.string.home_wifi_direct), stringResource(if (wifiDirectEnabled) R.string.state_on else R.string.state_off))
+            InfoRow(stringResource(R.string.home_nearby_lan), stringResource(if (nearbyEnabled) R.string.state_on else R.string.state_off))
+            InfoRow(stringResource(R.string.home_tor), stringResource(if (torSettings.enabled) R.string.state_on else R.string.state_off))
             HorizontalDivider()
             ListItem(
-                headlineContent = { Text(stringResource(R.string.diag_title)) },
-                supportingContent = { Text(stringResource(R.string.diag_desc)) },
-                modifier = Modifier.clickable(onClick = onOpenDiagnostics),
+                headlineContent = { Text(stringResource(R.string.home_manage_network)) },
+                supportingContent = { Text(stringResource(R.string.settings_network_desc)) },
+                modifier = Modifier.clickable(onClick = onOpenNetwork),
             )
         }
         SectionCard(stringResource(R.string.home_build)) {

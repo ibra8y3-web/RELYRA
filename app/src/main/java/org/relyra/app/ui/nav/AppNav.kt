@@ -208,8 +208,6 @@ fun AppNav(
                     vm,
                     onOpenNetwork = { nav.navigate(Routes.NETWORK) },
                     onAddContact = { nav.navigate(Routes.ADD) },
-                    onOpenTools = { nav.navigate(Routes.TOOLS) },
-                    onOpenDiagnostics = { nav.navigate(Routes.DIAG) },
                 )
             }
             composable(Routes.CHATS) {

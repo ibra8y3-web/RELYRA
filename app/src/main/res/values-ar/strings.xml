@@ -140,7 +140,7 @@
     <string name="settings_receipts_desc">دع جهات الاتصال ترى متى قرأت رسائلهم.</string>
     <string name="home_pending">رسائل في انتظار الإرسال</string>
     <string name="net_title">الشبكة</string>
-    <string name="settings_network_desc">مرحّلات Nostr وخوادم الملفات التي تختارها واختبار الاتصال ومفتاح Nostr المشتق من هويتك.</string>
+    <string name="settings_network_desc">إدارة مرحّلات Nostr وخوادم ملفات Blossom وBluetooth Classic وWi-Fi Direct وNearby LAN ومسار Tor SOCKS الاختياري. تعرض كل وسيلة حالة اتصالها الفعلية.</string>
     <string name="home_relays">المرحّلات المفعّلة</string>
     <string name="net_transport">نقل الرسائل</string>
     <string name="net_transport_inactive">لا يوجد مرحّل مفعّل. أضف مرحّلًا وفعّله لتُرسل الرسائل المشفّرة وتُستقبل.</string>
@@ -218,4 +218,10 @@
     <string name="net_nearby_status_searching">جارٍ البحث عن جهات الاتصال المعروفة على الشبكة المحلية…</string>
     <string name="net_nearby_status_active">مسار الاتصال المحلي جاهز.</string>
     <string name="net_nearby_status_failed">تعذر بدء اكتشاف الشبكة المحلية. تحقق من Wi-Fi وقيود الشبكة في Android.</string>
+    <string name="settings_tools_group">الأدوات الشخصية والتشخيص</string>
+    <string name="home_bluetooth">Bluetooth Classic</string>
+    <string name="home_wifi_direct">Wi-Fi Direct</string>
+    <string name="home_nearby_lan">الاتصال المحلي Nearby LAN</string>
+    <string name="home_tor">مسار Tor SOCKS</string>
+    <string name="home_manage_network">إدارة الاتصالات والخدمات</string>
 </resources>
