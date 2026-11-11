@@ -92,6 +92,9 @@ object X3dhRatchetBootstrap {
         val body: ByteArray,
     )
 
+    fun signedPreKeyId(wire: ByteArray): Long? = parse(wire)?.signedPreKeyId
+    fun oneTimePreKeyId(wire: ByteArray): Long? = parse(wire)?.oneTimePreKeyId
+
     private fun parse(wire: ByteArray): Parsed? = try {
         val b = ByteBuffer.wrap(wire)
         if (b.remaining() < 1 + 1 + 1 + 1 + 1 + 8 + 1 + 32 + DoubleRatchet.HEADER_LEN + 4 + MIN_BODY_BYTES) return null
