@@ -2,6 +2,7 @@ package org.relyra.app.core.network
 
 import android.content.Context
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
@@ -240,7 +241,7 @@ class WebRtcP2pConnector(
     suspend fun createOffer(peerId: String): String? {
         val targetId = peerId.trim().lowercase()
         if (ownId() == null || IdentityCrypto.parsePublicId(targetId) == null || !knownPeer(targetId)) return null
-        return runCatching {
+        return safely {
             withContext(Dispatchers.IO) {
                 val peer = createPeer(targetId) ?: return@withContext null
                 val init = DataChannel.Init().apply { ordered = true }
@@ -260,7 +261,7 @@ class WebRtcP2pConnector(
         if (!knownPeer(targetId)) return null
         val signal = InternetSignalCodec.decode(encodedOffer, me, targetId) ?: return null
         if (signal.type != "offer") return null
-        return runCatching {
+        return safely {
             withContext(Dispatchers.IO) {
                 val peer = createPeer(targetId) ?: return@withContext null
                 val remote = SessionDescription(SessionDescription.Type.OFFER, signal.sdp)
@@ -281,10 +282,14 @@ class WebRtcP2pConnector(
         val signal = InternetSignalCodec.decode(encodedAnswer, me, targetId) ?: return false
         if (signal.type != "answer") return false
         val peer = peers[targetId] ?: return false
-        return runCatching {
+        return try {
             setDescription(peer.connection, false, SessionDescription(SessionDescription.Type.ANSWER, signal.sdp))
             true
-        }.getOrDefault(false)
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            false
+        }
     }
 
     override fun isReady(): Boolean = peers.values.any { it.channel?.state() == DataChannel.State.OPEN }
@@ -321,10 +326,26 @@ class WebRtcP2pConnector(
                 if (!buffer.binary || buffer.data.remaining() !in 1..MAX_DATA_CHANNEL_MESSAGE) return
                 val bytes = ByteArray(buffer.data.remaining())
                 buffer.data.get(bytes)
-                scope.launch(Dispatchers.IO) { runCatching { onWire(bytes) } }
+                scope.launch(Dispatchers.IO) {
+                    try {
+                        onWire(bytes)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        false
+                    }
+                }
             }
         })
         states.value = states.value + (peerId to InternetPeerState.CONNECTING)
+    }
+
+    private suspend fun <T> safely(block: suspend () -> T): T? = try {
+        block()
+    } catch (cancelled: CancellationException) {
+        throw cancelled
+    } catch (_: Exception) {
+        null
     }
 
     private suspend fun awaitGathering(peer: Peer) {
