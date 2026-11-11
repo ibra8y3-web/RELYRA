@@ -347,6 +347,7 @@ class WebRtcP2pConnector(
         if (current?.sessionId == signal.sessionId) return false
         val existing = _incomingOffers.value[targetId]
         if (existing?.sessionId == signal.sessionId) return true
+        if (existing == null && _incomingOffers.value.size >= MAX_PENDING_OFFERS) return false
         _incomingOffers.value = _incomingOffers.value + (
             targetId to IncomingP2pOffer(targetId, signal.sessionId, signedOffer, System.currentTimeMillis())
         )
@@ -518,6 +519,7 @@ class WebRtcP2pConnector(
     companion object {
         const val MAX_DATA_CHANNEL_MESSAGE = 64 * 1024
         private const val MAX_PEER_SESSIONS = 12
+        private const val MAX_PENDING_OFFERS = 32
         private const val MAX_BUFFERED_BYTES = 512L * 1024L
         private const val ACK_TIMEOUT_MS = 8_000L
         private const val SDP_CALLBACK_TIMEOUT_MS = 12_000L
