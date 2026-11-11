@@ -69,6 +69,7 @@ class NostrPoolTest {
 
     @Test fun pendingPublishFailsWhenRelayDisconnects() = runBlocking {
         val server = MockWebServer()
+        server.start()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val subscribed = CompletableDeferred<Unit>()
         val listener = object : WebSocketListener() {
