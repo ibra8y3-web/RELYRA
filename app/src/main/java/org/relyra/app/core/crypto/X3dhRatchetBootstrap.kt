@@ -92,6 +92,7 @@ object X3dhRatchetBootstrap {
         val body: ByteArray,
     )
 
+    fun senderId(wire: ByteArray): String? = parse(wire)?.senderId
     fun signedPreKeyId(wire: ByteArray): Long? = parse(wire)?.signedPreKeyId
     fun oneTimePreKeyId(wire: ByteArray): Long? = parse(wire)?.oneTimePreKeyId
 
