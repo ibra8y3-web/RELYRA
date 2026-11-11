@@ -23,7 +23,7 @@ object WebRtcFrameCodec {
 
     fun encodeMessage(payload: ByteArray): ByteBuffer? {
         if (payload.isEmpty() || payload.size > WebRtcP2pConnector.MAX_DATA_CHANNEL_MESSAGE - HEADER_BYTES) return null
-        val digest = sha256(payload)
+        val digest = digestPayload(payload)
         return ByteBuffer.allocate(HEADER_BYTES + payload.size)
             .putInt(MAGIC)
             .put(TYPE_MESSAGE)
@@ -38,7 +38,7 @@ object WebRtcFrameCodec {
             .putInt(MAGIC)
             .put(TYPE_ACK)
             .put(digest)
-            .put(if (accepted) 1 else 0)
+            .put((if (accepted) 1 else 0).toByte())
             .flip()
     }
 
@@ -66,8 +66,9 @@ object WebRtcFrameCodec {
         }
     }
 
-    fun digestKey(digest: ByteArray): String = digest.joinToString("") { "%02x".format(it) }
+    fun digestPayload(payload: ByteArray): ByteArray =
+        MessageDigest.getInstance("SHA-256").digest(payload)
 
-    private fun sha256(bytes: ByteArray): ByteArray =
-        MessageDigest.getInstance("SHA-256").digest(bytes)
+    fun digestKey(digest: ByteArray): String =
+        digest.joinToString("") { "%02x".format(it.toInt() and 0xff) }
 }
