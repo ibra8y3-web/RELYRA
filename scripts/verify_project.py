@@ -42,11 +42,19 @@ def placeholder_signature(value: str) -> tuple[str, ...]:
     return ()
 
 
+def merged_string_resources(directory: Path) -> dict[str, str]:
+    merged: dict[str, str] = {}
+    for path in sorted(directory.glob("*.xml")):
+        for key, value in string_resources(path).items():
+            if key in merged:
+                fail(f"{path.relative_to(ROOT)}: duplicate string resource: {key}")
+            merged[key] = value
+    return merged
+
+
 def check_translations() -> None:
-    english_path = ROOT / "app/src/main/res/values/strings.xml"
-    arabic_path = ROOT / "app/src/main/res/values-ar/strings.xml"
-    english = string_resources(english_path)
-    arabic = string_resources(arabic_path)
+    english = merged_string_resources(ROOT / "app/src/main/res/values")
+    arabic = merged_string_resources(ROOT / "app/src/main/res/values-ar")
 
     missing_ar = sorted(set(english) - set(arabic))
     missing_en = sorted(set(arabic) - set(english))
@@ -121,8 +129,8 @@ def main() -> int:
             print(f" - {error}")
         return 1
 
-    en = string_resources(ROOT / "app/src/main/res/values/strings.xml")
-    ar = string_resources(ROOT / "app/src/main/res/values-ar/strings.xml")
+    en = merged_string_resources(ROOT / "app/src/main/res/values")
+    ar = merged_string_resources(ROOT / "app/src/main/res/values-ar")
     svg_count = len(list((ROOT / "docs/assets").glob("*.svg")))
     print(f"RELYRA validation passed: {len(en)} English strings, {len(ar)} Arabic strings, {svg_count} SVG assets, local documentation links.")
     return 0

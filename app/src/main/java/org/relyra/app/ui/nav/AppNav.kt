@@ -37,6 +37,8 @@ import org.relyra.app.R
 import org.relyra.app.ui.components.rememberMessageHost
 import org.relyra.app.ui.screens.AddContactScreen
 import org.relyra.app.ui.screens.ChatScreen
+import org.relyra.app.ui.screens.BrowserScreen
+import org.relyra.app.ui.screens.PdfReaderScreen
 import org.relyra.app.ui.screens.ChatsScreen
 import org.relyra.app.ui.screens.CreateGroupScreen
 import org.relyra.app.ui.screens.DiagnosticsScreen
@@ -71,6 +73,8 @@ private object Routes {
     const val DIAG = "settings/diagnostics"
     const val SHARE = "share"
     const val VAULT = "settings/vault"
+    const val BROWSER = "settings/browser"
+    const val PDF = "settings/pdf"
 }
 
 private class Tab(val route: String, @StringRes val label: Int, val icon: ImageVector)
@@ -100,6 +104,8 @@ private fun titleFor(route: String): Int = when (route) {
     Routes.DIAG -> R.string.diag_title
     Routes.SHARE -> R.string.share_title
     Routes.VAULT -> R.string.vault_title
+    Routes.BROWSER -> R.string.browser_title
+    Routes.PDF -> R.string.pdf_title
     else -> R.string.app_name
 }
 
@@ -230,7 +236,7 @@ fun AppNav(
             composable(Routes.CHAT) { entry -> ChatScreen(vm, entry.arguments?.getString("id") ?: "") }
             composable(Routes.CONTACTS) { ContactsScreen(vm, onAdd = { nav.navigate(Routes.ADD) }) }
             composable(Routes.IDENTITY) { IdentityScreen(vm, onRecovery = { nav.navigate(Routes.RECOVERY) }) }
-            composable(Routes.SETTINGS) { SettingsScreen(vm, authenticate, onOpenLog = { nav.navigate(Routes.LOG) }, onOpenNetwork = { nav.navigate(Routes.NETWORK) }, onOpenTools = { nav.navigate(Routes.TOOLS) }, onOpenDiagnostics = { nav.navigate(Routes.DIAG) }, onOpenVault = { nav.navigate(Routes.VAULT) }) }
+            composable(Routes.SETTINGS) { SettingsScreen(vm, authenticate, onOpenLog = { nav.navigate(Routes.LOG) }, onOpenNetwork = { nav.navigate(Routes.NETWORK) }, onOpenTools = { nav.navigate(Routes.TOOLS) }, onOpenDiagnostics = { nav.navigate(Routes.DIAG) }, onOpenVault = { nav.navigate(Routes.VAULT) }, onOpenBrowser = { nav.navigate(Routes.BROWSER) }, onOpenPdfReader = { nav.navigate(Routes.PDF) }) }
             composable(Routes.ADD) { AddContactScreen(vm, onDone = { nav.popBackStack() }) }
             composable(Routes.RECOVERY) { RecoveryScreen(vm, authenticate, onDone = { nav.popBackStack() }) }
             composable(Routes.LOG) { LogScreen(vm) }
@@ -238,6 +244,8 @@ fun AppNav(
             composable(Routes.TOOLS) { ToolsScreen(vm) }
             composable(Routes.DIAG) { DiagnosticsScreen(vm) }
             composable(Routes.VAULT) { VaultScreen(vm, authenticate) }
+            composable(Routes.BROWSER) { BrowserScreen() }
+            composable(Routes.PDF) { PdfReaderScreen() }
             composable(Routes.SHARE) {
                 ShareScreen(vm, onDone = { id ->
                     nav.popBackStack()
