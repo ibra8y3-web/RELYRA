@@ -24,22 +24,24 @@ object WebRtcFrameCodec {
     fun encodeMessage(payload: ByteArray): ByteBuffer? {
         if (payload.isEmpty() || payload.size > WebRtcP2pConnector.MAX_DATA_CHANNEL_MESSAGE - HEADER_BYTES) return null
         val digest = digestPayload(payload)
-        return ByteBuffer.allocate(HEADER_BYTES + payload.size)
-            .putInt(MAGIC)
-            .put(TYPE_MESSAGE)
-            .put(digest)
-            .put(payload)
-            .flip()
+        val buffer = ByteBuffer.allocate(HEADER_BYTES + payload.size)
+        buffer.putInt(MAGIC)
+        buffer.put(TYPE_MESSAGE)
+        buffer.put(digest)
+        buffer.put(payload)
+        buffer.flip()
+        return buffer
     }
 
     fun encodeAck(digest: ByteArray, accepted: Boolean): ByteBuffer? {
         if (digest.size != 32) return null
-        return ByteBuffer.allocate(ACK_BYTES)
-            .putInt(MAGIC)
-            .put(TYPE_ACK)
-            .put(digest)
-            .put((if (accepted) 1 else 0).toByte())
-            .flip()
+        val buffer = ByteBuffer.allocate(ACK_BYTES)
+        buffer.putInt(MAGIC)
+        buffer.put(TYPE_ACK)
+        buffer.put(digest)
+        buffer.put((if (accepted) 1 else 0).toByte())
+        buffer.flip()
+        return buffer
     }
 
     fun decode(source: ByteBuffer): Frame? {

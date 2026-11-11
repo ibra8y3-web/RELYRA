@@ -247,7 +247,7 @@ class WebRtcP2pConnector(
         val me = ownId() ?: return null
         val targetId = peerId.trim().lowercase()
         if (IdentityCrypto.parsePublicId(targetId) == null || !knownPeer(targetId)) return null
-        return safely {
+        safely {
             withContext(Dispatchers.IO) {
                 val peer = createPeer(targetId) ?: return@withContext null
                 val init = DataChannel.Init().apply { ordered = true }
@@ -258,7 +258,7 @@ class WebRtcP2pConnector(
                 val local = peer.connection.localDescription?.description ?: return@withContext null
                 InternetSignalCodec.encode(me, targetId, "offer", local, System.currentTimeMillis() / 1000, sign)
             }
-        }.getOrNull()
+        }
     }
 
     suspend fun acceptOffer(peerId: String, encodedOffer: String): String? {
@@ -267,7 +267,7 @@ class WebRtcP2pConnector(
         if (!knownPeer(targetId)) return null
         val signal = InternetSignalCodec.decode(encodedOffer, me, targetId) ?: return null
         if (signal.type != "offer") return null
-        return safely {
+        safely {
             withContext(Dispatchers.IO) {
                 val peer = createPeer(targetId) ?: return@withContext null
                 val remote = SessionDescription(SessionDescription.Type.OFFER, signal.sdp)
@@ -278,7 +278,7 @@ class WebRtcP2pConnector(
                 val local = peer.connection.localDescription?.description ?: return@withContext null
                 InternetSignalCodec.encode(me, targetId, "answer", local, System.currentTimeMillis() / 1000, sign)
             }
-        }.getOrNull()
+        }
     }
 
     suspend fun acceptAnswer(peerId: String, encodedAnswer: String): Boolean {
