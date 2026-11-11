@@ -26,7 +26,7 @@ class PreKeyRepository(private val db: AppDatabase, private val secure: SecureSt
             it.expiresAt > nowSeconds && secure.loadPreKeyPrivate(it.keyId) != null
         }.maxByOrNull { it.expiresAt }
         if (signed == null) {
-            dao.byKind("SIGNED").filter { it.expiresAt < nowSeconds - SIGNED_KEY_GRACE_SECONDS }.forEach {
+            dao.byKind("SIGNED").filter { it.expiresAt < nowSeconds - SIGNED_KEY_GRACE_SECONDS || secure.loadPreKeyPrivate(it.keyId) == null }.forEach {
                 secure.deletePreKeyPrivate(it.keyId)
                 dao.delete(it.keyId)
             }
