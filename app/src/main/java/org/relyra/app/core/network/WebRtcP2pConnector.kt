@@ -66,8 +66,8 @@ data class IncomingP2pOffer(
 )
 
 /**
- * Signed, short-lived out-of-band WebRTC signaling envelope.
- * The SDP is shared only with the intended contact; it can contain network addresses.
+ * Signed, short-lived WebRTC signaling envelope. For automatic rendezvous it is carried inside
+ * RELYRA's end-to-end encrypted control envelope; manual fallback text still needs a private channel.
  */
 object InternetSignalCodec {
     private const val DOMAIN = "RELYRA-WEBRTC-SIGNAL-V1"
@@ -166,9 +166,9 @@ object InternetSignalCodec {
 /**
  * Direct Internet transport backed by WebRTC DataChannels (ICE/STUN/TURN + DTLS).
  *
- * Signaling is intentionally out-of-band in this first integration: exchange the signed offer/answer
- * strings privately with the intended contact. RELYRA message bytes remain end-to-end encrypted before
- * entering the DataChannel. TURN is supported when the user supplies a TURN URI and credentials.
+ * Signed offers and answers are delivered in RELYRA E2EE control envelopes over an enabled route.
+ * Incoming offers require explicit user approval. RELYRA message bytes remain end-to-end encrypted
+ * before entering the DataChannel. TURN is supported when the user supplies a TURN URI and credentials.
  */
 class WebRtcP2pConnector(
     context: Context,
