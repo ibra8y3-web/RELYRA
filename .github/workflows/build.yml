@@ -33,7 +33,7 @@ jobs:
         run: gradle --no-daemon assembleDebug
 
       - name: Upload APK
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: relyra-debug-apk
           path: app/build/outputs/apk/debug/*.apk
@@ -43,7 +43,7 @@ jobs:
 
       - name: Upload test reports
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: relyra-test-reports
           path: app/build/reports/tests/
