@@ -44,12 +44,12 @@ Implemented in source:
 - Android WebRTC DataChannel transport using ICE connectivity checks and default STUN servers.
 - Optional user-supplied TURN URI and credentials for networks that require relay candidates.
 - Signed, recipient-bound, ten-minute offer/answer envelopes using RELYRA Ed25519 identities.
-- Manual offer/answer exchange in Network settings; existing known-contact checks are required.
+- Signed offers/answers are exchanged automatically inside E2EE RELYRA control envelopes over an enabled Nostr route; manual copy/paste remains fallback. Existing known-contact checks are required.
 - Binary encrypted DeliveryEngine payloads pass through the DataChannel; AdaptiveRouter prefers a connected direct path and retains Nostr fallback.
 - DataChannel frame size is bounded and larger attachments remain on the Blossom path.
 
 Still missing before Priority 2 can be declared complete:
-- Automatic private signaling/rendezvous; current SDP offer/answer exchange is manual.
+- No automatic Internet DHT or unknown-peer discovery; signaling uses known contacts and the user's enabled Nostr relay route.
 - Public Internet peer discovery / DHT.
 - Project-operated TURN service, short-lived credentials and operational abuse controls.
 - Automatic ICE restart after network changes and full disconnect-mid-send delivery regression tests.
