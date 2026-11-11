@@ -68,25 +68,26 @@ class BlossomClient(base: OkHttpClient = Http.client) {
             if (!sha256Hex.matches(Regex("(?i)[0-9a-f]{64}"))) {
                 return@withContext BlossomUpload.Rejected("invalid SHA-256")
             }
+            val normalizedHash = sha256Hex.lowercase()
             if (!file.isFile || !file.canRead()) {
                 return@withContext BlossomUpload.Rejected("encrypted file is missing or unreadable")
             }
             val actualHash = try { Hex.encode(FileCrypto.sha256(file)) } catch (_: IOException) {
                 return@withContext BlossomUpload.Unavailable
             }
-            if (!actualHash.equals(sha256Hex, ignoreCase = true)) {
+            if (!actualHash.equals(normalizedHash, ignoreCase = true)) {
                 return@withContext BlossomUpload.Rejected("encrypted file changed after it was prepared")
             }
             val auth = NostrEvents.create(
                 secret, AUTH_KIND,
-                listOf(listOf("t", "upload"), listOf("x", sha256Hex), listOf("expiration", (nowSeconds + 600).toString())),
+                listOf(listOf("t", "upload"), listOf("x", normalizedHash), listOf("expiration", (nowSeconds + 600).toString())),
                 "Upload", nowSeconds,
             )
             val header = "Nostr " + Base64.getEncoder().encodeToString(
                 NostrEvents.toJson(auth).toByteArray(Charsets.UTF_8),
             )
             try {
-                when (val check = preflight(server, file, sha256Hex, header)) {
+                when (val check = preflight(server, file, normalizedHash, header)) {
                     is Preflight.Rejected -> return@withContext BlossomUpload.Rejected(check.reason)
                     Preflight.Unavailable -> return@withContext BlossomUpload.Unavailable
                     Preflight.Accepted, Preflight.Unsupported -> Unit
@@ -95,10 +96,10 @@ class BlossomClient(base: OkHttpClient = Http.client) {
                     .url("$server/upload")
                     .put(file.asRequestBody("application/octet-stream".toMediaType()))
                     .header("Authorization", header)
-                    .header("X-SHA-256", sha256Hex.lowercase())
+                    .header("X-SHA-256", normalizedHash)
                     .build()
                 http.newCall(request).await().use { resp ->
-                    classifyUpload(resp, sha256Hex, file.length(), server)
+                    classifyUpload(resp, normalizedHash, file.length(), server)
                 }
             } catch (_: IOException) {
                 BlossomUpload.Unavailable
