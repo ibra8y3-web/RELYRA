@@ -33,6 +33,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import org.relyra.app.R
@@ -75,9 +76,9 @@ fun PdfReaderScreen() {
                         if (renderer.pageCount <= 0) throw IllegalStateException("The PDF has no pages")
                         val safeIndex = pageIndex.coerceIn(0, renderer.pageCount - 1)
                         renderer.openPage(safeIndex).use { page ->
-                            val scale = minOf(1.5f, 1800f / page.width, 2400f / page.height).coerceAtLeast(0.25f)
-                            val width = (page.width * scale).toInt().coerceAtLeast(1)
-                            val height = (page.height * scale).toInt().coerceAtLeast(1)
+                            val scale = minOf(1.5f, 1800f / page.width.toFloat(), 2400f / page.height.toFloat())
+                            val width = (page.width * scale).toInt().coerceIn(1, 1_800)
+                            val height = (page.height * scale).toInt().coerceIn(1, 2_400)
                             val bitmap = Bitmap.createBitmap(width, height, Bitmap.Config.ARGB_8888)
                             bitmap.eraseColor(android.graphics.Color.WHITE)
                             page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
@@ -85,6 +86,8 @@ fun PdfReaderScreen() {
                         }
                     }
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 PdfRenderState.Failed(e.message ?: e.javaClass.simpleName)
             }
