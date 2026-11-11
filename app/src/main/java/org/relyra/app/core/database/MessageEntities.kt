@@ -19,13 +19,14 @@ data class MessageEntity(
     val attempts: Int,
     val nextAttemptAt: Long,
     val readLocally: Boolean,
+    val wirePayload: ByteArray? = null,
 ) {
     fun toModel() = StoredMessage(messageId, chatId, outgoing, body, createdAt,
-        MessageState.valueOf(state), attempts, nextAttemptAt, readLocally)
+        MessageState.valueOf(state), attempts, nextAttemptAt, readLocally, wirePayload)
 }
 
 fun StoredMessage.toEntity() = MessageEntity(messageId, chatId, outgoing, body, createdAt,
-    state.name, attempts, nextAttemptAt, readLocally)
+    state.name, attempts, nextAttemptAt, readLocally, wirePayload)
 
 /** IDs of every message ever received. Kept even if the message is deleted, so a replay is never re-saved. */
 @Entity(tableName = "processed_ids")
