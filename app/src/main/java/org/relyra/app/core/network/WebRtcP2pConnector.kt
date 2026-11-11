@@ -306,11 +306,7 @@ class WebRtcP2pConnector(
         val frame = WebRtcFrameCodec.encodeMessage(payload) ?: return SendOutcome.Unavailable
         if (channel.bufferedAmount() > MAX_BUFFERED_BYTES - frame.remaining()) return SendOutcome.Unavailable
 
-        val digest = WebRtcFrameCodec.digestKey(
-            WebRtcFrameCodec.decode(frame.duplicate())?.let {
-                (it as? WebRtcFrameCodec.Frame.Message)?.digest
-            } ?: return SendOutcome.Unavailable
-        )
+        val digest = WebRtcFrameCodec.digestKey(WebRtcFrameCodec.digestPayload(payload))
         val ackKey = "$toPeer:$digest"
         val candidate = CompletableDeferred<Boolean>()
         val waiter = pendingAcks.putIfAbsent(ackKey, candidate) ?: candidate
