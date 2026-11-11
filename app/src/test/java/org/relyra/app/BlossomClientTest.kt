@@ -47,7 +47,7 @@ class BlossomClientTest {
         val data = Random(3).nextBytes(5000)
         val file = tmp().also { it.writeBytes(data) }
         val hex = Hex.encode(sha(data))
-        server.enqueue(MockResponse().setResponseCode(204)) // BUD-06 preflight accepted
+        server.enqueue(MockResponse().setResponseCode(200)) // BUD-06 preflight accepted
         server.enqueue(MockResponse().setResponseCode(201).setBody(descriptor(hex, data.size)))
 
         val result = client.upload(base(), file, hex, NostrCrypto.randomSecret(), 1_700_000_000)
