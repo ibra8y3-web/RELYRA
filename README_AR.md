@@ -88,7 +88,7 @@ Nostr هي وسيلة نقل الرسائل المسجلة حاليًا. الع�
 
 ## البناء من المصدر
 
-**المتطلبات:** Android SDK Platform 35 وBuild Tools 35.0.0 وJDK 17 وGradle 8.10.2. المستودع لا يحتوي حاليًا على Gradle Wrapper.
+**المتطلبات:** Android SDK Platform 35 وBuild Tools 35.0.0 وJDK 17 وGradle 9.6.0. المستودع لا يحتوي حاليًا على Gradle Wrapper.
 
 نفّذ من مجلد المشروع:
 

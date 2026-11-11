@@ -19,7 +19,7 @@
 |:--|:--|:--|
 | Local identity and encrypted storage | Nostr over user-managed WSS relays | Kotlin · Jetpack Compose |
 | Direct messages and groups | Encrypted payloads before transport | Android 10+ · JDK 17 |
-| Encrypted attachments and local vault | Blossom for file blobs | Gradle 8.10.2 · CI workflow |
+| Encrypted attachments and local vault | Blossom for file blobs | Gradle 9.6.0 · CI workflow |
 
 ## What is RELYRA?
 
@@ -103,7 +103,7 @@ Other limits: Android may defer background work due to battery policy or force-s
 
 ## Build from source
 
-**Requirements:** Android SDK Platform 35, Build Tools 35.0.0, JDK 17 and Gradle 8.10.2. The repository does not currently include a Gradle Wrapper.
+**Requirements:** Android SDK Platform 35, Build Tools 35.0.0, JDK 17 and Gradle 9.6.0. The repository does not currently include a Gradle Wrapper.
 
 Run from the repository root:
 
