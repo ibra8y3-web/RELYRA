@@ -12,7 +12,7 @@
 <p align="center"><strong>Private by design. Connected by choice.</strong></p>
 <p align="center">An Android communication project built around local identity, end-to-end encrypted messaging, and user-controlled network relays.</p>
 
-> **Current implementation:** Version 0.9.0. The active message paths are opt-in Nearby LAN for known contacts on the same local network, plus Nostr over user-configured secure WebSocket relays (WSS). The diagrams below separate working paths from planned capabilities. They are system illustrations, not screenshots of the running app.
+> **Current implementation:** Version 0.9.0. Opt-in nearby paths include Bluetooth Classic for already-paired devices, Wi-Fi Direct, and Nearby LAN for known contacts. Nostr over user-configured secure WebSocket relays (WSS) remains the Internet relay/fallback path. Internet-wide libp2p and NAT traversal are not implemented. The diagrams below separate working paths from planned capabilities.
 
 ## At a glance
 
@@ -36,11 +36,11 @@ The current source includes local identity, SQLCipher storage, direct conversati
 | **Local security** | Room + SQLCipher; database key protected with Android Keystore; biometric/device-credential lock |
 | **Direct messages** | Persistent outbox, acknowledgements, delivery states, retries, backoff and duplicate suppression |
 | **Message encryption** | X25519/HKDF/AES-GCM and one-to-one Double Ratchet sessions |
-| **Network** | User-added WSS relays, Nostr event signing/verification, relay probing, inbox subscription and reconnect |
+| **Network** | User-added WSS relays plus opt-in Bluetooth Classic, Wi-Fi Direct and Nearby LAN for nearby known contacts |
 | **Groups / channels** | Membership roles and per-member message delivery using individual sessions |
 | **File transfer** | Client-side encrypted files over user-configured Blossom-compatible servers |
 | **Background work** | WorkManager retries and optional visible foreground connection service (subject to Android restrictions) |
-| **On-device tools** | Hashes, hex/strings inspection, MIME detection, EXIF, archive inspection and APK metadata |
+| **On-device tools** | Hashes, hex/strings inspection, MIME detection, EXIF, archive inspection, APK metadata, a restricted WebView and a read-only PDF reader |
 | **Diagnostics and resources** | Relay/server tests, database integrity, battery and memory, live app CPU and per-app RX/TX rates, filesystem availability and redacted report |
 | **Backup / vault** | Passphrase-protected database backup/restore and encrypted local file vault |
 | **UI** | Arabic RTL and English; light, dark and AMOLED themes |
@@ -61,22 +61,24 @@ Nostr is the registered messaging transport in this build. Dashed/grey nodes are
 
 <p align="center"><img src="docs/assets/relyra-message-flow.svg" alt="RELYRA message and encrypted file flow" width="100%"></p>
 
-Read the [Architecture guide](docs/ARCHITECTURE.md) and [Networking guide](docs/NETWORKING.md) for implementation detail.
+Read the [Architecture guide](docs/ARCHITECTURE.md), [Networking guide](docs/NETWORKING.md) and [Nearby transport notes](docs/NEARBY_TRANSPORTS.md) for implementation detail.
 
 ## How a message travels
 
 1. Create a fresh message ID and persist the outgoing message in the encrypted outbox.
 2. Encrypt the payload for the recipient.
-3. Select a ready registered transport. Nostr is the active connector in this source.
-4. Sign a Nostr event and publish it to the user's enabled WSS relays.
+3. Select a ready registered transport in this order: Wi-Fi Direct, Bluetooth Classic, Nearby LAN, then Nostr.
+4. A nearby connector authenticates the other device with a mutual Ed25519 challenge and transfers only the end-to-end encrypted payload; Nostr signs an event and publishes it to enabled WSS relays.
 5. The recipient verifies, decrypts and stores the message before acknowledging it.
 6. Automatic retries reuse the same message ID; a new user send gets a new ID.
 
 **Attachments use a separate path:** encrypt the file locally, upload only ciphertext to a configured Blossom server, then send the file descriptor inside the end-to-end encrypted message. Downloads are manual and verified before use.
 
-## Nearby LAN discovery
+## Nearby transports
 
-The optional local transport can work without Internet when two devices share the same Wi-Fi network or local hotspot. It is off by default. Enabling it advertises your public RELYRA contact ID on that local network and only accepts discovery matches for contacts already in your address book. Use it only on a network you trust. This is not Bluetooth, Wi-Fi Direct or Internet P2P.
+Bluetooth Classic, Wi-Fi Direct and Nearby LAN are optional and off by default. Bluetooth requires the phones to be paired first in Android Settings. Wi-Fi Direct requires the user to choose a discovered device and form a Wi-Fi P2P group. Nearby LAN requires both phones to share a Wi-Fi network or local hotspot. All three verify the RELYRA Ed25519 identity against an existing contact before accepting an encrypted message.
+
+These transports are for nearby devices only. They do not provide Internet P2P, multi-hop mesh or Store & Forward through third-party phones. The public RELYRA ID is visible on a local network when Nearby LAN is enabled; use it only on a trusted network. See [Nearby transport details](docs/NEARBY_TRANSPORTS.md).
 
 ## Security and privacy
 
@@ -93,18 +95,18 @@ The optional local transport can work without Internet when two devices share th
 The following are **not** present in the current build:
 
 - Internet P2P across separate networks, libp2p and ICE/STUN/TURN traversal.
-- Tor routing, Bluetooth mesh and Wi-Fi Direct. Nearby LAN is not Wi-Fi Direct.
+- Tor routing/Strict Mode, Bluetooth Low Energy mesh and third-party multi-hop Store & Forward. Bluetooth Classic and Wi-Fi Direct nearby transports are present, but are not Internet P2P.
 - MLS group encryption. Current group messages are encrypted separately for each member using one-to-one sessions.
 - Group file attachments and group read receipts.
 - Communities, public group discovery and a RELYRA-operated relay/node network.
 - Voice/video calls and multi-device synchronization.
-- Matrix/XMPP interoperability, plugin runtime, Local API, browser, PDF reader and Server Studio.
+- Matrix/XMPP interoperability, multi-device sync, plugin runtime, Local API, Server Studio, Desktop/Node tools and Developer Studio. The current WebView is restricted and the PDF reader is read-only; neither is a full browser or document editor.
 
 Other limits: Android may defer background work due to battery policy or force-stop; backups exclude downloaded attachments, vault files and relay/file-server settings; restoring an older ratchet snapshot can affect conversations that continued after backup creation. See [Networking](docs/NETWORKING.md) and [Roadmap](docs/ROADMAP.md).
 
 ## Build from source
 
-**Requirements:** Android SDK Platform 35, Build Tools 35.0.0, JDK 17 and Gradle 9.6.0. The repository does not currently include a Gradle Wrapper.
+**Requirements:** Android SDK Platform 37.0, Build Tools 37.0.0, JDK 17 and Gradle 9.6.0. The repository does not currently include a Gradle Wrapper.
 
 Run from the repository root:
 
@@ -132,7 +134,7 @@ app/src/main/java/org/relyra/app/
 │   ├── diagnostics/  Device and application diagnostics
 │   ├── identity/     Identity and contact repositories
 │   ├── messaging/    Delivery engine, envelopes and groups
-│   ├── network/      Nostr protocol, relay clients and adaptive router
+│   ├── network/      Nostr, local LAN, Bluetooth Classic, Wi-Fi Direct and adaptive router
 │   ├── notify/       Message notifications
 │   ├── storage/      Private attachment storage
 │   ├── tools/        On-device file inspection tools
