@@ -3,7 +3,12 @@ package org.relyra.app.core.crypto
 import com.google.crypto.tink.subtle.Hkdf
 import com.google.crypto.tink.subtle.X25519
 import java.nio.ByteBuffer
-import java.security.GeneralSecurityException
+import java.io.ByteArrayOutputStream
+import java.io.DataOutputStream
+import java.io.DataInputStream
+import java.io.ByteArrayInputStream
+import java.io.IOException
+import java.security.SecureRandom
 
 /**
  * X3DH primitives for RELYRA's asynchronous session bootstrap.
@@ -27,6 +32,7 @@ object X3dh {
         val signedPreKeySignature: ByteArray,
         val oneTimePreKeyId: Long? = null,
         val oneTimePreKey: ByteArray? = null,
+        val oneTimePreKeys: List<OneTimePublicPreKey> = emptyList(),
     )
 
     data class SignedPreKey(
@@ -38,6 +44,7 @@ object X3dh {
     )
 
     data class OneTimePreKey(val id: Long, val privateKey: ByteArray, val publicKey: ByteArray)
+    data class OneTimePublicPreKey(val id: Long, val publicKey: ByteArray)
 
     data class Initiator(
         val sharedSecret: ByteArray,
@@ -80,10 +87,13 @@ object X3dh {
         identityDhKey: ByteArray,
         signed: SignedPreKey,
         oneTime: OneTimePreKey? = null,
+        oneTimes: List<OneTimePreKey> = listOfNotNull(oneTime),
     ) = PreKeyBundle(
         identityId, identitySigningKey.copyOf(), identityDhKey.copyOf(),
         signed.id, signed.publicKey.copyOf(), signed.expiresAt, signed.signature.copyOf(),
-        oneTime?.id, oneTime?.publicKey?.copyOf(),
+        oneTime?.id ?: oneTimes.firstOrNull()?.id,
+        oneTime?.publicKey?.copyOf() ?: oneTimes.firstOrNull()?.publicKey?.copyOf(),
+        oneTimes.map { OneTimePublicPreKey(it.id, it.publicKey.copyOf()) },
     )
 
     fun verifyBundle(bundle: PreKeyBundle, nowSeconds: Long): Boolean {
@@ -95,6 +105,10 @@ object X3dh {
         if ((bundle.oneTimePreKeyId == null) != (bundle.oneTimePreKey == null)) return false
         if (bundle.oneTimePreKeyId != null &&
             (bundle.oneTimePreKeyId < 0 || bundle.oneTimePreKey?.size != 32)) return false
+        val oneTimes = if (bundle.oneTimePreKeys.isNotEmpty()) bundle.oneTimePreKeys else
+            listOfNotNull(bundle.oneTimePreKeyId?.let { OneTimePublicPreKey(it, bundle.oneTimePreKey!!) })
+        if (oneTimes.size > 100 || oneTimes.map { it.id }.distinct().size != oneTimes.size ||
+            oneTimes.any { it.id < 0 || it.publicKey.size != 32 }) return false
         if (IdentityCrypto.publicId(bundle.identitySigningKey) != bundle.identityId) return false
         return IdentityCrypto.verify(
             bundle.identitySigningKey,
@@ -116,10 +130,13 @@ object X3dh {
         val dh1 = X25519.computeSharedSecret(identityDhPrivate, peer.signedPreKey)
         val dh2 = X25519.computeSharedSecret(ephemeralPrivate, peer.identityDhKey)
         val dh3 = X25519.computeSharedSecret(ephemeralPrivate, peer.signedPreKey)
-        val dh4 = peer.oneTimePreKey?.let { X25519.computeSharedSecret(ephemeralPrivate, it) }
+        val oneTimes = if (peer.oneTimePreKeys.isNotEmpty()) peer.oneTimePreKeys else
+            listOfNotNull(peer.oneTimePreKeyId?.let { OneTimePublicPreKey(it, peer.oneTimePreKey!!) })
+        val selected = oneTimes.takeIf { it.isNotEmpty() }?.let { it[SecureRandom().nextInt(it.size)] }
+        val dh4 = selected?.let { X25519.computeSharedSecret(ephemeralPrivate, it.publicKey) }
         return Initiator(
             derive(dh1, dh2, dh3, dh4), ephemeralPrivate.copyOf(), ephemeralPublic,
-            peer.signedPreKeyId, peer.oneTimePreKeyId,
+            peer.signedPreKeyId, selected?.id,
         )
     }
 
@@ -146,6 +163,40 @@ object X3dh {
     private fun derive(dh1: ByteArray, dh2: ByteArray, dh3: ByteArray, dh4: ByteArray?): ByteArray {
         val material = ByteArray(32) { 0xFF.toByte() } + dh1 + dh2 + dh3 + (dh4 ?: ByteArray(0))
         return Hkdf.computeHkdf("HmacSha256", material, ByteArray(32), INFO, 32)
+    }
+
+    /** Stable binary encoding for the public one-time prekey list stored with a contact. */
+    fun encodeOneTimePreKeys(keys: List<OneTimePublicPreKey>): ByteArray {
+        require(keys.size <= 100 && keys.map { it.id }.distinct().size == keys.size)
+        val out = ByteArrayOutputStream()
+        DataOutputStream(out).use { d ->
+            d.writeInt(keys.size)
+            keys.forEach {
+                require(it.id >= 0 && it.publicKey.size == 32)
+                d.writeLong(it.id)
+                d.write(it.publicKey)
+            }
+        }
+        return out.toByteArray()
+    }
+
+    fun decodeOneTimePreKeys(bytes: ByteArray?): List<OneTimePublicPreKey> {
+        if (bytes == null) return emptyList()
+        return try {
+            DataInputStream(ByteArrayInputStream(bytes)).use { d ->
+                val count = d.readInt()
+                if (count !in 0..100 || bytes.size != 4 + count * 40) return emptyList()
+                val result = List(count) {
+                    val id = d.readLong()
+                    val key = ByteArray(32).also(d::readFully)
+                    if (id < 0) return emptyList()
+                    OneTimePublicPreKey(id, key)
+                }
+                if (d.available() != 0 || result.map { it.id }.distinct().size != result.size) emptyList() else result
+            }
+        } catch (_: IOException) {
+            emptyList()
+        }
     }
 
     fun signPreKey(identityId: String, identitySigningSeed: ByteArray, id: Long, publicKey: ByteArray, expiresAt: Long): ByteArray =
