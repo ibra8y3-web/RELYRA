@@ -88,6 +88,8 @@ interface PayloadProtector {
     suspend fun protect(peerId: String, plaintext: ByteArray): ByteArray?
     /** Null when the packet is not for us, not from a known contact, or fails authentication. */
     suspend fun open(wire: ByteArray): Opened?
+    /** Called when a durable outgoing message reaches a terminal state. */
+    suspend fun forget(messageId: String) {}
 }
 
 /** Told about every NEW incoming message (a replayed copy is not new). Used for notifications; must not block. */
