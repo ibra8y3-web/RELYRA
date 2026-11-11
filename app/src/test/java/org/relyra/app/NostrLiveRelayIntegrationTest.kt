@@ -25,7 +25,7 @@ import java.util.concurrent.TimeUnit
  * when deliberately running this test; ordinary CI skips it and never contacts public relays.
  */
 class NostrLiveRelayIntegrationTest {
-    @Test(timeout = 60_000)
+    @Test(timeout = 90_000)
     fun twoIndependentIdentitiesExchangeASignedRelyraEventThroughARealRelay() = runBlocking {
         val relay = System.getenv("RELYRA_NOSTR_RELAY")?.trim().orEmpty()
         assumeTrue("Set RELYRA_NOSTR_RELAY to run the live relay integration test", relay.startsWith("wss://"))
