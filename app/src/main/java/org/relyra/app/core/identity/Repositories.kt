@@ -90,6 +90,7 @@ class IdentityRepository(
     suspend fun reset() {
         db.clearAllTables()
         secure.clearSeed()
+        secure.clearPreKeys()
         wipeFiles()
     }
 }
