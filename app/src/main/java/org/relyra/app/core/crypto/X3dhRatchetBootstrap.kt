@@ -111,7 +111,9 @@ object X3dhRatchetBootstrap {
         val recipient = readId() ?: return null
         if (b.remaining() < 8 + 1 + 32 + DoubleRatchet.HEADER_LEN + 4 + MIN_BODY_BYTES) return null
         val signedId = b.long
-        val hasOneTime = b.get().toInt() == 1
+        val oneTimeFlag = b.get().toInt() and 0xFF
+        if (oneTimeFlag !in 0..1) return null
+        val hasOneTime = oneTimeFlag == 1
         val oneTimeId = if (hasOneTime) {
             if (b.remaining() < 8) return null
             b.long
