@@ -3,6 +3,7 @@ package org.relyra.app
 import com.google.crypto.tink.subtle.X25519
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.relyra.app.core.crypto.IdentityCrypto
@@ -100,6 +101,19 @@ class X3dhTest {
             org.relyra.app.core.crypto.DoubleRatchet.aad(f.bundle.identityId, aliceId),
         )
         assertArrayEquals("reply".toByteArray(), reply!!.plaintext)
+    }
+
+    @Test fun initialPacketRejectsNonCanonicalOneTimePrekeyFlag() {
+        val f = fixture(true)
+        val alice = IdentityCrypto.fromSeed(aliceSeed)
+        val aliceId = IdentityCrypto.publicId(alice.publicKey)
+        val initial = org.relyra.app.core.crypto.X3dhRatchetBootstrap.initiate(
+            aliceId, f.bundle, PayloadCrypto.deriveSecret(aliceSeed), byteArrayOf(1), now,
+        )
+        val flagIndex = 1 + 1 + aliceId.toByteArray().size + 1 +
+            f.bundle.identityId.toByteArray().size + 8
+        val malformed = initial.wire.copyOf().also { it[flagIndex] = 2 }
+        assertNull(org.relyra.app.core.crypto.X3dhRatchetBootstrap.senderId(malformed))
     }
 
 }
