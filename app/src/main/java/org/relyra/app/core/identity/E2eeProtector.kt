@@ -161,7 +161,8 @@ class E2eeProtector(private val db: AppDatabase, private val secure: SecureStore
         val header = PayloadCrypto.parseHeader(wire) ?: return null
         val me = db.identityDao().get() ?: return null
         val sender = db.contactDao().get(header.senderId) ?: return null
-        if (sender.blocked || sender.signedPreKeyId != null) return null
+        if (sender.blocked || sender.signedPreKeyId != null ||
+            db.ratchetDao().get(header.senderId) != null) return null
         val senderKey = sender.encKey ?: return null
         val seed = secure.loadSeed() ?: return null
         val plain = PayloadCrypto.open(wire, header, me.publicId, PayloadCrypto.deriveSecret(seed), senderKey) ?: return null
@@ -174,12 +175,14 @@ class E2eeProtector(private val db: AppDatabase, private val secure: SecureStore
             val me = db.identityDao().get() ?: return@withLock null
             val sender = db.contactDao().get(parsed.senderId) ?: return@withLock null
             if (sender.blocked) return@withLock null
-            if (sender.signedPreKeyId != null && db.ratchetDao().get(sender.publicId) == null) return@withLock null
+            val storedRatchet = db.ratchetDao().get(sender.publicId)
+            var state = storedRatchet?.let { DoubleRatchet.deserialize(it.state) }
+            if (storedRatchet != null && state == null) return@withLock null
+            if (state == null && sender.signedPreKeyId != null) return@withLock null
             val senderKey = sender.encKey ?: return@withLock null
             val seed = secure.loadSeed() ?: return@withLock null
             val secret = PayloadCrypto.deriveSecret(seed)
             val iAmAlice = me.publicId < sender.publicId
-            var state = load(sender.publicId)
             if (state == null) {
                 if (iAmAlice) return@withLock null
                 state = DoubleRatchet.initBob(
