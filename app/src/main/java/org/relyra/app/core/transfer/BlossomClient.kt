@@ -129,7 +129,7 @@ class BlossomClient(base: OkHttpClient = Http.client) {
         return try {
             http.newCall(request).await().use { response ->
                 when {
-                    response.code in 200..299 -> Preflight.Accepted
+                    response.code == 200 -> Preflight.Accepted
                     response.code == 404 || response.code == 405 || response.code == 501 -> Preflight.Unsupported
                     response.code == 408 || response.code == 429 || response.code >= 500 -> Preflight.Unavailable
                     else -> {
@@ -162,7 +162,7 @@ class BlossomClient(base: OkHttpClient = Http.client) {
                 return BlossomUpload.Rejected("the server returned an incomplete or inconsistent blob descriptor")
             }
             val parsedUrl = try { okhttp3.HttpUrl.get(url) } catch (_: IllegalArgumentException) { null }
-            if (parsedUrl == null || parsedUrl.scheme != "https") {
+            if (parsedUrl == null || parsedUrl.scheme != "https" || !parsedUrl.encodedPath.contains(sha256Hex, ignoreCase = true)) {
                 return BlossomUpload.Rejected("the server returned an invalid blob URL")
             }
             return BlossomUpload.Ok(server)
