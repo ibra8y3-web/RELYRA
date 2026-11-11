@@ -145,15 +145,8 @@ class AppContainer(context: Context) {
             onP2pSignal = { peerId, signal ->
                 when (signal.kind) {
                     P2pSignalKind.OFFER -> {
-                        val answer = internetP2p.acceptOffer(peerId, signal.signedSignal)
-                        val ownId = database.identityDao().get()?.publicId
-                        if (answer != null && ownId != null) {
-                            val reply = Envelope.P2pSignal(
-                                UUID.randomUUID().toString(), ownId, peerId,
-                                P2pSignalKind.ANSWER, answer,
-                            )
-                            delivery.transmit(peerId, EnvelopeCodec.encode(reply))
-                        }
+                        // A signed signal is not consent. Queue it for explicit approval in Network settings.
+                        internetP2p.requestIncomingOffer(peerId, signal.signedSignal)
                     }
                     P2pSignalKind.ANSWER -> {
                         internetP2p.acceptAnswer(peerId, signal.signedSignal)
