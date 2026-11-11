@@ -148,6 +148,9 @@ object X3dh {
         return Hkdf.computeHkdf("HmacSha256", material, ByteArray(32), INFO, 32)
     }
 
+    fun signPreKey(identityId: String, identitySigningSeed: ByteArray, id: Long, publicKey: ByteArray, expiresAt: Long): ByteArray =
+        IdentityCrypto.sign(identitySigningSeed, signedPreKeyTranscript(identityId, id, publicKey, expiresAt))
+
     private fun signedPreKeyTranscript(identityId: String, id: Long, publicKey: ByteArray, expiresAt: Long): ByteArray {
         require(identityId.isNotBlank() && id >= 0 && publicKey.size == 32 && expiresAt > 0)
         val identity = identityId.toByteArray(Charsets.UTF_8)
