@@ -1,21 +1,21 @@
 package org.relyra.app.core.identity
 
+import androidx.room.withTransaction
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.relyra.app.core.crypto.DoubleRatchet
 import org.relyra.app.core.crypto.PayloadCrypto
 import org.relyra.app.core.crypto.RatchetState
 import org.relyra.app.core.crypto.RatchetWire
+import org.relyra.app.core.crypto.X3dh
+import org.relyra.app.core.crypto.X3dhRatchetBootstrap
 import org.relyra.app.core.database.AppDatabase
 import org.relyra.app.core.database.RatchetEntity
 import org.relyra.app.core.messaging.Opened
 import org.relyra.app.core.messaging.PayloadProtector
 import org.relyra.app.core.storage.SecureStore
 
-/**
- * Wire v2 = Double Ratchet. Wire v1 (sealed box, no ratchet) is still sent only by the side that cannot start the
- * ratchet yet, and is still accepted from older builds.
- */
+/** Wire v3 bootstraps X3DH + Double Ratchet; v2 is established ratchet traffic; v1 stays readable. */
 class E2eeProtector(private val db: AppDatabase, private val secure: SecureStore) : PayloadProtector {
     private val lock = Mutex()
 
@@ -27,34 +27,91 @@ class E2eeProtector(private val db: AppDatabase, private val secure: SecureStore
 
     override suspend fun protect(peerId: String, plaintext: ByteArray): ByteArray? = lock.withLock {
         val me = db.identityDao().get() ?: return@withLock null
+        val peer = db.contactDao().get(peerId) ?: return@withLock null
+        if (peer.blocked) return@withLock null
         val seed = secure.loadSeed() ?: return@withLock null
-        val peerKey = db.contactDao().get(peerId)?.encKey ?: return@withLock null
-        val secret = PayloadCrypto.deriveSecret(seed)
-        val iAmAlice = me.publicId < peerId
+        val ownDhPrivate = PayloadCrypto.deriveSecret(seed)
+        val state = load(peerId)
 
-        var state = load(peerId)
-        if (state == null && iAmAlice) {
-            val shared = DoubleRatchet.sharedSecret(secret, peerKey, me.publicId, peerId)
-            state = DoubleRatchet.initAlice(shared, peerKey)
+        if (state == null && peer.signedPreKeyId != null && peer.signedPreKey != null &&
+            peer.signedPreKeyExpiresAt != null && peer.signedPreKeySignature != null) {
+            val bundle = X3dh.PreKeyBundle(
+                peer.publicId, peer.publicKey, peer.encKey ?: return@withLock null,
+                peer.signedPreKeyId, peer.signedPreKey, peer.signedPreKeyExpiresAt,
+                peer.signedPreKeySignature, peer.oneTimePreKeyId, peer.oneTimePreKey,
+            )
+            val initial = try {
+                X3dhRatchetBootstrap.initiate(
+                    me.publicId, bundle, ownDhPrivate, plaintext, System.currentTimeMillis() / 1000,
+                )
+            } catch (_: IllegalArgumentException) {
+                return@withLock null
+            }
+            save(peerId, initial.state)
+            return@withLock initial.wire
         }
-        if (state != null) {
-            val enc = DoubleRatchet.encrypt(state, plaintext, DoubleRatchet.aad(me.publicId, peerId))
-            if (enc != null) {
-                save(peerId, enc.newState)
-                return@withLock RatchetWire.pack(me.publicId, enc.header, enc.body)
+
+        // Backward compatibility for contacts imported from older v1/v2 cards.
+        val peerKey = peer.encKey ?: return@withLock null
+        val iAmAlice = me.publicId < peerId
+        var current = state
+        if (current == null && iAmAlice) {
+            val shared = DoubleRatchet.sharedSecret(ownDhPrivate, peerKey, me.publicId, peerId)
+            current = DoubleRatchet.initAlice(shared, peerKey)
+        }
+        if (current != null) {
+            val encrypted = DoubleRatchet.encrypt(current, plaintext, DoubleRatchet.aad(me.publicId, peerId))
+            if (encrypted != null) {
+                save(peerId, encrypted.newState)
+                return@withLock RatchetWire.pack(me.publicId, encrypted.header, encrypted.body)
             }
         }
-        // Bob, before Alice's first ratcheted message has arrived: the older sealed-box format.
-        PayloadCrypto.seal(me.publicId, secret, peerId, peerKey, plaintext)
+        PayloadCrypto.seal(me.publicId, ownDhPrivate, peerId, peerKey, plaintext)
     }
 
     override suspend fun open(wire: ByteArray): Opened? {
         if (wire.isEmpty()) return null
-        return when (wire[0].toInt()) {
+        return when (wire[0].toInt() and 0xFF) {
+            3 -> openX3dh(wire)
             RatchetWire.VERSION -> openRatchet(wire)
             1 -> openSealed(wire)
             else -> null
         }
+    }
+
+    private suspend fun openX3dh(wire: ByteArray): Opened? = lock.withLock {
+        val senderId = X3dhRatchetBootstrap.senderId(wire) ?: return@withLock null
+        val signedId = X3dhRatchetBootstrap.signedPreKeyId(wire) ?: return@withLock null
+        val oneTimeId = X3dhRatchetBootstrap.oneTimePreKeyId(wire)
+        val me = db.identityDao().get() ?: return@withLock null
+        val sender = db.contactDao().get(senderId) ?: return@withLock null
+        if (sender.blocked || sender.encKey == null || load(senderId) != null) return@withLock null
+        val seed = secure.loadSeed() ?: return@withLock null
+        val ownIdentityDh = PayloadCrypto.deriveSecret(seed)
+        val signedRow = db.preKeyDao().get("signed:$signedId") ?: return@withLock null
+        if (signedRow.kind != "SIGNED") return@withLock null
+        val signedPrivate = secure.loadPreKeyPrivate(signedRow.keyId) ?: return@withLock null
+
+        val accepted = db.withTransaction {
+            val oneTimePrivate = if (oneTimeId != null) {
+                val row = db.preKeyDao().get("one-time:$oneTimeId") ?: return@withTransaction null
+                if (row.kind != "ONE_TIME" || row.consumed) return@withTransaction null
+                secure.loadPreKeyPrivate(row.keyId) ?: return@withTransaction null
+            } else null
+            val result = X3dhRatchetBootstrap.accept(
+                wire, senderId, me.publicId, sender.encKey, ownIdentityDh, signedId, signedPrivate,
+                resolveOneTimePreKey = { requested -> if (requested == oneTimeId) oneTimePrivate else null },
+            ) ?: return@withTransaction null
+            if (result.consumedOneTimePreKeyId != null) {
+                val changed = db.preKeyDao().consumeOneTime("one-time:${result.consumedOneTimePreKeyId}")
+                if (changed != 1) return@withTransaction null
+            }
+            db.ratchetDao().put(RatchetEntity(senderId, DoubleRatchet.serialize(result.state)))
+            result
+        } ?: return@withLock null
+
+        accepted.consumedOneTimePreKeyId?.let { secure.deletePreKeyPrivate("one-time:$it") }
+        Opened(senderId, accepted.plaintext)
     }
 
     private suspend fun openSealed(wire: ByteArray): Opened? {
@@ -78,15 +135,16 @@ class E2eeProtector(private val db: AppDatabase, private val secure: SecureStore
             val seed = secure.loadSeed() ?: return@withLock null
             val secret = PayloadCrypto.deriveSecret(seed)
             val iAmAlice = me.publicId < sender.publicId
-
             var state = load(sender.publicId)
             if (state == null) {
-                // Only Bob can start from nothing: Alice always has her own session before Bob can reply.
                 if (iAmAlice) return@withLock null
-                state = DoubleRatchet.initBob(DoubleRatchet.sharedSecret(secret, senderKey, sender.publicId, me.publicId), secret)
+                state = DoubleRatchet.initBob(
+                    DoubleRatchet.sharedSecret(secret, senderKey, sender.publicId, me.publicId), secret,
+                )
             }
-            val result = DoubleRatchet.decrypt(state, parsed.header, parsed.body,
-                DoubleRatchet.aad(sender.publicId, me.publicId)) ?: return@withLock null
+            val result = DoubleRatchet.decrypt(
+                state, parsed.header, parsed.body, DoubleRatchet.aad(sender.publicId, me.publicId),
+            ) ?: return@withLock null
             save(sender.publicId, result.newState)
             Opened(sender.publicId, result.plaintext)
         }
