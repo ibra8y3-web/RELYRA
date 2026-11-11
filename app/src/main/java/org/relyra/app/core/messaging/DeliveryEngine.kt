@@ -1,5 +1,6 @@
 package org.relyra.app.core.messaging
 
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import org.relyra.app.core.transfer.BlossomUrl
@@ -35,6 +36,7 @@ class DeliveryEngine(
     private val uploader: BlobUploader? = null,
     private val groups: GroupInbound? = null,
     private val incoming: IncomingListener? = null,
+    private val onP2pSignal: suspend (String, Envelope.P2pSignal) -> Unit = { _, _ -> },
 ) {
     private val lock = Mutex()
     private val uploadLock = Mutex()
@@ -295,6 +297,16 @@ class DeliveryEngine(
                 if (MessageState.canAdvance(m.state, target)) {
                     store.update(m.copy(state = target, nextAttemptAt = Long.MAX_VALUE, wirePayload = null))
                     protector.forget(m.messageId)
+                }
+            }
+            is Envelope.P2pSignal -> {
+                if (env.signedSignal.length !in 1..EnvelopeCodec.MAX_P2P_SIGNAL_CHARS) return
+                try {
+                    onP2pSignal(env.from, env)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // Negotiation failure does not invalidate the authenticated RELYRA envelope.
                 }
             }
         }
