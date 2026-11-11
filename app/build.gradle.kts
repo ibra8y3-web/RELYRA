@@ -6,7 +6,7 @@ plugins {
 
 android {
     namespace = "org.relyra.app"
-    compileSdk = 36
+    compileSdk = 37
 
     defaultConfig {
         applicationId = "org.relyra.app"
