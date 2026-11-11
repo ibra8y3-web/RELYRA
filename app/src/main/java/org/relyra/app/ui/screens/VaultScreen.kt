@@ -14,6 +14,8 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
@@ -107,14 +109,20 @@ private fun VaultContent(vm: MainViewModel) {
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
                 items(shown, key = { it.id }) { item ->
-                    ListItem(
-                        headlineContent = { Text(item.name) },
-                        supportingContent = {
-                            Text(Formatter.formatShortFileSize(ctx, item.size) + " · " + fmt.format(Date(item.addedAt)))
-                        },
-                        modifier = Modifier.clickable { selected = item },
-                    )
-                    HorizontalDivider()
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 4.dp)
+                            .clickable { selected = item },
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                    ) {
+                        ListItem(
+                            headlineContent = { Text(item.name, maxLines = 1) },
+                            supportingContent = {
+                                Text(Formatter.formatShortFileSize(ctx, item.size) + " · " + fmt.format(Date(item.addedAt)),
+                                    maxLines = 1)
+                            },
+                        )
+                    }
                 }
             }
         }

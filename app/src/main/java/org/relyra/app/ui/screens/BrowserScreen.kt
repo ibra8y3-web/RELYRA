@@ -220,7 +220,13 @@ fun BrowserScreen(onOpenNetwork: () -> Unit) {
                 Text(stringResource(R.string.browser_reload))
             }
         }
-        Card(Modifier.fillMaxWidth()) {
+        Card(
+            modifier = Modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.large,
+            colors = androidx.compose.material3.CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
+            ),
+        ) {
             Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
                     Text(stringResource(R.string.browser_javascript), style = MaterialTheme.typography.bodyMedium)
