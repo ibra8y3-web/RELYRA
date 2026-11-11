@@ -77,4 +77,7 @@ interface PreKeyDao {
 
     @Query("DELETE FROM prekeys WHERE kind = :kind")
     suspend fun deleteKind(kind: String)
+
+    @Query("DELETE FROM prekeys WHERE keyId = :keyId")
+    suspend fun delete(keyId: String)
 }
