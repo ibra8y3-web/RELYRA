@@ -12,6 +12,9 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Validate docs and Arabic/English resources
+        run: python3 scripts/verify_project.py
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin

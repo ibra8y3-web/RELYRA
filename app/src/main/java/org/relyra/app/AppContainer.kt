@@ -23,11 +23,13 @@ import org.relyra.app.core.storage.SecureStore
 import org.relyra.app.core.transfer.BlossomServers
 import org.relyra.app.core.transfer.TransferEngine
 import org.relyra.app.core.vault.VaultEngine
+import org.relyra.app.core.resources.ResourceManager
 
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
     val secure = SecureStore(appContext)
     val settings = AppSettings(appContext)
+    val resourceManager by lazy { ResourceManager(appContext) }
     val notifier by lazy { Notifier(appContext, settings) }
     val database: AppDatabase by lazy { AppDatabase.build(appContext, secure.databaseKey()) }
     val events by lazy { SecurityLog(database) }

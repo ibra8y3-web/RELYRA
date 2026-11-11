@@ -200,4 +200,12 @@
     <string name="err_server_duplicate">This server is already in your list.</string>
     <string name="files_status_reachable">Reachable: HTTP %1$d in %2$d ms. Only a real upload shows whether it accepts your files.</string>
     <string name="home_file_servers">File servers enabled</string>
+    <string name="diag_resources">Live resource monitor</string>
+    <string name="diag_resources_waiting">Collecting the first sample…</string>
+    <string name="diag_resources_unavailable">Unavailable on this device</string>
+    <string name="diag_app_cpu">RELYRA process CPU</string>
+    <string name="diag_app_rx">App receive rate</string>
+    <string name="diag_app_tx">App send rate</string>
+    <string name="diag_filesystem_free">Free storage on app filesystem</string>
+    <string name="diag_resources_note">CPU is the RELYRA process share of total available CPU capacity. Network rates count traffic for this app UID only; they are not total device traffic.</string>
 </resources>
