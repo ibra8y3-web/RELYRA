@@ -212,6 +212,43 @@ fun NetworkScreen(vm: MainViewModel) {
             )
         }
 
+        SectionCard(stringResource(R.string.net_p2p_title)) {
+            Text(stringResource(R.string.net_p2p_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+            OutlinedTextField(value = p2pPeerId, onValueChange = { p2pPeerId = it.trim() }, label = { Text(stringResource(R.string.net_p2p_peer_id)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            internetPeerStates.forEach { (peer, state) ->
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(peer, Modifier.weight(1f), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                    Text(stringResource(when (state) {
+                        InternetPeerState.NEW -> R.string.net_p2p_state_new
+                        InternetPeerState.CONNECTING -> R.string.net_p2p_state_connecting
+                        InternetPeerState.CONNECTED -> R.string.net_p2p_state_connected
+                        InternetPeerState.DISCONNECTED -> R.string.net_p2p_state_disconnected
+                        InternetPeerState.FAILED -> R.string.net_p2p_state_failed
+                    }), style = MaterialTheme.typography.bodySmall)
+                    TextButton(onClick = { vm.closeInternetPeer(peer) }) { Text(stringResource(R.string.net_p2p_close)) }
+                }
+            }
+            Button(onClick = { vm.createInternetOffer(p2pPeerId) }, enabled = p2pPeerId.isNotBlank(), modifier = Modifier.fillMaxWidth()) { Text(stringResource(R.string.net_p2p_create_offer)) }
+            OutlinedTextField(value = p2pRemoteSignal, onValueChange = { p2pRemoteSignal = it }, label = { Text(stringResource(R.string.net_p2p_remote_signal)) }, minLines = 3, modifier = Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { vm.acceptInternetOffer(p2pPeerId, p2pRemoteSignal) }, enabled = p2pPeerId.isNotBlank() && p2pRemoteSignal.isNotBlank(), modifier = Modifier.weight(1f)) { Text(stringResource(R.string.net_p2p_accept_offer)) }
+                Button(onClick = { vm.acceptInternetAnswer(p2pPeerId, p2pRemoteSignal) }, enabled = p2pPeerId.isNotBlank() && p2pRemoteSignal.isNotBlank(), modifier = Modifier.weight(1f)) { Text(stringResource(R.string.net_p2p_accept_answer)) }
+            }
+            if (internetSignal.isNotBlank()) {
+                Text(stringResource(R.string.net_p2p_generated), style = MaterialTheme.typography.labelMedium)
+                SelectionContainer { Text(internetSignal, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall) }
+            }
+            HorizontalDivider()
+            Text(stringResource(R.string.net_p2p_turn_optional), style = MaterialTheme.typography.titleSmall)
+            OutlinedTextField(value = turnUrl, onValueChange = { turnUrl = it; turnError = false }, label = { Text(stringResource(R.string.net_p2p_turn_url)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = turnUsername, onValueChange = { turnUsername = it; turnError = false }, label = { Text(stringResource(R.string.net_p2p_turn_username)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = turnCredential, onValueChange = { turnCredential = it; turnError = false }, label = { Text(stringResource(R.string.net_p2p_turn_credential)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            if (turnError) Text(stringResource(R.string.net_p2p_turn_invalid), color = MaterialTheme.colorScheme.error)
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = { turnError = !vm.setInternetTurnServer(turnUrl, turnUsername, turnCredential) }) { Text(stringResource(R.string.net_p2p_turn_apply)) }
+                TextButton(onClick = { vm.resetInternetIceServers(); turnUrl = ""; turnUsername = ""; turnCredential = ""; turnError = false }) { Text(stringResource(R.string.net_p2p_turn_reset)) }
+            }
+        }
         SectionCard(stringResource(R.string.net_bt_title)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
