@@ -45,7 +45,7 @@ class PreKeyRepository(private val db: AppDatabase, private val secure: SecureSt
                 secure.savePreKeyPrivate(row.keyId, key.privateKey)
                 dao.put(row)
             }
-            oneTime = dao.byKind("ONE_TIME").firstOrNull { !it.consumed }
+            oneTime = dao.byKind("ONE_TIME").firstOrNull { !it.consumed && secure.loadPreKeyPrivate(it.keyId) != null }
         }
         val signedId = signed.keyId.substringAfter(':').toLong()
         val signedPrivate = secure.loadPreKeyPrivate(signed.keyId) ?: error("signed prekey private key missing")
