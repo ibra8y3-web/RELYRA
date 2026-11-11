@@ -363,11 +363,12 @@ class WebRtcP2pConnector(
         return peer.sendMutex.withLock {
             val channel = peer.channel ?: return@withLock SendOutcome.Unavailable
             if (channel.state() != DataChannel.State.OPEN) return@withLock SendOutcome.Unavailable
-            val frame = WebRtcFrameCodec.encodeMessage(payload) ?: return@withLock SendOutcome.Unavailable
+            val transferId = UUID.randomUUID().toString()
+            val frame = WebRtcFrameCodec.encodeMessage(payload, transferId) ?: return@withLock SendOutcome.Unavailable
             if (channel.bufferedAmount() > MAX_BUFFERED_BYTES - frame.remaining()) return@withLock SendOutcome.Unavailable
 
             val digest = WebRtcFrameCodec.digestKey(WebRtcFrameCodec.digestPayload(payload))
-            val ackKey = "$toPeer:$digest"
+            val ackKey = "$toPeer:$transferId:$digest"
             val candidate = CompletableDeferred<Boolean>()
             val waiter = pendingAcks.putIfAbsent(ackKey, candidate) ?: candidate
             val queued = runCatching { channel.send(DataChannel.Buffer(frame, true)) }.getOrDefault(false)
@@ -426,7 +427,7 @@ class WebRtcP2pConnector(
                 val decoded = WebRtcFrameCodec.decode(buffer.data) ?: return
                 when (decoded) {
                     is WebRtcFrameCodec.Frame.Ack -> {
-                        val key = "$peerId:${WebRtcFrameCodec.digestKey(decoded.digest)}"
+                        val key = "$peerId:${decoded.transferId}:${WebRtcFrameCodec.digestKey(decoded.digest)}"
                         pendingAcks[key]?.complete(decoded.accepted)
                     }
                     is WebRtcFrameCodec.Frame.Message -> {
@@ -438,7 +439,7 @@ class WebRtcP2pConnector(
                             } catch (_: Exception) {
                                 false
                             }
-                            val ack = WebRtcFrameCodec.encodeAck(decoded.digest, accepted) ?: return@launch
+                            val ack = WebRtcFrameCodec.encodeAck(decoded.transferId, decoded.digest, accepted) ?: return@launch
                             if (channel.state() == DataChannel.State.OPEN) {
                                 runCatching { channel.send(DataChannel.Buffer(ack, true)) }
                             }
