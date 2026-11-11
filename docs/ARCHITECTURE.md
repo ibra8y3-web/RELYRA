@@ -2,6 +2,8 @@
 
 This document describes the implementation currently present in the repository. It is not a claim that planned transports or services are already available.
 
+![RELYRA architecture map](assets/relyra-architecture.svg)
+
 ## Layer map
 
 ![RELYRA architecture](assets/relyra-architecture.svg)
@@ -18,6 +20,8 @@ This document describes the implementation currently present in the repository. 
 | Local utilities | Diagnostics and safe file inspection | Diagnostics, tools and vault packages |
 
 ## Direct message path
+
+![Message and attachment flow](assets/relyra-message-flow.svg)
 
 ```mermaid
 sequenceDiagram

@@ -1,5 +1,9 @@
 # RELYRA networking: current state and extension rules
 
+## Current network map
+
+![RELYRA network map](assets/relyra-network-map.svg)
+
 ## Implemented transport
 
 The current connected transport is **Nostr over user-configured secure WebSockets (WSS)**.
