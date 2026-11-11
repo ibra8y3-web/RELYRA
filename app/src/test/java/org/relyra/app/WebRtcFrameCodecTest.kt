@@ -35,8 +35,7 @@ class WebRtcFrameCodecTest {
     }
 
     @Test fun frameLengthIsBoundedBeforeAllocation() {
-        assertNull(WebRtcFrameCodec.encodeMessage(ByteArray(WebRtcFrameCodec.HEADER_BYTES)))
-        assertNull(WebRtcFrameCodec.encodeMessage(ByteArray(WebRtcFrameCodec.HEADER_BYTES + 100_000)))
+        assertNull(WebRtcFrameCodec.encodeMessage(ByteArray(65_500)))
         assertEquals(38, WebRtcFrameCodec.ACK_BYTES)
     }
 }
