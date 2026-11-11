@@ -57,11 +57,22 @@ class E2eeProtector(private val db: AppDatabase, private val secure: SecureStore
         }
         val seed = secure.loadSeed() ?: return@withLock null
         val ownDhPrivate = PayloadCrypto.deriveSecret(seed)
-        val state = load(peerId)
+        val storedRatchet = db.ratchetDao().get(peerId)
+        val state = storedRatchet?.let { DoubleRatchet.deserialize(it.state) }
+        // A corrupt persisted session must never be silently replaced with a new or legacy session.
+        if (storedRatchet != null && state == null) return@withLock null
 
-        // The lexicographically first identity is the sole initiator, preventing crossed X3DH sessions.
-        if (state == null && me.publicId < peerId && peer.signedPreKeyId != null && peer.signedPreKey != null &&
-            peer.signedPreKeyExpiresAt != null && peer.signedPreKeySignature != null) {
+        val hasAnyPreKey = peer.signedPreKeyId != null || peer.signedPreKey != null ||
+            peer.signedPreKeyExpiresAt != null || peer.signedPreKeySignature != null ||
+            peer.oneTimePreKeyId != null || peer.oneTimePreKey != null
+        val hasCompletePreKey = peer.signedPreKeyId != null && peer.signedPreKey != null &&
+            peer.signedPreKeyExpiresAt != null && peer.signedPreKeySignature != null
+
+        // A v3 contact never downgrades to identity-only encryption. The smaller identity initiates X3DH;
+        // the other side waits for that authenticated first packet before sending.
+        if (state == null && hasAnyPreKey && !hasCompletePreKey) return@withLock null
+        if (state == null && hasCompletePreKey && me.publicId >= peerId) return@withLock null
+        if (state == null && hasCompletePreKey) {
             val bundle = X3dh.PreKeyBundle(
                 peer.publicId, peer.publicKey, peer.encKey ?: return@withLock null,
                 peer.signedPreKeyId, peer.signedPreKey, peer.signedPreKeyExpiresAt,
@@ -150,7 +161,7 @@ class E2eeProtector(private val db: AppDatabase, private val secure: SecureStore
         val header = PayloadCrypto.parseHeader(wire) ?: return null
         val me = db.identityDao().get() ?: return null
         val sender = db.contactDao().get(header.senderId) ?: return null
-        if (sender.blocked) return null
+        if (sender.blocked || sender.signedPreKeyId != null) return null
         val senderKey = sender.encKey ?: return null
         val seed = secure.loadSeed() ?: return null
         val plain = PayloadCrypto.open(wire, header, me.publicId, PayloadCrypto.deriveSecret(seed), senderKey) ?: return null
@@ -163,6 +174,7 @@ class E2eeProtector(private val db: AppDatabase, private val secure: SecureStore
             val me = db.identityDao().get() ?: return@withLock null
             val sender = db.contactDao().get(parsed.senderId) ?: return@withLock null
             if (sender.blocked) return@withLock null
+            if (sender.signedPreKeyId != null && db.ratchetDao().get(sender.publicId) == null) return@withLock null
             val senderKey = sender.encKey ?: return@withLock null
             val seed = secure.loadSeed() ?: return@withLock null
             val secret = PayloadCrypto.deriveSecret(seed)
