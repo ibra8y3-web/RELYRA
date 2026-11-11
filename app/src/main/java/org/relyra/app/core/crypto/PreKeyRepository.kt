@@ -22,6 +22,10 @@ class PreKeyRepository(private val db: AppDatabase, private val secure: SecureSt
         forceFreshOneTime: Boolean = false,
     ): X3dh.PreKeyBundle = lock.withLock {
         val dao = db.preKeyDao()
+        dao.byKind("ONE_TIME").filter { it.expiresAt > 0 && it.expiresAt < nowSeconds - SIGNED_KEY_GRACE_SECONDS }.forEach {
+            secure.deletePreKeyPrivate(it.keyId)
+            dao.delete(it.keyId)
+        }
         var signed = dao.byKind("SIGNED").filter {
             it.expiresAt > nowSeconds && secure.loadPreKeyPrivate(it.keyId) != null
         }.maxByOrNull { it.expiresAt }
@@ -38,7 +42,7 @@ class PreKeyRepository(private val db: AppDatabase, private val secure: SecureSt
         }
         val oneTimeMaterial = if (forceFreshOneTime) {
             val key = X3dh.createOneTimePreKey(nextId())
-            val row = PreKeyEntity("one-time:${key.id}", "ONE_TIME", key.publicKey, 0L)
+            val row = PreKeyEntity("one-time:${key.id}", "ONE_TIME", key.publicKey, signed.expiresAt)
             secure.savePreKeyPrivate(row.keyId, key.privateKey)
             dao.put(row)
             X3dh.OneTimePreKey(key.id, key.privateKey, key.publicKey)
