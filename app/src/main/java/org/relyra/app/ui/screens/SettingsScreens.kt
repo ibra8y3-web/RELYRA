@@ -42,6 +42,8 @@ fun SettingsScreen(
     onOpenTools: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     onOpenVault: () -> Unit,
+    onOpenBrowser: () -> Unit,
+    onOpenPdfReader: () -> Unit,
 ) {
     val lock by vm.lockEnabled.collectAsStateWithLifecycle()
     val receipts by vm.readReceipts.collectAsStateWithLifecycle()
@@ -88,6 +90,20 @@ fun SettingsScreen(
                 headlineContent = { Text(stringResource(R.string.vault_title)) },
                 supportingContent = { Text(stringResource(R.string.vault_desc)) },
                 modifier = Modifier.clickable(onClick = onOpenVault),
+            )
+        }
+        SectionCard(stringResource(R.string.browser_title)) {
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.browser_title)) },
+                supportingContent = { Text(stringResource(R.string.browser_settings_desc)) },
+                modifier = Modifier.clickable(onClick = onOpenBrowser),
+            )
+        }
+        SectionCard(stringResource(R.string.pdf_title)) {
+            ListItem(
+                headlineContent = { Text(stringResource(R.string.pdf_title)) },
+                supportingContent = { Text(stringResource(R.string.pdf_settings_desc)) },
+                modifier = Modifier.clickable(onClick = onOpenPdfReader),
             )
         }
         DataStorageCard(vm, onOpenDiagnostics)

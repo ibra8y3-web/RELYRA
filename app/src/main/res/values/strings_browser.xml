@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="browser_title">Private web viewer</string>
+    <string name="browser_settings_desc">Open web pages inside RELYRA with scripts, cookies and local-file access disabled by default.</string>
+    <string name="browser_address">Website address (HTTPS preferred)</string>
+    <string name="browser_go">Open</string>
+    <string name="browser_back">Back</string>
+    <string name="browser_forward">Forward</string>
+    <string name="browser_reload">Reload</string>
+    <string name="browser_invalid_address">Enter a valid HTTP or HTTPS website address. Other URL schemes are blocked.</string>
+    <string name="browser_load_failed">The page could not be loaded.</string>
+    <string name="browser_tls_blocked">The page was blocked because its TLS certificate could not be verified.</string>
+    <string name="browser_security_note">Privacy defaults: JavaScript, cookies, DOM storage, mixed content and local-file access are disabled. This viewer is not Tor and does not guarantee anonymity.</string>
+    <string name="pdf_title">PDF reader</string>
+    <string name="pdf_settings_desc">Open and read local PDF files without uploading them.</string>
+    <string name="pdf_open">Choose PDF file</string>
+    <string name="pdf_pick_hint">Choose a PDF from your device. The file is rendered locally.</string>
+    <string name="pdf_page">%1$d of %2$d</string>
+    <string name="pdf_page_accessibility">PDF page %1$d of %2$d</string>
+    <string name="pdf_previous">Previous</string>
+    <string name="pdf_next">Next</string>
+    <string name="pdf_error">Unable to open PDF: %1$s</string>
+    <string name="pdf_security_note">Read-only local viewer. Text search, annotations and PDF editing are not included yet.</string>
+</resources>

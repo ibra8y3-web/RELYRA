@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="browser_title">عارض الويب الخاص</string>
+    <string name="browser_settings_desc">فتح صفحات الويب داخل RELYRA مع تعطيل السكربتات وملفات الارتباط والوصول إلى الملفات المحلية افتراضيًا.</string>
+    <string name="browser_address">عنوان الموقع (يفضّل HTTPS)</string>
+    <string name="browser_go">فتح</string>
+    <string name="browser_back">رجوع</string>
+    <string name="browser_forward">تقدم</string>
+    <string name="browser_reload">إعادة التحميل</string>
+    <string name="browser_invalid_address">أدخل عنوان موقع HTTP أو HTTPS صالحًا. تُحظر مخططات الروابط الأخرى.</string>
+    <string name="browser_load_failed">تعذر تحميل الصفحة.</string>
+    <string name="browser_tls_blocked">تم حظر الصفحة لتعذر التحقق من شهادة TLS.</string>
+    <string name="browser_security_note">إعدادات الخصوصية الافتراضية: JavaScript وملفات الارتباط وتخزين DOM والمحتوى المختلط والوصول إلى الملفات المحلية معطلة. هذا العارض ليس Tor ولا يضمن إخفاء الهوية.</string>
+    <string name="pdf_title">قارئ PDF</string>
+    <string name="pdf_settings_desc">فتح وقراءة ملفات PDF المحلية دون رفعها إلى الإنترنت.</string>
+    <string name="pdf_open">اختيار ملف PDF</string>
+    <string name="pdf_pick_hint">اختر ملف PDF من جهازك. تتم معالجة الملف محليًا.</string>
+    <string name="pdf_page">%1$d من %2$d</string>
+    <string name="pdf_page_accessibility">صفحة PDF رقم %1$d من %2$d</string>
+    <string name="pdf_previous">السابق</string>
+    <string name="pdf_next">التالي</string>
+    <string name="pdf_error">تعذر فتح ملف PDF: %1$s</string>
+    <string name="pdf_security_note">عارض محلي للقراءة فقط. البحث النصي والتعليقات التوضيحية وتحرير PDF غير متاحة بعد.</string>
+</resources>
