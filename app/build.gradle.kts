@@ -75,3 +75,13 @@ dependencies {
     testImplementation(libs.orgjson)
     testImplementation(libs.okhttp.mockwebserver)
 }
+
+tasks.withType<Test>().configureEach {
+    // Emit each test boundary into Actions logs so a stalled test is identifiable.
+    testLogging {
+        events("started", "failed", "skipped")
+        showStandardStreams = true
+    }
+    maxParallelForks = 2
+    forkEvery = 1
+}
