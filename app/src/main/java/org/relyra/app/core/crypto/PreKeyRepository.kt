@@ -22,6 +22,7 @@ class PreKeyRepository(private val db: AppDatabase, private val secure: SecureSt
             it.expiresAt > nowSeconds && secure.loadPreKeyPrivate(it.keyId) != null
         }
         if (signed == null) {
+            dao.byKind("SIGNED").forEach { secure.deletePreKeyPrivate(it.keyId) }
             dao.deleteKind("SIGNED")
             val id = nextId()
             val key = X3dh.createSignedPreKey(identityId, signingSeed, id, nowSeconds)
