@@ -23,7 +23,7 @@ interface Connector : Transport {
 class NostrConnector(
     private val network: NetworkManager,
     private val nostrKeyOf: suspend (String) -> ByteArray?,
-    private val deliverWire: suspend (ByteArray) -> Unit,
+    private val deliverWire: suspend (ByteArray) -> Boolean,
     private val scope: CoroutineScope,
     private val clock: () -> Long = { System.currentTimeMillis() },
 ) : Connector {
@@ -70,11 +70,14 @@ class NostrConnector(
         if (e.kind != RELYRA_KIND || !NostrEvents.verify(e)) return
         if (e.tags.none { it.size >= 2 && it[0] == "p" && it[1] == me }) return
         val wire = try { java.util.Base64.getDecoder().decode(e.content) } catch (ex: IllegalArgumentException) { return }
-        deliverWire(wire)
-        network.inboxSince = maxOf(network.inboxSince, e.createdAt)
+        // A signed event is not accepted until its encrypted RELYRA envelope authenticates.
+        if (deliverWire(wire)) {
+            // A relay-supplied future timestamp must not move the durable cursor beyond local time.
+            network.inboxSince = maxOf(network.inboxSince, minOf(e.createdAt, clock() / 1000))
+        }
     }
 
-    override fun isReady(): Boolean = Capabilities.PAYLOAD_ENCRYPTION && network.relays.value.any { it.enabled }
+    override fun isReady(): Boolean = Capabilities.PAYLOAD_ENCRYPTION && identitySecret.value != null && connections.value.values.any { it }
 
     override suspend fun send(toPeer: String, payload: ByteArray): SendOutcome {
         val secret = identitySecret.value ?: return SendOutcome.Unavailable

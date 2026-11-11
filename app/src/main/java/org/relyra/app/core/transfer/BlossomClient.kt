@@ -91,7 +91,10 @@ class BlossomClient(base: OkHttpClient = Http.client) {
         if (code in 200..299) {
             val text = resp.body?.string().orEmpty()
             val reported = try { JSONObject(text).optString("sha256", "") } catch (e: JSONException) { "" }
-            if (reported.isNotEmpty() && !reported.equals(sha256Hex, ignoreCase = true)) {
+            if (!reported.matches(Regex("(?i)[0-9a-f]{64}"))) {
+                return BlossomUpload.Rejected("the server response did not contain a valid SHA-256")
+            }
+            if (!reported.equals(sha256Hex, ignoreCase = true)) {
                 return BlossomUpload.Rejected("the server reported a different hash")
             }
             return BlossomUpload.Ok(server)

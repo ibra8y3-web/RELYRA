@@ -204,12 +204,20 @@ object DoubleRatchet {
             val nr = i.readInt()
             val pn = i.readInt()
             val count = i.readInt()
-            if (count < 0 || count > MAX_STORED) return null
+            if (ns < 0 || nr < 0 || pn < 0 || count < 0 || count > MAX_STORED) return null
+            if (!X25519.publicFromPrivate(priv).contentEquals(pub)) return null
             val map = LinkedHashMap<String, ByteArray>()
-            repeat(count) { map[i.readUTF()] = key() }
+            repeat(count) {
+                val id = i.readUTF()
+                val value = key()
+                if (!id.matches(Regex("[0-9a-f]{64}:[0-9]+")) || map.put(id, value) != null) return null
+            }
+            if (i.available() != 0) return null
             RatchetState(priv, pub, dhr, rk, cks, ckr, ns, nr, pn, map)
         }
     } catch (e: IOException) {
+        null
+    } catch (e: IllegalArgumentException) {
         null
     }
 }

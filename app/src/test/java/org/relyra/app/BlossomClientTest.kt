@@ -82,6 +82,19 @@ class BlossomClientTest {
         assertTrue(client.upload(base(), file, hex, secret, 1) is BlossomUpload.Rejected)
     }
 
+    @Test fun uploadRejectsMissingOrMalformedServerHash() = runBlocking {
+        val data = ByteArray(32) { it.toByte() }
+        val file = tmp().also { it.writeBytes(data) }
+        val hex = Hex.encode(sha(data))
+        val secret = NostrCrypto.randomSecret()
+
+        server.enqueue(MockResponse().setResponseCode(200).setBody("{}"))
+        assertTrue(client.upload(base(), file, hex, secret, 1) is BlossomUpload.Rejected)
+
+        server.enqueue(MockResponse().setResponseCode(200).setBody("""{"sha256":"not-a-hash"}"""))
+        assertTrue(client.upload(base(), file, hex, secret, 1) is BlossomUpload.Rejected)
+    }
+
     @Test fun unreachableServerIsUnavailable() = runBlocking {
         val file = tmp().also { it.writeBytes(ByteArray(10)) }
         val dead = base()

@@ -8,6 +8,7 @@ import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.nio.ByteBuffer
 import org.relyra.app.core.crypto.DoubleRatchet
 import org.relyra.app.core.crypto.RatchetState
 import org.relyra.app.core.crypto.RatchetWire
@@ -163,6 +164,9 @@ class DoubleRatchetTest {
         assertNull(DoubleRatchet.deserialize(byteArrayOf(9, 1, 2, 3)))
         val good = DoubleRatchet.serialize(session().alice)
         assertNull(DoubleRatchet.deserialize(good.copyOf(good.size - 5)))
+        assertNull(DoubleRatchet.deserialize(good + byteArrayOf(0)))
+        val negativeCounter = good.copyOf().also { ByteBuffer.wrap(it).putInt(100, -1) }
+        assertNull(DoubleRatchet.deserialize(negativeCounter)))
     }
 
     @Test fun ratchetKeysChangeAfterEachRoundTrip() {

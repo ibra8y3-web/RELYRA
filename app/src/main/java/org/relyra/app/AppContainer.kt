@@ -84,7 +84,7 @@ class AppContainer(context: Context) {
     private val netScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
     val protector by lazy { org.relyra.app.core.identity.E2eeProtector(database, secure) }
     val nostr by lazy {
-        NostrConnector(network, { contacts.nostrKeyOf(it) }, { delivery.onWire(it) }, netScope)
+        NostrConnector(network, { contacts.nostrKeyOf(it) }, { delivery.acceptWire(it) }, netScope)
     }
     val nearby by lazy {
         NearbyLanConnector(
