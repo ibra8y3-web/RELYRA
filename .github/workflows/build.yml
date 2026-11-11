@@ -6,13 +6,17 @@ on:
   pull_request:
   workflow_dispatch:
 
+# One build lane for the whole repository: a newer run cancels older work.
 concurrency:
-  group: build-${{ github.ref }}
+  group: relyra-single-latest-build
   cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 35
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v7
 
@@ -33,6 +37,10 @@ jobs:
         with:
           gradle-version: 9.6.0
 
+      # Tests run first; failing tests must not leave a misleading ready-to-install APK.
+      - name: Unit tests
+        run: gradle --no-daemon testDebugUnitTest
+
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug
 
@@ -41,9 +49,6 @@ jobs:
         with:
           name: relyra-debug-apk
           path: app/build/outputs/apk/debug/*.apk
-
-      - name: Unit tests
-        run: gradle --no-daemon testDebugUnitTest
 
       - name: Upload test reports
         if: always()
