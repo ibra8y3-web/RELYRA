@@ -8,7 +8,7 @@ The Android app now contains a real WebRTC DataChannel transport behind the exis
 - ICE candidate gathering and connectivity checks are provided by WebRTC.
 - STUN is configured by default for server-reflexive candidates.
 - Optional TURN URI, username and credential can be supplied in Network settings for networks where direct ICE paths fail.
-- DataChannel traffic is binary, ordered and reliable. The current application frame ceiling is 64 KiB; larger attachments must continue using the encrypted Blossom transfer path.
+- DataChannel traffic is binary, ordered and reliable. Each frame has a unique random transfer UUID and SHA-256 digest; acknowledgements are correlated to both so delayed ACKs cannot confirm a later identical payload. The current application frame ceiling is 64 KiB; larger attachments must continue using the encrypted Blossom transfer path.
 - Every signaling envelope (offer/answer) is signed with the sender's RELYRA Ed25519 identity, bound to the intended recipient ID, versioned, size-limited and expires after ten minutes.
 - Only existing, unblocked RELYRA contacts can be used as peers.
 - The DataChannel carries the existing already end-to-end-encrypted DeliveryEngine wire payload. WebRTC DTLS is an additional transport protection, not a replacement for RELYRA E2EE.
@@ -25,7 +25,7 @@ The signaling path has two options:
 5. If no encrypted transport route is available, the app exposes signed offer/answer text for manual copy/paste. Users must exchange this text through a private channel because the text itself is signed, not independently encrypted.
 6. ICE checks then open the RELYRA DataChannel when a direct path is available.
 
-Nostr is used only as a user-enabled rendezvous/signaling transport here; it does not carry WebRTC data once the direct channel is established. SDP signaling is bounded to 40,000 characters and the containing control envelope is E2EE-protected before reaching a relay. Signed session identifiers prevent accidentally applying an answer from a different connection attempt.
+Nostr is used only as a user-enabled rendezvous/signaling transport here; it does not carry WebRTC data once the direct channel is established. SDP text is bounded to 20,000 characters and the serialized signed signal to 48,000 characters and the containing control envelope is E2EE-protected before reaching a relay. Signed session identifiers prevent accidentally applying an answer from a different connection attempt.
 
 SDP contains ICE candidates and can expose local/public network addresses. The app warns users to share it only with the intended contact. Direct WebRTC sockets do not use the app's Tor SOCKS proxy and can reveal the device's network address to the remote peer and network observers. For automatically relayed signaling, the outer RELYRA control envelope is E2EE-encrypted; manual copy/paste requires a private channel.
 
