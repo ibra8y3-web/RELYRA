@@ -180,4 +180,26 @@ class BlossomClientTest {
         assertTrue(r is BlossomDownload.Failed && r.retryable)
         assertTrue(part.length() < data.size)
     }
+    @Test fun uploadRejectsFileThatChangedAfterItsHashWasPrepared() = runBlocking {
+        val original = ByteArray(64) { it.toByte() }
+        val file = tmp().also { it.writeBytes(original) }
+        val expected = Hex.encode(sha(original))
+        file.writeBytes(ByteArray(64) { (it + 1).toByte() })
+        val result = client.upload(base(), file, expected, NostrCrypto.randomSecret(), 1)
+        assertTrue(result is BlossomUpload.Rejected)
+        assertEquals(0, server.requestCount)
+    }
+
+    @Test fun downloadRejectsPartialResponseWhenNoResumeWasRequested() = runBlocking {
+        val data = ByteArray(128) { it.toByte() }
+        val hex = Hex.encode(sha(data))
+        server.enqueue(MockResponse().setResponseCode(206)
+            .addHeader("Content-Range", "bytes 10-127/128").setBody(body(data.copyOfRange(10, data.size))))
+        val part = tmp().also { it.delete() }
+        val result = client.download(base(), hex, part, data.size.toLong()) { } as BlossomDownload.Failed
+        assertTrue(result.retryable)
+        assertFalse(part.exists())
+        assertEquals(null, server.takeRequest().getHeader("Range"))
+    }
+
 }
