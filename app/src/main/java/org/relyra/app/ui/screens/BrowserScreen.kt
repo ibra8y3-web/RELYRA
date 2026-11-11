@@ -8,6 +8,7 @@ import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import android.webkit.WebResourceResponse
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -40,6 +41,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import org.relyra.app.R
 import org.relyra.app.core.tools.BrowserUrlPolicy
+import org.relyra.app.core.network.TorSocksProxySelector
+import java.io.ByteArrayInputStream
 
 /**
  * Minimal, user-driven WebView. JavaScript, cookies, DOM storage, mixed content and local-file access
@@ -83,8 +86,21 @@ fun BrowserScreen() {
 
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
+                    if (TorSocksProxySelector.isEnabled()) return true
                     val scheme = request.url.scheme?.lowercase()
                     return scheme != "https" && scheme != "http"
+                }
+
+                override fun shouldInterceptRequest(view: WebView, request: WebResourceRequest): WebResourceResponse? {
+                    if (!TorSocksProxySelector.isEnabled()) return null
+                    return WebResourceResponse(
+                        "text/plain",
+                        "UTF-8",
+                        403,
+                        "Blocked: WebView does not use RELYRA SOCKS proxy",
+                        mapOf("Cache-Control" to "no-store"),
+                        ByteArrayInputStream(ByteArray(0)),
+                    )
                 }
 
                 override fun onPageStarted(view: WebView, url: String?, favicon: Bitmap?) {
@@ -117,6 +133,10 @@ fun BrowserScreen() {
     }
 
     fun openAddress() {
+        if (TorSocksProxySelector.isEnabled()) {
+            pageError = context.getString(R.string.browser_tor_proxy_blocked)
+            return
+        }
         val normalized = BrowserUrlPolicy.normalize(address)
         if (normalized == null) {
             pageError = context.getString(R.string.browser_invalid_address)
