@@ -106,9 +106,13 @@ fun GroupsList(vm: MainViewModel, query: String, onOpen: (String) -> Unit, onCre
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Text(stringResource(if (kindFilter == GroupKind.CHANNEL) R.string.channels_empty_title else R.string.groups_empty_title), style = MaterialTheme.typography.titleMedium)
-                Text(stringResource(if (kindFilter == GroupKind.CHANNEL) R.string.channels_empty_body else R.string.groups_empty_body), color = MaterialTheme.colorScheme.onSurfaceVariant,
-                    modifier = Modifier.padding(top = 8.dp))
+                if (q.isNotEmpty()) {
+                    Text(stringResource(R.string.chats_no_match), color = MaterialTheme.colorScheme.onSurfaceVariant)
+                } else {
+                    Text(stringResource(if (kindFilter == GroupKind.CHANNEL) R.string.channels_empty_title else R.string.groups_empty_title), style = MaterialTheme.typography.titleMedium)
+                    Text(stringResource(if (kindFilter == GroupKind.CHANNEL) R.string.channels_empty_body else R.string.groups_empty_body), color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 8.dp))
+                }
             }
         } else {
             LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 88.dp)) {

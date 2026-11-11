@@ -101,6 +101,9 @@ private fun VaultContent(vm: MainViewModel) {
         if (files.isEmpty()) {
             Text(stringResource(R.string.vault_empty), modifier = Modifier.padding(16.dp),
                 color = MaterialTheme.colorScheme.onSurfaceVariant)
+        } else if (shown.isEmpty()) {
+            Text(stringResource(R.string.chats_no_match), modifier = Modifier.padding(16.dp),
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
                 items(shown, key = { it.id }) { item ->
