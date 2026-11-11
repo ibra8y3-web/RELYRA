@@ -113,6 +113,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val wifiDirectVerifiedPeers get() = rely.container.wifiDirect.verified
     val wifiDirectStatus get() = rely.container.wifiDirect.status
     val internetPeerStates get() = rely.container.internetP2p.peerStates
+    val incomingInternetOffers get() = rely.container.internetP2p.incomingOffers
     val internetSignal = MutableStateFlow("")
     val torProxySettings get() = rely.container.network.torProxySettings
     val torProxyStatus get() = rely.container.network.torProxyStatus
@@ -493,6 +494,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             )
         }
     }
+
+    fun approveIncomingInternetOffer(peerId: String) {
+        val pending = ctr().internetP2p.incomingOffers.value[peerId.trim().lowercase()] ?: return
+        acceptInternetOffer(peerId, pending.signedSignal)
+    }
+
+    fun declineIncomingInternetOffer(peerId: String) =
+        ctr().internetP2p.dismissIncomingOffer(peerId.trim().lowercase())
 
     fun acceptInternetAnswer(peerId: String, answer: String) {
         viewModelScope.launch(Dispatchers.IO) {
