@@ -24,6 +24,23 @@ class SecureStore(context: Context) {
         return key
     }
 
+    /** Private X3DH prekeys are individually wrapped with Android Keystore and never stored as plaintext in Room. */
+    fun savePreKeyPrivate(keyId: String, privateKey: ByteArray) {
+        require(keyId.matches(Regex("[a-z-]+:[0-9]+")) && privateKey.size == 32)
+        write("prekey_" + keyId.replace(':', '_'), privateKey)
+    }
+
+    fun loadPreKeyPrivate(keyId: String): ByteArray? {
+        if (!keyId.matches(Regex("[a-z-]+:[0-9]+"))) return null
+        return read("prekey_" + keyId.replace(':', '_'))
+    }
+
+    fun deletePreKeyPrivate(keyId: String) {
+        if (keyId.matches(Regex("[a-z-]+:[0-9]+"))) {
+            prefs.edit().remove("prekey_" + keyId.replace(':', '_')).commit()
+        }
+    }
+
     fun saveSeed(seed: ByteArray) = write(SEED, seed)
     fun loadSeed(): ByteArray? = read(SEED)
     fun clearSeed() { prefs.edit().remove(SEED).commit() }
