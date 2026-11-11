@@ -47,7 +47,7 @@ class SecureStore(context: Context) {
 
     fun clearPreKeys() {
         val edit = prefs.edit()
-        prefs.all.keys.filter { it.startsWith("prekey_") }.forEach(edit::remove)
+        prefs.all.keys.filter { it.startsWith("prekey_") }.forEach { edit.remove(it) }
         check(edit.commit()) { "secure prekey cleanup failed" }
     }
 
