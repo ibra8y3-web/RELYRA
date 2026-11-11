@@ -68,4 +68,38 @@ class X3dhTest {
         assertFalse(X3dh.verifyBundle(changed, now))
         assertFalse(X3dh.verifyBundle(f.bundle, f.bundle.signedPreKeyExpiresAt + 1))
     }
+    @Test fun initialPacketBootstrapsDoubleRatchetAndDecryptsFirstMessage() {
+        val f = fixture(true)
+        val aliceIdentity = IdentityCrypto.fromSeed(aliceSeed)
+        val aliceId = IdentityCrypto.publicId(aliceIdentity.publicKey)
+        val aliceDh = PayloadCrypto.deriveSecret(aliceSeed)
+        val plaintext = "first ratcheted message".toByteArray()
+        val initial = org.relyra.app.core.crypto.X3dhRatchetBootstrap.initiate(
+            aliceId, f.bundle, aliceDh, plaintext, now,
+        )
+        val accepted = org.relyra.app.core.crypto.X3dhRatchetBootstrap.accept(
+            initial.wire,
+            aliceId,
+            f.bundle.identityId,
+            X25519.publicFromPrivate(aliceDh),
+            f.bobIdentityDh,
+            f.bundle.signedPreKeyId,
+            f.signedPreKeyPrivate,
+            { id -> if (id == f.oneTime!!.id) f.oneTime.privateKey else null },
+        )
+        assertTrue(accepted != null)
+        assertArrayEquals(plaintext, accepted!!.plaintext)
+        val aliceReply = org.relyra.app.core.crypto.DoubleRatchet.encrypt(
+            accepted.state, "reply".toByteArray(),
+            org.relyra.app.core.crypto.DoubleRatchet.aad(f.bundle.identityId, aliceId),
+        )
+        assertTrue(aliceReply != null)
+        val aliceState = initial.state
+        val reply = org.relyra.app.core.crypto.DoubleRatchet.decrypt(
+            aliceState, aliceReply!!.header, aliceReply.body,
+            org.relyra.app.core.crypto.DoubleRatchet.aad(f.bundle.identityId, aliceId),
+        )
+        assertArrayEquals("reply".toByteArray(), reply!!.plaintext)
+    }
+
 }
