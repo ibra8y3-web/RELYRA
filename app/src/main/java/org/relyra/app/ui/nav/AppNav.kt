@@ -216,10 +216,6 @@ fun AppNav(
                     vm,
                     onOpenNetwork = { nav.navigate(Routes.NETWORK) },
                     onAddContact = { nav.navigate(Routes.ADD) },
-                    onOpenTools = { nav.navigate(Routes.TOOLS) },
-                    onOpenVault = { nav.navigate(Routes.VAULT) },
-                    onOpenBrowser = { nav.navigate(Routes.BROWSER) },
-                    onOpenPdfReader = { nav.navigate(Routes.PDF) },
                 )
             }
             composable(Routes.CHATS) {

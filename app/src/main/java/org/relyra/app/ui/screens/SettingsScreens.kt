@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -62,22 +64,30 @@ fun SettingsScreen(
     ) {
         Text(stringResource(R.string.settings_hub_subtitle), style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
-        SettingsHubTile(R.string.settings_cat_connections, R.string.settings_cat_connections_desc,
-            Icons.Default.Wifi, onOpenNetwork)
-        SettingsHubTile(R.string.settings_cat_identity, R.string.settings_cat_identity_desc,
-            Icons.Default.Person, onOpenIdentity)
-        SettingsHubTile(R.string.settings_cat_privacy, R.string.settings_cat_privacy_desc,
-            Icons.Default.Security, onOpenPrivacy)
-        SettingsHubTile(R.string.settings_cat_storage, R.string.settings_cat_storage_desc,
-            Icons.Default.Storage, onOpenStorage)
-        SettingsHubTile(R.string.settings_cat_browser, R.string.settings_cat_browser_desc,
-            Icons.Default.Language, onOpenBrowserDocs)
-        SettingsHubTile(R.string.settings_cat_tools, R.string.settings_cat_tools_desc,
-            Icons.Default.Build, onOpenTools)
-        SettingsHubTile(R.string.settings_cat_notifications, R.string.settings_cat_notifications_desc,
-            Icons.Default.Notifications, onOpenNotifications)
-        SettingsHubTile(R.string.settings_cat_diagnostics, R.string.settings_cat_diagnostics_desc,
-            Icons.Default.BugReport, onOpenDiagnostics)
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SettingsHubTile(R.string.settings_cat_connections, R.string.settings_cat_connections_desc,
+                Icons.Default.Wifi, onOpenNetwork, Modifier.weight(1f))
+            SettingsHubTile(R.string.settings_cat_identity, R.string.settings_cat_identity_desc,
+                Icons.Default.Person, onOpenIdentity, Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SettingsHubTile(R.string.settings_cat_privacy, R.string.settings_cat_privacy_desc,
+                Icons.Default.Security, onOpenPrivacy, Modifier.weight(1f))
+            SettingsHubTile(R.string.settings_cat_storage, R.string.settings_cat_storage_desc,
+                Icons.Default.Storage, onOpenStorage, Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SettingsHubTile(R.string.settings_cat_browser, R.string.settings_cat_browser_desc,
+                Icons.Default.Language, onOpenBrowserDocs, Modifier.weight(1f))
+            SettingsHubTile(R.string.settings_cat_tools, R.string.settings_cat_tools_desc,
+                Icons.Default.Build, onOpenTools, Modifier.weight(1f))
+        }
+        Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+            SettingsHubTile(R.string.settings_cat_notifications, R.string.settings_cat_notifications_desc,
+                Icons.Default.Notifications, onOpenNotifications, Modifier.weight(1f))
+            SettingsHubTile(R.string.settings_cat_diagnostics, R.string.settings_cat_diagnostics_desc,
+                Icons.Default.BugReport, onOpenDiagnostics, Modifier.weight(1f))
+        }
         SectionCard(stringResource(R.string.settings_about)) {
             Box(Modifier.padding(bottom = 8.dp)) { BrandMark(48.dp) }
             InfoRow(stringResource(R.string.app_name), stringResource(R.string.settings_version, BuildConfig.VERSION_NAME))
@@ -92,28 +102,29 @@ private fun SettingsHubTile(
     description: Int,
     icon: androidx.compose.ui.graphics.vector.ImageVector,
     onClick: () -> Unit,
+    modifier: Modifier = Modifier,
 ) {
     androidx.compose.material3.Card(
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
         colors = androidx.compose.material3.CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         ),
     ) {
         Row(
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 15.dp),
+            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 14.dp),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp),
         ) {
             androidx.compose.material3.Surface(
                 shape = MaterialTheme.shapes.medium,
                 color = MaterialTheme.colorScheme.secondaryContainer,
             ) {
                 androidx.compose.material3.Icon(icon, contentDescription = null,
-                    modifier = Modifier.padding(11.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
+                    modifier = Modifier.padding(9.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(stringResource(title), style = MaterialTheme.typography.titleSmall)
-                Text(stringResource(description), style = MaterialTheme.typography.bodySmall,
+                Text(stringResource(title), style = MaterialTheme.typography.titleSmall, maxLines = 2)
+                Text(stringResource(description), style = MaterialTheme.typography.bodySmall, maxLines = 3,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             androidx.compose.material3.Icon(
