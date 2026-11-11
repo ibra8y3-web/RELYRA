@@ -144,7 +144,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         if (e == null) null else { bytes -> container.identities.sign(bytes) }
                     container.bluetooth.configure(
                         publicId = e?.publicId,
-                        signer = signer,
+                        sign = signer,
                         shouldEnable = container.network.bluetoothEnabled.value,
                     )
                     container.wifiDirect.configure(e?.publicId, container.network.wifiDirectEnabled.value)
