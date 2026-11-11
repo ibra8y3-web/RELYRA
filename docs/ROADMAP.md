@@ -38,21 +38,34 @@ Acceptance criteria:
 
 ## Priority 2 — direct connectivity
 
-**Goal:** add a real direct transport without breaking the current relay route.
+**Current source status: experimental WebRTC direct transport added on branch phase-2-internet-p2p; release gate remains open.**
 
-Work items:
-- Select and evaluate a maintained Android-compatible libp2p implementation. Bluetooth Classic and Wi-Fi Direct now cover nearby links only; neither provides Internet P2P or NAT traversal.
-- Define peer discovery and authenticated peer-to-identity binding.
-- Design NAT traversal using ICE/STUN/TURN where supported.
-- Add connection lifecycle, timeouts, cancellation, retry/backoff and bounded resource usage.
-- Integrate the connector behind the current Transport/Connector contract.
-- Keep Nostr as a user-controlled fallback when direct delivery is unavailable.
+Implemented in source:
+- Android WebRTC DataChannel transport using ICE connectivity checks and default STUN servers.
+- Optional user-supplied TURN URI and credentials for networks that require relay candidates.
+- Signed, recipient-bound, ten-minute offer/answer envelopes using RELYRA Ed25519 identities.
+- Manual offer/answer exchange in Network settings; existing known-contact checks are required.
+- Binary encrypted DeliveryEngine payloads pass through the DataChannel; AdaptiveRouter prefers a connected direct path and retains Nostr fallback.
+- DataChannel frame size is bounded and larger attachments remain on the Blossom path.
 
-Acceptance criteria:
-- Two independently installed devices can discover and authenticate each other with user consent.
+Still missing before Priority 2 can be declared complete:
+- Automatic private signaling/rendezvous; current SDP offer/answer exchange is manual.
+- Public Internet peer discovery / DHT.
+- Project-operated TURN service, short-lived credentials and operational abuse controls.
+- Automatic ICE restart after network changes and full disconnect-mid-send delivery regression tests.
+- Real-device verification across independent Wi-Fi and mobile carrier NATs, including TURN-only and symmetric NAT cases.
+- Clean CI success on the exact phase-2 branch.
+
+WebRTC was selected for Android direct connectivity rather than adding the previously evaluated JVM libp2p candidate, whose Android production status, DHT and hole-punching gaps were documented in LIBP2P_EVALUATION.md. This does not claim libp2p, DHT or Circuit Relay v2 support.
+
+Acceptance criteria remain:
+- Two independently installed devices authenticate each other using signed signaling and the RELYRA identity, not an IP address or WebRTC transport identifier.
 - A message is delivered over a verified direct path and is not duplicated when fallback occurs.
-- Tests cover offline peer, NAT failure, disconnect mid-send, malicious peer and relay fallback.
+- Tests cover offline peer, NAT failure, disconnect mid-send, malicious peer, TURN fallback and Nostr fallback.
 - The UI reports the actual path, never a simulated connection status.
+- Tested devices, Android versions, ICE candidate pair types and exact workflow run are recorded.
+
+See INTERNET_P2P_WEBRTC.md for protocol workflow, privacy implications and validation steps.
 
 ## Priority 3 — group protocol and community layer
 
