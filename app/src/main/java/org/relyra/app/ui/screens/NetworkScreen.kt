@@ -46,6 +46,7 @@ import org.relyra.app.core.network.BluetoothTransportStatus
 import org.relyra.app.core.network.WifiDirectTransportStatus
 import org.relyra.app.core.network.TorProxyStatus
 import org.relyra.app.core.network.RelayStatus
+import org.relyra.app.core.network.InternetPeerState
 import org.relyra.app.core.transfer.ServerStatus
 import org.relyra.app.ui.components.InfoRow
 import org.relyra.app.ui.components.SectionCard
@@ -67,6 +68,8 @@ fun NetworkScreen(vm: MainViewModel) {
     val wifiDirectPeers by vm.wifiDirectPeers.collectAsStateWithLifecycle()
     val wifiDirectVerifiedPeers by vm.wifiDirectVerifiedPeers.collectAsStateWithLifecycle()
     val wifiDirectStatus by vm.wifiDirectStatus.collectAsStateWithLifecycle()
+    val internetPeerStates by vm.internetPeerStates.collectAsStateWithLifecycle()
+    val internetSignal by vm.internetSignal.collectAsStateWithLifecycle()
     val torSettings by vm.torProxySettings.collectAsStateWithLifecycle()
     val torStatus by vm.torProxyStatus.collectAsStateWithLifecycle()
     val fileServers by vm.fileServers.collectAsStateWithLifecycle()
@@ -77,6 +80,12 @@ fun NetworkScreen(vm: MainViewModel) {
     var fileError by rememberSaveable { mutableStateOf<Int?>(null) }
     var torPortInput by rememberSaveable(torSettings.port) { mutableStateOf(torSettings.port.toString()) }
     var torPortError by rememberSaveable { mutableStateOf(false) }
+    var p2pPeerId by rememberSaveable { mutableStateOf("") }
+    var p2pRemoteSignal by rememberSaveable { mutableStateOf("") }
+    var turnUrl by rememberSaveable { mutableStateOf("") }
+    var turnUsername by rememberSaveable { mutableStateOf("") }
+    var turnCredential by rememberSaveable { mutableStateOf("") }
+    var turnError by rememberSaveable { mutableStateOf(false) }
 
     val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
