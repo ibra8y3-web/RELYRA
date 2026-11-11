@@ -13,10 +13,10 @@ import okhttp3.WebSocketListener
 import okhttp3.mockwebserver.MockResponse
 import okhttp3.mockwebserver.MockWebServer
 import org.json.JSONArray
+import org.json.JSONObject
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
-import org.relyra.app.core.network.NostrCrypto
 import org.relyra.app.core.network.NostrEvents
 import org.relyra.app.core.network.NostrPool
 import org.relyra.app.core.network.RELYRA_KIND
@@ -39,8 +39,8 @@ class NostrPoolTest {
                             secret, RELYRA_KIND, listOf(listOf("p", "recipient")),
                             "incoming", 1_700_000_000,
                         )
-                        webSocket.send("[\\"EVENT\\",\\"relyra-inbox\\",${NostrEvents.toJson(incoming)}]")
-                        webSocket.send("[\\"EOSE\\",\\"relyra-inbox\\"]")
+                        webSocket.send(JSONArray().put("EVENT").put("relyra-inbox").put(JSONObject(NostrEvents.toJson(incoming))).toString())
+                        webSocket.send(JSONArray().put("EOSE").put("relyra-inbox").toString())
                     }
                     "EVENT" -> {
                         val id = message.getJSONObject(1).getString("id")
