@@ -239,8 +239,9 @@ class WebRtcP2pConnector(
     }
 
     suspend fun createOffer(peerId: String): String? {
+        val me = ownId() ?: return null
         val targetId = peerId.trim().lowercase()
-        if (ownId() == null || IdentityCrypto.parsePublicId(targetId) == null || !knownPeer(targetId)) return null
+        if (IdentityCrypto.parsePublicId(targetId) == null || !knownPeer(targetId)) return null
         return safely {
             withContext(Dispatchers.IO) {
                 val peer = createPeer(targetId) ?: return@withContext null
@@ -250,7 +251,7 @@ class WebRtcP2pConnector(
                 setDescription(peer.connection, true, offer)
                 awaitGathering(peer)
                 val local = peer.connection.localDescription?.description ?: return@withContext null
-                InternetSignalCodec.encode(ownId()!!, targetId, "offer", local, System.currentTimeMillis() / 1000, sign)
+                InternetSignalCodec.encode(me, targetId, "offer", local, System.currentTimeMillis() / 1000, sign)
             }
         }.getOrNull()
     }
