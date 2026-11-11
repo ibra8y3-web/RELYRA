@@ -9,7 +9,8 @@ import org.relyra.app.core.crypto.IdentityCrypto
 import org.relyra.app.core.crypto.PayloadCrypto
 import org.relyra.app.core.crypto.X3dh
 
-class X3dhContactCardTest {\n    private val now = System.currentTimeMillis() / 1000
+class X3dhContactCardTest {
+    private val now = System.currentTimeMillis() / 1000
     @Test fun versionThreeCardCarriesIdentityBoundSignedAndOneTimePrekeys() {
         val seed = ByteArray(32) { (it + 17).toByte() }
         val identity = IdentityCrypto.fromSeed(seed)
@@ -45,7 +46,7 @@ class X3dhContactCardTest {\n    private val now = System.currentTimeMillis() / 
         val changed = uri.replace("&pi=77", "&pi=78")
         assertTrue(ContactCardCodec.decode(changed) is org.relyra.app.core.crypto.CardDecode.BadSignature)
     }
-}
+
     @Test fun v3CardRejectsAValidOuterSignatureAroundAnInvalidSignedPrekey() {
         val seed = ByteArray(32) { (it + 51).toByte() }
         val identity = IdentityCrypto.fromSeed(seed)
@@ -62,3 +63,5 @@ class X3dhContactCardTest {\n    private val now = System.currentTimeMillis() / 
         assertTrue(ContactCardCodec.decode(uri) is org.relyra.app.core.crypto.CardDecode.BadSignature)
     }
 
+
+}
