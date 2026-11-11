@@ -144,8 +144,7 @@ object X3dh {
     }
 
     private fun derive(dh1: ByteArray, dh2: ByteArray, dh3: ByteArray, dh4: ByteArray?): ByteArray {
-        val material = byteArrayOf(0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte(), 0xFF.toByte()) +
-            dh1 + dh2 + dh3 + (dh4 ?: ByteArray(0))
+        val material = ByteArray(32) { 0xFF.toByte() } + dh1 + dh2 + dh3 + (dh4 ?: ByteArray(0))
         return Hkdf.computeHkdf("HmacSha256", material, ByteArray(32), INFO, 32)
     }
 
