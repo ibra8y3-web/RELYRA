@@ -221,4 +221,21 @@ class BlossomClientTest {
         assertEquals(null, server.takeRequest().getHeader("Range"))
     }
 
+    @Test fun bud06RejectsUploadBeforeTheBodyIsSent() = runBlocking {
+        val data = ByteArray(256) { it.toByte() }
+        val file = tmp().also { it.writeBytes(data) }
+        val hash = Hex.encode(sha(data))
+        server.enqueue(MockResponse().setResponseCode(413).addHeader("X-Reason", "quota exceeded"))
+        val result = client.upload(base(), file, hash, NostrCrypto.randomSecret(), 1)
+        assertTrue(result is BlossomUpload.Rejected)
+        val request = server.takeRequest()
+        assertEquals("HEAD", request.method)
+        assertEquals("/upload", request.path)
+        assertEquals(data.size.toString(), request.getHeader("X-Content-Length"))
+        assertEquals("application/octet-stream", request.getHeader("X-Content-Type"))
+        assertEquals(hash, request.getHeader("X-SHA-256"))
+        assertTrue(request.getHeader("Authorization")!!.startsWith("Nostr "))
+        assertEquals(1, server.requestCount)
+    }
+
 }
