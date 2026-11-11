@@ -19,6 +19,17 @@ object Http {
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .proxySelector(TorSocksProxySelector)
         .build()
+
+    /** Apply a changed route policy and discard pooled/in-flight requests on the old route. */
+    @Synchronized
+    fun configureTorProxy(settings: TorSocksSettings) {
+        val previous = TorSocksProxySelector.settings.value
+        TorSocksProxySelector.configure(settings)
+        if (previous != settings) {
+            client.dispatcher.cancelAll()
+            client.connectionPool.evictAll()
+        }
+    }
 }
 
 sealed interface ProbeResult {
