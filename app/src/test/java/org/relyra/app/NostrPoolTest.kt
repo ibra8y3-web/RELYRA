@@ -26,6 +26,7 @@ class NostrPoolTest {
 
     @Test fun relaySubscriptionEventDeliveryAndPublishAcknowledgement() = runBlocking {
         val server = MockWebServer()
+        server.start()
         val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
         val subscribed = CompletableDeferred<Unit>()
         val received = CompletableDeferred<org.relyra.app.core.network.NostrEvent>()
