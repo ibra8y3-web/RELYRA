@@ -54,4 +54,7 @@
     <string name="net_p2p_answer_accepted">Answer accepted; ICE connectivity checks are running.</string>
     <string name="net_p2p_signal_sent">Signed connection signal sent through an available RELYRA route.</string>
     <string name="net_p2p_manual_fallback">No enabled route accepted the signal. Copy the signed signaling data and exchange it privately with the contact.</string>
+    <string name="net_p2p_incoming_offer">A verified contact is requesting a direct WebRTC connection. Approve only if you expected this request.</string>
+    <string name="net_p2p_approve">Approve connection</string>
+    <string name="net_p2p_decline">Decline</string>
 </resources>
