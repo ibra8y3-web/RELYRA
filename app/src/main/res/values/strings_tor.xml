@@ -4,9 +4,9 @@
     <string name="net_tor_strict_toggle">Strict Mode — route Internet HTTP/WebSocket traffic through Tor only</string>
     <string name="net_tor_port">Local Tor SOCKS5 port</string>
     <string name="net_tor_invalid_port">Enter a valid port from 1 to 65535.</string>
-    <string name="net_tor_desc">Requires a separate Tor service such as Orbot running on this device. Default SOCKS port is 9050. Strict Mode routes RELYRA's shared OkHttp traffic (Nostr relays and Blossom transfers) through 127.0.0.1 and never falls back to a direct Internet connection if Tor is unavailable. Local Bluetooth/Wi-Fi Direct/LAN links are separate. The internal WebView browser is blocked while Strict Mode is on because it does not use this SOCKS client.</string>
+    <string name="net_tor_desc">Requires a separate Tor service such as Orbot running on this device. Default SOCKS port is 9050. Strict Mode routes RELYRA&apos;s shared OkHttp traffic (Nostr relays and Blossom transfers) through 127.0.0.1 and never falls back to a direct Internet connection if Tor is unavailable. Local Bluetooth/Wi-Fi Direct/LAN links are separate. The internal WebView browser is blocked while Strict Mode is on because it does not use this SOCKS client.</string>
     <string name="net_tor_enabled">Strict routing is configured. This does not confirm that Tor is running; test a relay after starting your Tor service.</string>
     <string name="net_tor_disabled">Tor routing is off. Internet connections use the normal Android network route.</string>
     <string name="net_tor_apply">Apply Tor settings</string>
-    <string name="tor_browser_blocked">The internal browser is paused while Tor Strict Mode is enabled. The WebView does not use RELYRA's SOCKS proxy, so opening a page here could bypass Tor. Turn Strict Mode off to use this browser.</string>
+    <string name="tor_browser_blocked">The internal browser is paused while Tor Strict Mode is enabled. The WebView does not use RELYRA&apos;s SOCKS proxy, so opening a page here could bypass Tor. Turn Strict Mode off to use this browser.</string>
 </resources>
