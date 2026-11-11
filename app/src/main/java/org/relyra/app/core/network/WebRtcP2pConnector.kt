@@ -62,7 +62,7 @@ data class InternetPeerSession(
  */
 object InternetSignalCodec {
     private const val DOMAIN = "RELYRA-WEBRTC-SIGNAL-V1"
-    private const val MAX_SDP_CHARS = 60_000
+    private const val MAX_SDP_CHARS = 40_000
     private const val MAX_AGE_SECONDS = 10 * 60L
 
     fun encode(
