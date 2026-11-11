@@ -1,6 +1,7 @@
 <p align="center"><img src="docs/assets/relyra-cover.svg" alt="ريلايرا — الخصوصية من التصميم والاتصال باختيارك" width="100%"></p>
 <p align="center"><a href="README.md">English</a> · <a href="docs/ARCHITECTURE.md">المعمارية</a> · <a href="docs/NETWORKING.md">الشبكة</a> · <a href="docs/ROADMAP.md">خطة التطوير</a> · <a href="docs/SPECIFICATION_CROSSWALK_AR.md">حالة المواصفات</a> · <a href="LICENSE">Apache 2.0</a></p>
-<p align="center"><a href="https://github.com/ibra8y3-web/RELYRA/actions/workflows/build.yml"><img src="https://github.com/ibra8y3-web/RELYRA/actions/workflows/build.yml/badge.svg?branch=main" alt="حالة البناء"></a> <img src="https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white" alt="Android 10+"> <img src="https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 2.0.21"> <img src="https://img.shields.io/badge/Release-0.9.0-64748b" alt="الإصدار 0.9.0">\n<img src="https://img.shields.io/badge/License-Apache--2.0-blue" alt="ترخيص Apache 2.0"></p>
+<p align="center"><a href="https://github.com/ibra8y3-web/RELYRA/actions/workflows/build.yml"><img src="https://github.com/ibra8y3-web/RELYRA/actions/workflows/build.yml/badge.svg?branch=main" alt="حالة البناء"></a> <img src="https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white" alt="Android 10+"> <img src="https://img.shields.io/badge/Kotlin-2.4.21-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 2.4.21"> <img src="https://img.shields.io/badge/Release-0.9.0-64748b" alt="الإصدار 0.9.0">
+<img src="https://img.shields.io/badge/License-Apache--2.0-blue" alt="ترخيص Apache 2.0"></p>
 
 <h1 align="center">RELYRA — ريلايرا</h1>
 <p align="center"><strong>خصوصيتك من التصميم. واتصالك باختيارك.</strong></p>

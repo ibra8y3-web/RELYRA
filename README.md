@@ -3,8 +3,9 @@
 <p align="center">
 <a href="https://github.com/ibra8y3-web/RELYRA/actions/workflows/build.yml"><img src="https://github.com/ibra8y3-web/RELYRA/actions/workflows/build.yml/badge.svg?branch=main" alt="Build status"></a>
 <img src="https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white" alt="Android 10+">
-<img src="https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 2.0.21">
-<img src="https://img.shields.io/badge/Release-0.9.0-64748b" alt="Version 0.9.0">\n<img src="https://img.shields.io/badge/License-Apache--2.0-blue" alt="Apache License 2.0">
+<img src="https://img.shields.io/badge/Kotlin-2.4.21-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 2.4.21">
+<img src="https://img.shields.io/badge/Release-0.9.0-64748b" alt="Version 0.9.0">
+<img src="https://img.shields.io/badge/License-Apache--2.0-blue" alt="Apache License 2.0">
 </p>
 
 <h1 align="center">RELYRA</h1>
