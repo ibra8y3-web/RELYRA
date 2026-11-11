@@ -42,6 +42,49 @@ class NetworkManager(context: Context, private val client: RelayClient = RelayCl
     private val prefs = context.applicationContext.getSharedPreferences("relyra_network", Context.MODE_PRIVATE)
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
 
+    private val _torProxySettings = MutableStateFlow(loadTorProxySettings())
+    val torProxySettings: StateFlow<TorSocksSettings> = _torProxySettings
+    private val _torProxyStatus = MutableStateFlow<TorProxyStatus>(
+        if (_torProxySettings.value.enabled) TorProxyStatus.ReadyToTest else TorProxyStatus.Disabled
+    )
+    val torProxyStatus: StateFlow<TorProxyStatus> = _torProxyStatus
+
+    init {
+        Http.configureTorProxy(_torProxySettings.value)
+    }
+
+    private fun loadTorProxySettings(): TorSocksSettings = TorSocksSettings(
+        enabled = prefs.getBoolean("tor_socks_enabled", false),
+        strict = prefs.getBoolean("tor_socks_strict", true),
+        port = prefs.getInt("tor_socks_port", TorSocksSettings.DEFAULT_PORT)
+            .takeIf { TorSocksSettings.isValidPort(it) } ?: TorSocksSettings.DEFAULT_PORT,
+    )
+
+    fun updateTorProxySettings(enabled: Boolean, strict: Boolean, port: Int): Boolean {
+        if (!TorSocksSettings.isValidPort(port)) return false
+        val settings = TorSocksSettings(enabled = enabled, strict = strict, port = port)
+        prefs.edit {
+            putBoolean("tor_socks_enabled", settings.enabled)
+            putBoolean("tor_socks_strict", settings.strict)
+            putInt("tor_socks_port", settings.port)
+        }
+        Http.configureTorProxy(settings)
+        _torProxySettings.value = settings
+        _torProxyStatus.value = if (enabled) TorProxyStatus.ReadyToTest else TorProxyStatus.Disabled
+        return true
+    }
+
+    fun testTorProxy() {
+        if (!_torProxySettings.value.enabled) {
+            _torProxyStatus.value = TorProxyStatus.Disabled
+            return
+        }
+        _torProxyStatus.value = TorProxyStatus.Testing
+        scope.launch {
+            _torProxyStatus.value = TorProxyTester().test()
+        }
+    }
+
     private val _relays = MutableStateFlow(load())
     val relays: StateFlow<List<RelayConfig>> = _relays
     private val _status = MutableStateFlow<Map<String, RelayStatus>>(emptyMap())

@@ -85,30 +85,25 @@ fun SettingsScreen(
                 modifier = Modifier.clickable(onClick = onOpenNetwork),
             )
         }
-        SectionCard(stringResource(R.string.vault_title)) {
+        SectionCard(stringResource(R.string.settings_tools_group)) {
             ListItem(
                 headlineContent = { Text(stringResource(R.string.vault_title)) },
                 supportingContent = { Text(stringResource(R.string.vault_desc)) },
                 modifier = Modifier.clickable(onClick = onOpenVault),
             )
-        }
-        SectionCard(stringResource(R.string.browser_title)) {
+            HorizontalDivider()
             ListItem(
                 headlineContent = { Text(stringResource(R.string.browser_title)) },
                 supportingContent = { Text(stringResource(R.string.browser_settings_desc)) },
                 modifier = Modifier.clickable(onClick = onOpenBrowser),
             )
-        }
-        SectionCard(stringResource(R.string.pdf_title)) {
+            HorizontalDivider()
             ListItem(
                 headlineContent = { Text(stringResource(R.string.pdf_title)) },
                 supportingContent = { Text(stringResource(R.string.pdf_settings_desc)) },
                 modifier = Modifier.clickable(onClick = onOpenPdfReader),
             )
-        }
-        DataStorageCard(vm, onOpenDiagnostics)
-        BackupCard(vm)
-        SectionCard(stringResource(R.string.tools_title)) {
+            HorizontalDivider()
             ListItem(
                 headlineContent = { Text(stringResource(R.string.tools_title)) },
                 supportingContent = { Text(stringResource(R.string.tools_desc)) },
@@ -121,6 +116,8 @@ fun SettingsScreen(
                 modifier = Modifier.clickable(onClick = onOpenDiagnostics),
             )
         }
+        DataStorageCard(vm, onOpenDiagnostics)
+        BackupCard(vm)
         SectionCard(stringResource(R.string.settings_about)) {
             Box(Modifier.padding(bottom = 8.dp)) { BrandMark(56.dp) }
             InfoRow(stringResource(R.string.app_name), stringResource(R.string.settings_version, BuildConfig.VERSION_NAME))

@@ -11,6 +11,7 @@
     <string name="browser_load_failed">The page could not be loaded.</string>
     <string name="browser_tls_blocked">The page was blocked because its TLS certificate could not be verified.</string>
     <string name="browser_security_note">Privacy defaults: JavaScript, cookies, DOM storage, mixed content and local-file access are disabled. This viewer is not Tor and does not guarantee anonymity.</string>
+    <string name="browser_tor_proxy_blocked">The built-in WebView does not use RELYRA\'s SOCKS proxy. It is blocked while Tor proxy mode is enabled to prevent a direct browser connection.</string>
     <string name="pdf_title">PDF reader</string>
     <string name="pdf_settings_desc">Open and read local PDF files without uploading them.</string>
     <string name="pdf_open">Choose PDF file</string>

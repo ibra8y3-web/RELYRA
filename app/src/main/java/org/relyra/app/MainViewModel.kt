@@ -106,6 +106,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val wifiDirectPeers get() = rely.container.wifiDirect.discovered
     val wifiDirectVerifiedPeers get() = rely.container.wifiDirect.verified
     val wifiDirectStatus get() = rely.container.wifiDirect.status
+    val torProxySettings get() = rely.container.network.torProxySettings
+    val torProxyStatus get() = rely.container.network.torProxyStatus
     val fileServers get() = rely.container.blossom.servers
     val fileServerStatus get() = rely.container.blossom.status
     val downloadProgress get() = rely.container.transfers.progress
@@ -424,6 +426,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setWifiDirectEnabled(enabled: Boolean) = ctr().network.setWifiDirectEnabled(enabled)
     fun refreshWifiDirectPeers() = ctr().wifiDirect.refreshPeers()
     fun connectWifiDirect(deviceAddress: String) = ctr().wifiDirect.connect(deviceAddress)
+    fun updateTorProxySettings(enabled: Boolean, strict: Boolean, port: Int): Boolean =
+        ctr().network.updateTorProxySettings(enabled, strict, port)
+    fun testTorProxy() = ctr().network.testTorProxy()
 
     // ---- conversation housekeeping ---------------------------------------------------------------------------
 

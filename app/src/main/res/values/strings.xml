@@ -140,7 +140,7 @@
     <string name="settings_receipts_desc">Let contacts see when you have read their messages.</string>
     <string name="home_pending">Messages waiting to send</string>
     <string name="net_title">Network</string>
-    <string name="settings_network_desc">Nostr relays and file servers you choose, connection tests, your derived Nostr key.</string>
+    <string name="settings_network_desc">Manage Nostr relays, Blossom file servers, Bluetooth Classic, Wi-Fi Direct, Nearby LAN and the optional Tor SOCKS route. Each connection reports its own real status.</string>
     <string name="home_relays">Relays enabled</string>
     <string name="net_transport">Message transport</string>
     <string name="net_transport_inactive">No relay enabled. Add and enable one so encrypted messages can be sent and received.</string>
@@ -218,4 +218,10 @@
     <string name="net_nearby_status_searching">Searching this local network for known contacts…</string>
     <string name="net_nearby_status_active">Local network transport is ready.</string>
     <string name="net_nearby_status_failed">Local network discovery could not start. Check Wi-Fi and Android network restrictions.</string>
+    <string name="settings_tools_group">Personal tools and diagnostics</string>
+    <string name="home_bluetooth">Bluetooth Classic</string>
+    <string name="home_wifi_direct">Wi-Fi Direct</string>
+    <string name="home_nearby_lan">Nearby LAN</string>
+    <string name="home_tor">Tor SOCKS route</string>
+    <string name="home_manage_network">Manage connections and services</string>
 </resources>

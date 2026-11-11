@@ -7,6 +7,7 @@ import okhttp3.Request
 import okhttp3.Response
 import okhttp3.WebSocket
 import okhttp3.WebSocketListener
+import org.relyra.app.core.network.TorSocksProxySelector
 import java.security.SecureRandom
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
@@ -16,7 +17,19 @@ object Http {
     val client: OkHttpClient = OkHttpClient.Builder()
         .pingInterval(30, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
+        .proxySelector(TorSocksProxySelector)
         .build()
+
+    /** Apply a changed route policy and discard pooled/in-flight requests on the old route. */
+    @Synchronized
+    fun configureTorProxy(settings: TorSocksSettings) {
+        val previous = TorSocksProxySelector.settings.value
+        TorSocksProxySelector.configure(settings)
+        if (previous != settings) {
+            client.dispatcher.cancelAll()
+            client.connectionPool.evictAll()
+        }
+    }
 }
 
 sealed interface ProbeResult {

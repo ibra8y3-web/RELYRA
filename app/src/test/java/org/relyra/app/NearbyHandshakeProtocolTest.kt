@@ -16,7 +16,7 @@ import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicReference
 
 class NearbyHandshakeProtocolTest {
-    @Test
+    @Test(timeout = 20_000)
     fun authenticatesBothIdentitiesBeforeAcceptingEncryptedPayload() {
         val serverKeys = IdentityCrypto.generate()
         val clientKeys = IdentityCrypto.generate()
@@ -26,8 +26,10 @@ class NearbyHandshakeProtocolTest {
         val received = AtomicReference<ByteArray?>()
         val executor = Executors.newSingleThreadExecutor()
 
-        ServerSocket(0).use { listener ->
-            val serverResult = executor.submit<String?> {
+        try {
+            ServerSocket(0).use { listener ->
+                listener.soTimeout = 6_000
+                val serverResult = executor.submit<String?> {
                 listener.accept().use { socket ->
                     socket.soTimeout = 5_000
                     runBlocking {
@@ -61,12 +63,15 @@ class NearbyHandshakeProtocolTest {
 
             assertEquals(serverId, clientResult)
             assertEquals(clientId, serverResult.get(6, TimeUnit.SECONDS))
-            assertArrayEquals(payload, received.get())
+                assertArrayEquals(payload, received.get())
+            }
+        } finally {
+            executor.shutdownNow()
+            executor.awaitTermination(2, TimeUnit.SECONDS)
         }
-        executor.shutdownNow()
     }
 
-    @Test
+    @Test(timeout = 15_000)
     fun rejectsAnIdentityThatIsNotInTheLocalContactBook() {
         val serverKeys = IdentityCrypto.generate()
         val clientKeys = IdentityCrypto.generate()
@@ -74,8 +79,10 @@ class NearbyHandshakeProtocolTest {
         val clientId = IdentityCrypto.publicId(clientKeys.publicKey)
         val executor = Executors.newSingleThreadExecutor()
 
-        ServerSocket(0).use { listener ->
-            val serverResult = executor.submit<String?> {
+        try {
+            ServerSocket(0).use { listener ->
+                listener.soTimeout = 4_000
+                val serverResult = executor.submit<String?> {
                 listener.accept().use { socket ->
                     socket.soTimeout = 3_000
                     runBlocking {
@@ -105,10 +112,13 @@ class NearbyHandshakeProtocolTest {
                     )
                 }
             }
-            assertNull(clientResult)
-            assertNull(serverResult.get(4, TimeUnit.SECONDS))
+                assertNull(clientResult)
+                assertNull(serverResult.get(4, TimeUnit.SECONDS))
+            }
+        } finally {
+            executor.shutdownNow()
+            executor.awaitTermination(2, TimeUnit.SECONDS)
         }
-        executor.shutdownNow()
     }
 
     @Test
