@@ -18,8 +18,13 @@ import org.relyra.app.core.database.ChatSummary
 import org.relyra.app.core.database.MessageEntity
 import org.relyra.app.core.identity.AddResult
 import org.relyra.app.core.messaging.EnqueueResult
+import org.relyra.app.core.messaging.Envelope
+import org.relyra.app.core.messaging.EnvelopeCodec
+import org.relyra.app.core.messaging.P2pSignalKind
+import org.relyra.app.core.messaging.SendOutcome
 import org.relyra.app.core.network.AddRelayResult
 import org.relyra.app.core.network.IceServerConfig
+import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.delay
@@ -446,17 +451,46 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun createInternetOffer(peerId: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val card = runCatching { ctr().internetP2p.createOffer(peerId.trim()) }.getOrNull()
+            val c = ctr()
+            val target = peerId.trim().lowercase()
+            val card = runCatching { c.internetP2p.createOffer(target) }.getOrNull()
             internetSignal.value = card ?: ""
-            if (card == null) message.value = UiMessage(R.string.net_p2p_signal_failed)
+            if (card == null) {
+                message.value = UiMessage(R.string.net_p2p_signal_failed)
+                return@launch
+            }
+            val own = c.database.identityDao().get()?.publicId ?: return@launch
+            val envelope = Envelope.P2pSignal(
+                UUID.randomUUID().toString(), own, target, P2pSignalKind.OFFER, card,
+            )
+            when (c.delivery.transmit(target, EnvelopeCodec.encode(envelope))) {
+                SendOutcome.Accepted, SendOutcome.Relayed ->
+                    message.value = UiMessage(R.string.net_p2p_signal_sent)
+                SendOutcome.Unavailable, is SendOutcome.Rejected ->
+                    message.value = UiMessage(R.string.net_p2p_manual_fallback)
+            }
         }
     }
 
     fun acceptInternetOffer(peerId: String, offer: String) {
         viewModelScope.launch(Dispatchers.IO) {
-            val answer = runCatching { ctr().internetP2p.acceptOffer(peerId.trim(), offer.trim()) }.getOrNull()
+            val c = ctr()
+            val target = peerId.trim().lowercase()
+            val answer = runCatching { c.internetP2p.acceptOffer(target, offer.trim()) }.getOrNull()
             internetSignal.value = answer ?: ""
-            if (answer == null) message.value = UiMessage(R.string.net_p2p_signal_failed)
+            if (answer == null) {
+                message.value = UiMessage(R.string.net_p2p_signal_failed)
+                return@launch
+            }
+            val own = c.database.identityDao().get()?.publicId ?: return@launch
+            val envelope = Envelope.P2pSignal(
+                UUID.randomUUID().toString(), own, target, P2pSignalKind.ANSWER, answer,
+            )
+            val outcome = c.delivery.transmit(target, EnvelopeCodec.encode(envelope))
+            message.value = UiMessage(
+                if (outcome == SendOutcome.Accepted || outcome == SendOutcome.Relayed)
+                    R.string.net_p2p_signal_sent else R.string.net_p2p_manual_fallback
+            )
         }
     }
 
