@@ -30,7 +30,7 @@
     <string name="net_wifi_direct_connect">اتصال</string>
 
     <string name="net_p2p_title">اتصال مباشر عبر الإنترنت (WebRTC)</string>
-    <string name="net_p2p_desc">ينشئ قناة بيانات مباشرة باستخدام ICE وSTUN، مع TURN عند توفير خادم تديره أنت وبيانات اعتماده. يرسل RELYRA عروض الاتصال والإجابات الموقعة تلقائيًا داخل رسائل مشفرة طرفًا لطرف عبر Relay من Nostr عند توفره، مع الإبقاء على النسخ واللصق اليدوي عند غياب مسار إرسال. قد تكشف بيانات SDP عناوين الشبكة، واتصال WebRTC لا يمر عبر وكيل Tor SOCKS.</string>
+    <string name="net_p2p_desc">ينشئ قناة بيانات مباشرة باستخدام ICE وSTUN، مع TURN عند توفير خادم تديره أنت وبيانات اعتماده. يرسل RELYRA عروض الاتصال والإجابات الموقعة تلقائيًا داخل رسائل مشفرة طرفًا لطرف عبر Relay من Nostr عند توفره، ولا يقبل العروض الواردة قبل موافقتك الصريحة. يظل النسخ واللصق اليدوي متاحًا عند غياب مسار إرسال. قد تكشف بيانات SDP عناوين الشبكة، واتصال WebRTC لا يمر عبر وكيل Tor SOCKS.</string>
     <string name="net_p2p_peer_id">معرّف جهة الاتصال RELYRA</string>
     <string name="net_p2p_create_offer">إنشاء عرض اتصال</string>
     <string name="net_p2p_remote_signal">الصق العرض أو الإجابة المستلمة</string>
