@@ -158,14 +158,6 @@ fun PrivacySecuritySettingsScreen(
                     })
                 },
             )
-            HorizontalDivider()
-            ListItem(
-                headlineContent = { Text(stringResource(R.string.settings_receipts)) },
-                supportingContent = { Text(stringResource(R.string.settings_receipts_desc)) },
-                trailingContent = {
-                    Switch(checked = receipts, onCheckedChange = vm::setReadReceipts)
-                },
-            )
         }
         PrivacyAppearanceCards(vm)
         SectionCard(stringResource(R.string.settings_log)) {

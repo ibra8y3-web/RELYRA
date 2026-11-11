@@ -63,11 +63,10 @@ jobs:
           name: relyra-debug-apk
           path: app/build/outputs/apk/debug/*.apk
 
-      # Tests remain visible but do not block delivery of the debug APK.
-      - name: Unit tests (non-blocking)
-        continue-on-error: true
-        timeout-minutes: 12
-        run: gradle --no-daemon --console=plain --info testDebugUnitTest
+      # A release candidate is not valid unless the JVM regression suite passes.
+      - name: Unit tests
+        timeout-minutes: 15
+        run: gradle --no-daemon --console=plain testDebugUnitTest
 
       - name: Upload test reports
         if: always()
