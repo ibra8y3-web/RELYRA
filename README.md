@@ -95,7 +95,8 @@ These transports are for nearby devices only. They do not provide Internet P2P, 
 The following are **not** present in the current build:
 
 - Internet P2P across separate networks, libp2p and ICE/STUN/TURN traversal.
-- Tor routing/Strict Mode, Bluetooth Low Energy mesh and third-party multi-hop Store & Forward. Bluetooth Classic and Wi-Fi Direct nearby transports are present, but are not Internet P2P.
+- A bundled Tor client, in-app bridge configuration and Onion Services. An external Tor SOCKS5 service (e.g. Orbot) is supported for OkHttp traffic with Strict Mode and a Tor exit check; browser/WebView and nearby local links are separate.
+- Bluetooth Low Energy mesh and third-party multi-hop Store & Forward. Bluetooth Classic and Wi-Fi Direct nearby transports are present, but are not Internet P2P.
 - MLS group encryption. Current group messages are encrypted separately for each member using one-to-one sessions.
 - Group file attachments and group read receipts.
 - Communities, public group discovery and a RELYRA-operated relay/node network.
