@@ -75,6 +75,10 @@ private object Routes {
     const val VAULT = "settings/vault"
     const val BROWSER = "settings/browser"
     const val PDF = "settings/pdf"
+    const val SETTINGS_PRIVACY = "settings/privacy"
+    const val SETTINGS_STORAGE = "settings/storage"
+    const val SETTINGS_NOTIFICATIONS = "settings/notifications"
+    const val SETTINGS_BROWSER_DOCS = "settings/browser-documents"
 }
 
 private class Tab(val route: String, @StringRes val label: Int, val icon: ImageVector)
@@ -106,6 +110,10 @@ private fun titleFor(route: String): Int = when (route) {
     Routes.VAULT -> R.string.vault_title
     Routes.BROWSER -> R.string.browser_title
     Routes.PDF -> R.string.pdf_title
+    Routes.SETTINGS_PRIVACY -> R.string.settings_cat_privacy
+    Routes.SETTINGS_STORAGE -> R.string.settings_cat_storage
+    Routes.SETTINGS_NOTIFICATIONS -> R.string.settings_cat_notifications
+    Routes.SETTINGS_BROWSER_DOCS -> R.string.settings_cat_browser
     else -> R.string.app_name
 }
 
@@ -238,7 +246,33 @@ fun AppNav(
             composable(Routes.CHAT) { entry -> ChatScreen(vm, entry.arguments?.getString("id") ?: "") }
             composable(Routes.CONTACTS) { ContactsScreen(vm, onAdd = { nav.navigate(Routes.ADD) }) }
             composable(Routes.IDENTITY) { IdentityScreen(vm, onRecovery = { nav.navigate(Routes.RECOVERY) }) }
-            composable(Routes.SETTINGS) { SettingsScreen(vm, authenticate, onOpenLog = { nav.navigate(Routes.LOG) }, onOpenNetwork = { nav.navigate(Routes.NETWORK) }, onOpenTools = { nav.navigate(Routes.TOOLS) }, onOpenDiagnostics = { nav.navigate(Routes.DIAG) }, onOpenVault = { nav.navigate(Routes.VAULT) }, onOpenBrowser = { nav.navigate(Routes.BROWSER) }, onOpenPdfReader = { nav.navigate(Routes.PDF) }) }
+            composable(Routes.SETTINGS) {
+                SettingsScreen(
+                    vm,
+                    onOpenNetwork = { nav.navigate(Routes.NETWORK) },
+                    onOpenIdentity = { nav.navigate(Routes.IDENTITY) },
+                    onOpenPrivacy = { nav.navigate(Routes.SETTINGS_PRIVACY) },
+                    onOpenStorage = { nav.navigate(Routes.SETTINGS_STORAGE) },
+                    onOpenBrowserDocs = { nav.navigate(Routes.SETTINGS_BROWSER_DOCS) },
+                    onOpenTools = { nav.navigate(Routes.TOOLS) },
+                    onOpenNotifications = { nav.navigate(Routes.SETTINGS_NOTIFICATIONS) },
+                    onOpenDiagnostics = { nav.navigate(Routes.DIAG) },
+                )
+            }
+            composable(Routes.SETTINGS_PRIVACY) {
+                PrivacySecuritySettingsScreen(vm, authenticate, onOpenLog = { nav.navigate(Routes.LOG) })
+            }
+            composable(Routes.SETTINGS_STORAGE) {
+                StorageSettingsScreen(vm, onOpenVault = { nav.navigate(Routes.VAULT) },
+                    onOpenDiagnostics = { nav.navigate(Routes.DIAG) })
+            }
+            composable(Routes.SETTINGS_NOTIFICATIONS) { NotificationsSettingsScreen(vm) }
+            composable(Routes.SETTINGS_BROWSER_DOCS) {
+                BrowserDocumentsSettingsScreen(
+                    onOpenBrowser = { nav.navigate(Routes.BROWSER) },
+                    onOpenPdfReader = { nav.navigate(Routes.PDF) },
+                )
+            }
             composable(Routes.ADD) { AddContactScreen(vm, onDone = { nav.popBackStack() }) }
             composable(Routes.RECOVERY) { RecoveryScreen(vm, authenticate, onDone = { nav.popBackStack() }) }
             composable(Routes.LOG) { LogScreen(vm) }

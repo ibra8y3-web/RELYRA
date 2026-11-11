@@ -224,4 +224,21 @@
     <string name="home_nearby_lan">الاتصال المحلي Nearby LAN</string>
     <string name="home_tor">مسار Tor SOCKS</string>
     <string name="home_manage_network">إدارة الاتصالات والخدمات</string>
+    <string name="settings_hub_subtitle">اختر قسمًا؛ لكل مجال شاشة مستقلة وأدوات مرتبة.</string>
+    <string name="settings_cat_connections">الاتصالات والشبكات</string>
+    <string name="settings_cat_connections_desc">مرحّلات Nostr وخوادم Blossom والاتصالات القريبة ومسار Tor.</string>
+    <string name="settings_cat_identity">الهوية والأجهزة</string>
+    <string name="settings_cat_identity_desc">هويتك وبطاقة الاتصال والاسترداد وهوية الجهاز.</string>
+    <string name="settings_cat_privacy">الخصوصية والأمان</string>
+    <string name="settings_cat_privacy_desc">قفل التطبيق وإعدادات الخصوصية والمظهر وسجل الأمان.</string>
+    <string name="settings_cat_storage">التخزين والنسخ الاحتياطي</string>
+    <string name="settings_cat_storage_desc">الخزنة ومساحة التخزين والتنظيف والنسخ الاحتياطي المشفّر.</string>
+    <string name="settings_cat_browser">المتصفح والمستندات</string>
+    <string name="settings_cat_browser_desc">تصفح الويب وقراءة ملفات PDF.</string>
+    <string name="settings_cat_tools">الأدوات والإضافات</string>
+    <string name="settings_cat_tools_desc">الأدوات المتاحة وأدوات المطور.</string>
+    <string name="settings_cat_notifications">الإشعارات والنشاط</string>
+    <string name="settings_cat_notifications_desc">سلوك الإشعارات وتفضيلات الاتصال في الخلفية.</string>
+    <string name="settings_cat_diagnostics">التشخيص والنظام</string>
+    <string name="settings_cat_diagnostics_desc">تشخيص الاتصال وحالة التطبيق والسجلات التقنية.</string>
 </resources>
