@@ -54,6 +54,7 @@ class SecureStore(context: Context) {
     /** Used only when a backup is applied: replaces both secrets, re-wrapped by this device's Keystore key. */
     fun restoreKeys(seed: ByteArray?, dbKey: ByteArray) {
         write(DB_KEY, dbKey)
+        clearPreKeys()
         if (seed != null && seed.isNotEmpty()) saveSeed(seed) else clearSeed()
     }
 
