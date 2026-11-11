@@ -43,6 +43,7 @@ import org.relyra.app.core.network.AddRelayResult
 import org.relyra.app.core.network.NearbyLanStatus
 import org.relyra.app.core.network.BluetoothTransportStatus
 import org.relyra.app.core.network.WifiDirectTransportStatus
+import org.relyra.app.core.network.TorProxyStatus
 import org.relyra.app.core.network.RelayStatus
 import org.relyra.app.core.transfer.ServerStatus
 import org.relyra.app.ui.components.InfoRow
@@ -65,12 +66,16 @@ fun NetworkScreen(vm: MainViewModel) {
     val wifiDirectPeers by vm.wifiDirectPeers.collectAsStateWithLifecycle()
     val wifiDirectVerifiedPeers by vm.wifiDirectVerifiedPeers.collectAsStateWithLifecycle()
     val wifiDirectStatus by vm.wifiDirectStatus.collectAsStateWithLifecycle()
+    val torSettings by vm.torProxySettings.collectAsStateWithLifecycle()
+    val torStatus by vm.torProxyStatus.collectAsStateWithLifecycle()
     val fileServers by vm.fileServers.collectAsStateWithLifecycle()
     val fileStatus by vm.fileServerStatus.collectAsStateWithLifecycle()
     var input by rememberSaveable { mutableStateOf("") }
     var error by rememberSaveable { mutableStateOf<Int?>(null) }
     var fileInput by rememberSaveable { mutableStateOf("") }
     var fileError by rememberSaveable { mutableStateOf<Int?>(null) }
+    var torPortInput by rememberSaveable(torSettings.port) { mutableStateOf(torSettings.port.toString()) }
+    var torPortError by rememberSaveable { mutableStateOf(false) }
 
     val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -122,6 +127,91 @@ fun NetworkScreen(vm: MainViewModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        SectionCard(stringResource(R.string.net_tor_title)) {
+            Text(
+                stringResource(R.string.net_tor_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(stringResource(R.string.net_tor_enable), modifier = Modifier.weight(1f))
+                Switch(
+                    checked = torSettings.enabled,
+                    onCheckedChange = {
+                        vm.updateTorProxySettings(it, torSettings.strict, torSettings.port)
+                    },
+                )
+            }
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(stringResource(R.string.net_tor_strict), modifier = Modifier.weight(1f))
+                Switch(
+                    checked = torSettings.strict,
+                    enabled = torSettings.enabled,
+                    onCheckedChange = {
+                        vm.updateTorProxySettings(torSettings.enabled, it, torSettings.port)
+                    },
+                )
+            }
+            Text(
+                stringResource(if (torSettings.strict) R.string.net_tor_strict_note else R.string.net_tor_fallback_warning),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (torSettings.strict) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
+            )
+            OutlinedTextField(
+                value = torPortInput,
+                onValueChange = { value ->
+                    torPortInput = value.filter(Char::isDigit).take(5)
+                    torPortError = false
+                },
+                label = { Text(stringResource(R.string.net_tor_port)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+                isError = torPortError,
+            )
+            if (torPortError) {
+                Text(stringResource(R.string.net_tor_port_invalid), color = MaterialTheme.colorScheme.error)
+            }
+            Button(
+                onClick = {
+                    val port = torPortInput.toIntOrNull()
+                    if (port == null || !vm.updateTorProxySettings(torSettings.enabled, torSettings.strict, port)) {
+                        torPortError = true
+                    } else {
+                        torPortError = false
+                        vm.testTorProxy()
+                    }
+                },
+                enabled = torSettings.enabled && torStatus != TorProxyStatus.Testing,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.net_tor_test))
+            }
+            Text(
+                when (val state = torStatus) {
+                    TorProxyStatus.Disabled -> stringResource(R.string.net_tor_status_disabled)
+                    TorProxyStatus.ReadyToTest -> stringResource(R.string.net_tor_status_ready)
+                    TorProxyStatus.Testing -> stringResource(R.string.net_tor_status_testing)
+                    is TorProxyStatus.Verified -> stringResource(R.string.net_tor_status_verified, state.exitIp)
+                    TorProxyStatus.NotTor -> stringResource(R.string.net_tor_status_not_tor)
+                    is TorProxyStatus.Failed -> stringResource(R.string.net_tor_status_failed, state.reason)
+                },
+                style = MaterialTheme.typography.bodySmall,
+                color = when (torStatus) {
+                    is TorProxyStatus.Verified -> MaterialTheme.colorScheme.primary
+                    is TorProxyStatus.Failed, TorProxyStatus.NotTor -> MaterialTheme.colorScheme.error
+                    else -> MaterialTheme.colorScheme.onSurfaceVariant
+                },
+            )
+        }
+
         SectionCard(stringResource(R.string.net_bt_title)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
