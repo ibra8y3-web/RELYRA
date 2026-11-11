@@ -30,7 +30,7 @@
     <string name="net_wifi_direct_connect">Connect</string>
  
     <string name="net_p2p_title">Direct Internet connection (WebRTC)</string>
-    <string name="net_p2p_desc">Creates a direct data channel using ICE/STUN and optional operator-provided TURN. Signed offers and answers are exchanged automatically inside RELYRA end-to-end encrypted messages over your enabled Nostr relay when available. Manual copy/paste remains available when no relay route exists. SDP can reveal network addresses; WebRTC data does not use the Tor SOCKS proxy.</string>
+    <string name="net_p2p_desc">Creates a direct data channel using ICE/STUN and optional operator-provided TURN. Signed offers and answers are exchanged automatically inside RELYRA end-to-end encrypted messages over your enabled Nostr relay when available. Incoming offers always require your approval. Manual copy/paste remains available when no relay route exists. SDP can reveal network addresses; WebRTC data does not use the Tor SOCKS proxy.</string>
     <string name="net_p2p_peer_id">RELYRA contact ID</string>
     <string name="net_p2p_create_offer">Create connection offer</string>
     <string name="net_p2p_remote_signal">Paste the received offer or answer</string>
