@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="net_tor_title">Tor SOCKS proxy</string>
+    <string name="net_tor_desc">Connect RELYRA's shared HTTP/WebSocket/file clients to an external Tor SOCKS service such as Orbot. The local default is 127.0.0.1:9050. RELYRA does not bundle or start Tor, and bridge configuration stays in the Tor app.</string>
+    <string name="net_tor_enable">Use local Tor SOCKS proxy</string>
+    <string name="net_tor_strict">Strict mode (no direct fallback)</string>
+    <string name="net_tor_strict_note">Strict mode sends new OkHttp relay and file-server requests only through SOCKS. If Tor is unavailable, those requests fail closed. The built-in WebView is blocked while Tor proxy mode is enabled.</string>
+    <string name="net_tor_fallback_warning">Warning: direct fallback is allowed when SOCKS is unreachable. This is not strict Tor routing and may expose your IP address.</string>
+    <string name="net_tor_port">Local SOCKS port</string>
+    <string name="net_tor_port_invalid">Enter a port from 1 to 65535.</string>
+    <string name="net_tor_test">Save settings and verify Tor route</string>
+    <string name="net_tor_status_disabled">Tor proxy is disabled.</string>
+    <string name="net_tor_status_ready">Tor proxy is enabled. Run the Tor exit check before relying on it.</string>
+    <string name="net_tor_status_testing">Checking the connection through Tor…</string>
+    <string name="net_tor_status_verified">Tor exit verified by Tor Project. Exit IP: %1$s</string>
+    <string name="net_tor_status_not_tor">The proxy answered, but the exit was not identified as a Tor exit.</string>
+    <string name="net_tor_status_failed">Tor route check failed: %1$s</string>
+</resources>
