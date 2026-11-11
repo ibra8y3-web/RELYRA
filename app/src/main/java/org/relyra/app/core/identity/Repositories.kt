@@ -201,6 +201,7 @@ class ContactRepository(
         db.contactDao().delete(c.publicId)
         db.ratchetDao().delete(c.publicId)
         db.attachmentDao().deleteForChat(c.publicId)
+        db.encryptedPacketDao().deleteForChat(c.publicId)
         db.messageDao().deleteChat(c.publicId)
         cleanFiles(fileIds, filePaths)
         log.log(EventType.CONTACT_DELETED, c.displayName)
