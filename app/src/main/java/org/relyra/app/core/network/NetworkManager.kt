@@ -57,7 +57,7 @@ class NetworkManager(context: Context, private val client: RelayClient = RelayCl
         enabled = prefs.getBoolean("tor_socks_enabled", false),
         strict = prefs.getBoolean("tor_socks_strict", true),
         port = prefs.getInt("tor_socks_port", TorSocksSettings.DEFAULT_PORT)
-            .takeIf(TorSocksSettings::isValidPort) ?: TorSocksSettings.DEFAULT_PORT,
+            .takeIf { TorSocksSettings.isValidPort(it) } ?: TorSocksSettings.DEFAULT_PORT,
     )
 
     fun updateTorProxySettings(enabled: Boolean, strict: Boolean, port: Int): Boolean {
