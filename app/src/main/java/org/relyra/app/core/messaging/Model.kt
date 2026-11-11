@@ -172,7 +172,7 @@ object EnvelopeCodec {
                 val to = i.readUTF()
                 if (from.length > 100 || to.length > 100) return null
                 UUID.fromString(id)
-                return when (type) {
+                val decoded = when (type) {
                     T_CHAT -> {
                         val sentAt = i.readLong()
                         val body = i.readUTF()
@@ -230,6 +230,8 @@ object EnvelopeCodec {
                     }
                     else -> null
                 }
+                if (decoded == null || i.available() != 0) return null
+                decoded
             }
         } catch (e: IOException) {
             return null

@@ -284,10 +284,13 @@ class GroupEngine(
     }
 
     private fun validSnapshot(env: Envelope.GroupSync): Boolean {
-        if (GroupLimits.sanitizeName(env.name).isBlank() || env.members.isEmpty()) return false
+        if (env.epoch < 1 || env.owner.isBlank() || env.owner.length > 100) return false
+        if (GroupLimits.sanitizeName(env.name).isBlank() || env.members.size !in 1..GroupLimits.MAX_MEMBERS) return false
+        if (env.members.any { it.id.isBlank() || it.id.length > 100 }) return false
         if (env.members.map { it.id }.toSet().size != env.members.size) return false
         val owners = env.members.filter { it.role == GroupRole.OWNER }
-        return owners.size == 1 && owners[0].id == env.owner
+        return owners.size == 1 && owners[0].id == env.owner &&
+            env.members.any { it.id == env.from && (it.role == GroupRole.OWNER || it.role == GroupRole.ADMIN) }
     }
 
     private suspend fun onSync(me: String, env: Envelope.GroupSync) {
