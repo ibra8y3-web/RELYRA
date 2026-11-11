@@ -109,6 +109,9 @@ object X3dh {
             listOfNotNull(bundle.oneTimePreKeyId?.let { OneTimePublicPreKey(it, bundle.oneTimePreKey!!) })
         if (oneTimes.size > 100 || oneTimes.map { it.id }.distinct().size != oneTimes.size ||
             oneTimes.any { it.id < 0 || it.publicKey.size != 32 }) return false
+        if (oneTimes.isNotEmpty() &&
+            (bundle.oneTimePreKeyId != oneTimes.first().id ||
+                bundle.oneTimePreKey?.contentEquals(oneTimes.first().publicKey) != true)) return false
         if (IdentityCrypto.publicId(bundle.identitySigningKey) != bundle.identityId) return false
         return IdentityCrypto.verify(
             bundle.identitySigningKey,
