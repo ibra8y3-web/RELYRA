@@ -18,6 +18,7 @@
     <string name="home_service_nearby_detail">%1$d of 3 local transports enabled</string>
     <string name="home_service_tor_strict">Strict proxy routing</string>
     <string name="home_service_tor_flexible">External SOCKS proxy</string>
+    <string name="home_service_tor_off_detail">Tor proxy routing is disabled</string>
     <string name="home_network_details">Connection settings</string>
     <string name="home_pending_detail">%1$d messages waiting to send</string>
     <string name="home_contacts_detail">%1$d contacts saved on this device</string>

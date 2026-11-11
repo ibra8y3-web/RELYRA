@@ -125,7 +125,11 @@ fun HomeScreen(
                 ServiceTile(
                     title = stringResource(R.string.home_service_tor),
                     status = if (torSettings.enabled) stringResource(R.string.state_on) else stringResource(R.string.state_off),
-                    detail = stringResource(if (torSettings.strict) R.string.home_service_tor_strict else R.string.home_service_tor_flexible),
+                    detail = stringResource(when {
+                        !torSettings.enabled -> R.string.home_service_tor_off_detail
+                        torSettings.strict -> R.string.home_service_tor_strict
+                        else -> R.string.home_service_tor_flexible
+                    }),
                     onClick = onOpenNetwork,
                     modifier = Modifier.weight(1f),
                 )

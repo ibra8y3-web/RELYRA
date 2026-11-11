@@ -18,6 +18,7 @@
     <string name="home_service_nearby_detail">%1$d من 3 وسائل اتصال محلية مفعّلة</string>
     <string name="home_service_tor_strict">توجيه صارم عبر الوكيل</string>
     <string name="home_service_tor_flexible">وكيل SOCKS خارجي</string>
+    <string name="home_service_tor_off_detail">توجيه Tor عبر الوكيل متوقف</string>
     <string name="home_network_details">إعدادات الاتصالات</string>
     <string name="home_pending_detail">%1$d رسائل في انتظار الإرسال</string>
     <string name="home_contacts_detail">%1$d جهة اتصال محفوظة على هذا الجهاز</string>

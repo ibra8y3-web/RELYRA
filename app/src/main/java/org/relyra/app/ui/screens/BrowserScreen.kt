@@ -92,7 +92,10 @@ fun BrowserScreen(onOpenNetwork: () -> Unit) {
 
             webViewClient = object : WebViewClient() {
                 override fun shouldOverrideUrlLoading(view: WebView, request: WebResourceRequest): Boolean {
-                    if (TorSocksProxySelector.isEnabled()) return true
+                    if (TorSocksProxySelector.isEnabled()) {
+                        pageError = context.getString(R.string.browser_tor_proxy_blocked)
+                        return true
+                    }
                     val scheme = request.url.scheme?.lowercase()
                     return scheme != "https" && scheme != "http"
                 }
@@ -151,8 +154,13 @@ fun BrowserScreen(onOpenNetwork: () -> Unit) {
     DisposableEffect(webView, javaScriptEnabled, cookiesEnabled) {
         webView.settings.javaScriptEnabled = javaScriptEnabled
         webView.settings.domStorageEnabled = javaScriptEnabled
-        CookieManager.getInstance().setAcceptCookie(cookiesEnabled)
-        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false)
+        val cookies = CookieManager.getInstance()
+        cookies.setAcceptCookie(cookiesEnabled)
+        cookies.setAcceptThirdPartyCookies(webView, false)
+        if (!cookiesEnabled) {
+            cookies.removeAllCookies(null)
+            cookies.flush()
+        }
         onDispose { }
     }
 
