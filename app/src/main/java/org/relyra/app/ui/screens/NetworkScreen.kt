@@ -27,6 +27,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -84,7 +85,7 @@ fun NetworkScreen(vm: MainViewModel) {
     var p2pRemoteSignal by rememberSaveable { mutableStateOf("") }
     var turnUrl by rememberSaveable { mutableStateOf("") }
     var turnUsername by rememberSaveable { mutableStateOf("") }
-    var turnCredential by rememberSaveable { mutableStateOf("") }
+    var turnCredential by remember { mutableStateOf("") }
     var turnError by rememberSaveable { mutableStateOf(false) }
 
     val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
