@@ -56,3 +56,22 @@ interface SecurityEventDao {
     @Query("SELECT COUNT(*) FROM security_events")
     fun observeCount(): Flow<Int>
 }
+
+ 
+@Dao
+interface PreKeyDao {
+    @Query("SELECT * FROM prekeys WHERE kind = :kind ORDER BY keyId")
+    suspend fun byKind(kind: String): List<PreKeyEntity>
+
+    @Query("SELECT * FROM prekeys WHERE keyId = :keyId")
+    suspend fun get(keyId: String): PreKeyEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(entity: PreKeyEntity)
+
+    @Query("UPDATE prekeys SET consumed = 1 WHERE keyId = :keyId AND kind = 'ONE_TIME' AND consumed = 0")
+    suspend fun consumeOneTime(keyId: String): Int
+
+    @Query("DELETE FROM prekeys WHERE kind = :kind")
+    suspend fun deleteKind(kind: String)
+}
