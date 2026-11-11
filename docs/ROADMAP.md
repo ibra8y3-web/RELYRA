@@ -13,10 +13,14 @@ This roadmap separates source code that is already present from features that st
 | Persistent delivery queue and acknowledgements | Implemented in source |
 | Nostr WSS relay transport | Implemented in source |
 | Optional same-LAN transport via NSD/mDNS and TCP | Added in current implementation batch; real-device verification required |
+| Bluetooth Classic RFCOMM for already-bonded contacts | Added in current implementation batch; mutual Ed25519 identity check; device tests required |
+| Wi-Fi Direct discovery, group connection and authenticated TCP transport | Added in current implementation batch; Android permission/vendor and two-device tests required |
+| Durable local outbox and relay backlog | Implemented for sender retries and Nostr relay retrieval; no third-party peer Store & Forward |
 | Groups/channels using per-member one-to-one sessions | Implemented in source; not MLS |
 | Blossom encrypted attachment transfer | Implemented in source |
 | Background notifications and optional foreground connection service | Implemented in source; Android restrictions apply |
-| Local file tools, diagnostics and redacted report | Implemented in source |\n| Live resource sampling (app CPU, app UID RX/TX rate, app-filesystem free space) | Added in current implementation batch; CI/device validation required |
+| Local file tools, diagnostics and redacted report | Implemented in source |
+| Live resource sampling (app CPU, app UID RX/TX rate, app-filesystem free space) | Added in current implementation batch; CI/device validation required |
 | Passphrase backup/restore and encrypted local vault | Implemented in source; documented exclusions apply |
 
 ## Priority 1 — validate and harden the existing release
@@ -37,7 +41,7 @@ Acceptance criteria:
 **Goal:** add a real direct transport without breaking the current relay route.
 
 Work items:
-- Select and evaluate a maintained Android-compatible libp2p implementation. The existing Nearby LAN connector covers only same-LAN discovery and direct sockets; it does not satisfy Internet P2P or NAT traversal.
+- Select and evaluate a maintained Android-compatible libp2p implementation. Bluetooth Classic and Wi-Fi Direct now cover nearby links only; neither provides Internet P2P or NAT traversal.
 - Define peer discovery and authenticated peer-to-identity binding.
 - Design NAT traversal using ICE/STUN/TURN where supported.
 - Add connection lifecycle, timeouts, cancellation, retry/backoff and bounded resource usage.
@@ -70,13 +74,14 @@ Acceptance criteria:
 
 Work items:
 - Evaluate Tor integration and its effect on relay reachability and battery use.
-- Evaluate Bluetooth and Wi-Fi Direct for nearby-device transport.
-- Specify metadata exposure, user consent, discovery limits and fallback behaviour.
+- Evaluate Bluetooth Low Energy only if a real, interoperable use case is required; the current Bluetooth transport is Classic RFCOMM over already-paired devices.
+- Specify metadata exposure, user consent, discovery limits and fallback behaviour for every nearby transport.
 
 Acceptance criteria:
 - The app clearly states which transport is active and what metadata it reveals.
 - No nearby device is trusted based only on discovery.
 - Background execution and battery restrictions are tested on supported Android versions.
+- Two Android devices complete Bluetooth Classic and Wi-Fi Direct handshake/message tests on supported vendors and OS releases.
 
 ## Priority 5 — interoperability and platform services
 

@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="net_bt_title">Bluetooth nearby transport</string>
+    <string name="net_bt_toggle">Enable Bluetooth transport</string>
+    <string name="net_bt_desc">Uses already-paired Bluetooth Classic devices. Pair devices in Android Bluetooth settings first. RELYRA verifies the contact identity with an Ed25519 challenge before sending encrypted messages. BLE discovery is not included.</string>
+    <string name="net_bt_status_disabled">Bluetooth transport is disabled.</string>
+    <string name="net_bt_status_permission">Bluetooth permission is required.</string>
+    <string name="net_bt_status_unsupported">This device has no Bluetooth adapter.</string>
+    <string name="net_bt_status_off">Turn on Bluetooth in Android settings.</string>
+    <string name="net_bt_status_listening">Waiting for a trusted paired RELYRA contact.</string>
+    <string name="net_bt_status_active">At least one trusted Bluetooth peer was authenticated.</string>
+    <string name="net_bt_status_failed">Bluetooth could not be started.</string>
+    <string name="net_bt_verified_count">Authenticated RELYRA peers: %1$d</string>
+    <string name="net_bt_system_settings">Open Android Bluetooth settings</string>
+    <string name="net_bt_discover">Check paired devices for RELYRA</string>
+    <string name="net_wifi_direct_title">Wi-Fi Direct transport</string>
+    <string name="net_wifi_direct_toggle">Enable Wi-Fi Direct</string>
+    <string name="net_wifi_direct_desc">Discovers nearby Wi-Fi Direct devices without a router. Choose a device to form a peer-to-peer group. Discovery names and addresses are not trusted identities; RELYRA authenticates contacts with Ed25519 before data exchange. Android may require Location mode on older versions.</string>
+    <string name="net_wifi_direct_status_disabled">Wi-Fi Direct is disabled.</string>
+    <string name="net_wifi_direct_status_permission">Nearby Wi-Fi permission is required.</string>
+    <string name="net_wifi_direct_status_unsupported">Wi-Fi Direct is not supported on this device.</string>
+    <string name="net_wifi_direct_status_unavailable">Wi-Fi Direct is unavailable or switched off.</string>
+    <string name="net_wifi_direct_status_discovering">Searching for nearby Wi-Fi Direct devices.</string>
+    <string name="net_wifi_direct_status_connecting">Negotiating a Wi-Fi Direct group.</string>
+    <string name="net_wifi_direct_status_connected">Wi-Fi Direct group formed. Only authenticated contacts can exchange messages.</string>
+    <string name="net_wifi_direct_status_failed">Wi-Fi Direct operation failed.</string>
+    <string name="net_wifi_direct_verified">Authenticated RELYRA peers</string>
+    <string name="net_wifi_direct_refresh">Search again</string>
+    <string name="net_wifi_direct_unknown_name">Unnamed Android device</string>
+    <string name="net_wifi_direct_connect">Connect</string>
+</resources>

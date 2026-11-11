@@ -16,8 +16,6 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import org.relyra.app.core.crypto.IdentityCrypto
 import org.relyra.app.core.messaging.SendOutcome
-import java.io.DataInputStream
-import java.io.DataOutputStream
 import java.io.IOException
 import java.net.InetAddress
 import java.net.InetSocketAddress
@@ -37,7 +35,7 @@ data class LanPeer(
 
 enum class NearbyLanStatus { Disabled, Starting, Searching, Active, Failed }
 
-/** Framing rules shared by sender and receiver. No plaintext or application keys are handled here. */
+/** Maximum application frame policy; authenticated wire framing lives in NearbyHandshakeProtocol. */
 object LanFramePolicy {
     const val MAX_FRAME_BYTES = 256 * 1024
     fun isValidLength(length: Int): Boolean = length in 1..MAX_FRAME_BYTES
@@ -46,9 +44,9 @@ object LanFramePolicy {
 /**
  * Opt-in same-LAN transport.
  *
- * Android NSD/mDNS advertises a public RELYRA ID. Discovered IDs are accepted only when they already belong
- * to known contacts. The connector carries only the already end-to-end-encrypted payload provided by the
- * DeliveryEngine; incoming bytes are passed to DeliveryEngine.onWire() for authentication and decryption.
+ * Android NSD/mDNS advertises a public RELYRA ID. Discovered IDs are only endpoint hints and must belong
+ * to known contacts. Every socket then performs the shared mutual Ed25519 challenge before the connector
+ * accepts an already end-to-end-encrypted payload and passes it to DeliveryEngine.acceptWire().
  *
  * This requires both devices to share an IP local network (Wi-Fi or a local hotspot). It is not Bluetooth,
  * Wi-Fi Direct, Internet P2P, libp2p, or NAT traversal.
@@ -56,6 +54,7 @@ object LanFramePolicy {
 class NearbyLanConnector(
     context: Context,
     private val knownPeer: suspend (String) -> Boolean,
+    private val sign: (ByteArray) -> ByteArray?,
     private val onWire: suspend (ByteArray) -> Boolean,
     private val scope: CoroutineScope,
     private val connectTimeoutMs: Int = 2_500,
@@ -306,50 +305,40 @@ class NearbyLanConnector(
     private suspend fun receiveFrame(socket: Socket) = withContext(Dispatchers.IO) {
         socket.use { connection ->
             connection.soTimeout = socketTimeoutMs
-            val input = DataInputStream(connection.getInputStream())
-            val output = DataOutputStream(connection.getOutputStream())
-            val length = try {
-                input.readInt()
-            } catch (_: IOException) {
-                return@withContext
-            }
-            if (!LanFramePolicy.isValidLength(length)) {
-                runCatching { output.writeByte(FRAME_REJECTED); output.flush() }
-                return@withContext
-            }
-            val frame = ByteArray(length)
-            try {
-                input.readFully(frame)
-            } catch (_: IOException) {
-                runCatching { output.writeByte(FRAME_REJECTED); output.flush() }
-                return@withContext
-            }
-            // The transport does not decrypt or inspect the payload. DeliveryEngine performs E2EE validation.
-            val accepted = runCatching { onWire(frame) }.getOrDefault(false)
-            runCatching {
-                output.writeByte(if (accepted) FRAME_ACCEPTED else FRAME_REJECTED)
-                output.flush()
-            }
+            val publicId = ownPublicId ?: return@withContext
+            NearbyHandshakeProtocol.receive(
+                connection.getInputStream(),
+                connection.getOutputStream(),
+                publicId,
+                sign,
+                knownPeer,
+                onWire,
+            )
         }
     }
 
     override fun isReady(): Boolean = enabled && serverSocket?.isBound == true && endpoints.isNotEmpty()
 
     override suspend fun send(toPeer: String, payload: ByteArray): SendOutcome {
-        if (payload.size > LanFramePolicy.MAX_FRAME_BYTES) return SendOutcome.Rejected("local frame too large")
+        if (!LanFramePolicy.isValidLength(payload.size)) return SendOutcome.Rejected("local frame too large")
         val peer = endpoints[toPeer] ?: return SendOutcome.Unavailable
+        val publicId = ownPublicId ?: return SendOutcome.Unavailable
         if (!enabled) return SendOutcome.Unavailable
         return withContext(Dispatchers.IO) {
             try {
                 Socket().use { socket ->
                     socket.connect(InetSocketAddress(peer.host, peer.port), connectTimeoutMs)
                     socket.soTimeout = socketTimeoutMs
-                    val output = DataOutputStream(socket.getOutputStream())
-                    output.writeInt(payload.size)
-                    output.write(payload)
-                    output.flush()
-                    val accepted = DataInputStream(socket.getInputStream()).readUnsignedByte() == FRAME_ACCEPTED
-                    if (accepted) SendOutcome.Accepted else SendOutcome.Unavailable
+                    val remote = NearbyHandshakeProtocol.send(
+                        socket.getInputStream(),
+                        socket.getOutputStream(),
+                        publicId,
+                        expectedPeerId = toPeer,
+                        sign = sign,
+                        knownPeer = knownPeer,
+                        payload = payload,
+                    )
+                    if (remote == toPeer) SendOutcome.Accepted else SendOutcome.Unavailable
                 }
             } catch (_: IOException) {
                 SendOutcome.Unavailable
@@ -362,8 +351,6 @@ class NearbyLanConnector(
     private companion object {
         const val SERVICE_TYPE = "_relyra._tcp."
         const val TXT_PUBLIC_ID = "peer"
-        const val FRAME_ACCEPTED = 1
-        const val FRAME_REJECTED = 0
         const val MAX_CONCURRENT_SOCKETS = 4
     }
 }

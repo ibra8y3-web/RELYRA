@@ -4,14 +4,22 @@
 
 ![RELYRA network map](assets/relyra-network-map.svg)
 
-## Optional nearby LAN transport
+## Nearby direct transports
 
-An opt-in local connector is added alongside Nostr. When the user enables it, RELYRA advertises the public RELYRA contact ID via Android NSD/mDNS and discovers only IDs that already exist as known contacts. The connector carries the already end-to-end-encrypted wire payload over a bounded TCP frame and passes incoming bytes to `DeliveryEngine.onWire`.
+Three opt-in nearby transports are registered ahead of the Nostr relay path:
 
-- Disabled by default; turning it on exposes the public contact ID to devices on the current local network.
-- Both devices must share the same IP LAN or local hotspot. The local network can operate without Internet access.
-- Nearby LAN is attempted before Nostr. Nostr remains the fallback if no known peer is discovered or the direct socket is unavailable.
-- This is not Bluetooth, Wi-Fi Direct, Internet P2P, libp2p, or NAT traversal. Real-device interoperability still needs verification.
+- **Wi-Fi Direct:** Android discovers peer devices and lets the user select one to form a Wi-Fi P2P group. A socket listener starts on the group network; the group owner and connected clients perform a signed identity probe before being treated as peers.
+- **Bluetooth Classic:** RELYRA listens on an RFCOMM service and checks already-bonded devices. The user must pair devices in Android Bluetooth settings first. BLE discovery and in-app pairing are not included.
+- **Nearby LAN:** Android NSD/mDNS advertises the public RELYRA ID on the current local network and discovers contacts already in the address book.
+
+All three use the shared NearbyHandshakeProtocol: each side signs a fresh nonce-bound transcript with the existing RELYRA Ed25519 seed; the remote key is derived from the public RELYRA ID and must belong to a known, unblocked contact. Only after mutual verification does the connector pass an opaque, already end-to-end-encrypted payload to the receiving DeliveryEngine. Frame size is bounded at 256 KiB.
+
+- All three switches are off by default and require explicit user opt-in. Wi-Fi Direct and Bluetooth runtime permissions are requested only when enabled.
+- Wi-Fi Direct requires both phones to join the same Wi-Fi P2P group. Bluetooth currently supports already-paired RFCOMM peers only.
+- Nearby LAN still requires the same IP LAN or local hotspot and exposes the public RELYRA ID to that LAN while enabled.
+- The current router order is Wi-Fi Direct, Bluetooth Classic, Nearby LAN, then user-configured Nostr relays.
+- Source implementation and JVM handshake tests are present in this change; actual two-device tests, Android vendor compatibility and background behaviour remain release gates.
+- These transports do not provide Internet P2P, libp2p, NAT traversal, BLE mesh or multi-hop forwarding.
 
 ## Implemented transport
 
@@ -34,8 +42,9 @@ The presence of a Connector interface and AdaptiveRouter is only an extension po
 | Internet P2P / direct sockets across separate networks | Not implemented |
 | libp2p | Not implemented |
 | ICE/STUN/TURN traversal | Not implemented |
+| Peer-to-peer multi-hop Store & Forward | Not implemented |
 | Tor routing | Not implemented |
-| Bluetooth / Wi-Fi Direct mesh | Not implemented |
+| Bluetooth Low Energy discovery/mesh | Not implemented |
 | Matrix / XMPP bridges | Not implemented |
 | Push relay infrastructure operated by RELYRA | Not implemented |
 
@@ -61,6 +70,9 @@ AdaptiveRouter attempts ready connectors in their configured order. The successf
 - File servers observe file transfer metadata. Attachment encryption protects file contents and keys from the server.
 - Do not describe RELYRA as Tor-protected, fully P2P or anonymous in the current release.
 - When Nearby LAN is enabled, the public RELYRA ID is visible to devices on the local network. Enable it only on a trusted LAN; application message content remains end-to-end encrypted.
+- Wi-Fi Direct discovery exposes Android device names and Wi-Fi P2P device addresses to the local discovery layer; neither value is accepted as a RELYRA identity. The Ed25519 challenge is required.
+- Bluetooth currently uses Android's bonded-device list and RFCOMM service UUID. It does not perform BLE scans and does not accept an unpaired device.
+- The durable local outbox retries messages when a configured transport becomes available, and Nostr relays can store events for later inbox retrieval. This is not an intermediary-device mesh: nearby peers do not yet hold and forward third-party messages.
 
 ## Requirements for a future direct-P2P connector
 
