@@ -200,4 +200,12 @@
     <string name="err_server_duplicate">هذا الخادم موجود بالفعل في قائمتك.</string>
     <string name="files_status_reachable">يمكن الوصول إليه: HTTP %1$d خلال %2$d مللي ثانية. الرفع الفعلي وحده يبيّن إن كان يقبل ملفاتك.</string>
     <string name="home_file_servers">خوادم الملفات المفعّلة</string>
+    <string name="diag_resources">مراقبة الموارد المباشرة</string>
+    <string name="diag_resources_waiting">جارٍ جمع أول قراءة…</string>
+    <string name="diag_resources_unavailable">غير متاح على هذا الجهاز</string>
+    <string name="diag_app_cpu">استهلاك معالج تطبيق RELYRA</string>
+    <string name="diag_app_rx">معدل استقبال التطبيق</string>
+    <string name="diag_app_tx">معدل إرسال التطبيق</string>
+    <string name="diag_filesystem_free">المساحة الحرة على نظام ملفات التطبيق</string>
+    <string name="diag_resources_note">نسبة المعالج تمثل استهلاك عملية RELYRA من إجمالي قدرة المعالجات المتاحة. حركة الشبكة تخص التطبيق نفسه فقط وليست إجمالي حركة الجهاز.</string>
 </resources>

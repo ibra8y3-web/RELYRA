@@ -1,10 +1,10 @@
 <p align="center"><img src="docs/assets/relyra-cover.svg" alt="RELYRA — Private by design. Connected by choice." width="100%"></p>
-<p align="center"><a href="README_AR.md">العربية</a> · <a href="docs/ARCHITECTURE.md">Architecture</a> · <a href="docs/NETWORKING.md">Networking</a> · <a href="docs/ROADMAP.md">Roadmap</a></p>
+<p align="center"><a href="README_AR.md">العربية</a> · <a href="docs/ARCHITECTURE.md">Architecture</a> · <a href="docs/NETWORKING.md">Networking</a> · <a href="docs/ROADMAP.md">Roadmap</a> · <a href="docs/SPECIFICATION_CROSSWALK_AR.md">Specification status</a> · <a href="LICENSE">Apache 2.0</a></p>
 <p align="center">
 <a href="https://github.com/ibra8y3-web/RELYRA/actions/workflows/build.yml"><img src="https://github.com/ibra8y3-web/RELYRA/actions/workflows/build.yml/badge.svg?branch=main" alt="Build status"></a>
 <img src="https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white" alt="Android 10+">
 <img src="https://img.shields.io/badge/Kotlin-2.0.21-7F52FF?logo=kotlin&logoColor=white" alt="Kotlin 2.0.21">
-<img src="https://img.shields.io/badge/Release-0.9.0-64748b" alt="Version 0.9.0">
+<img src="https://img.shields.io/badge/Release-0.9.0-64748b" alt="Version 0.9.0">\n<img src="https://img.shields.io/badge/License-Apache--2.0-blue" alt="Apache License 2.0">
 </p>
 
 <h1 align="center">RELYRA</h1>
@@ -40,7 +40,7 @@ The current source includes local identity, SQLCipher storage, direct conversati
 | **File transfer** | Client-side encrypted files over user-configured Blossom-compatible servers |
 | **Background work** | WorkManager retries and optional visible foreground connection service (subject to Android restrictions) |
 | **On-device tools** | Hashes, hex/strings inspection, MIME detection, EXIF, archive inspection and APK metadata |
-| **Diagnostics** | Relay/server tests, queue status, database integrity, storage/device status and redacted report |
+| **Diagnostics and resources** | Relay/server tests, database integrity, battery and memory, live app CPU and per-app RX/TX rates, filesystem availability and redacted report |
 | **Backup / vault** | Passphrase-protected database backup/restore and encrypted local file vault |
 | **UI** | Arabic RTL and English; light, dark and AMOLED themes |
 
@@ -136,7 +136,7 @@ app/src/main/java/org/relyra/app/
 └── ui/               Compose screens, navigation and theme
 
 app/src/test/          JVM tests
-docs/                  Architecture, networking, roadmap and visual maps
+docs/                  Architecture, networking, roadmap, specification crosswalk and visual maps
 .github/workflows/     Build and test automation
 ```
 

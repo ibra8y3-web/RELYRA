@@ -46,6 +46,7 @@ import org.relyra.app.core.storage.StorageUsage
 import org.relyra.app.core.storage.ThemeMode
 import org.relyra.app.core.database.VaultItemEntity
 import org.relyra.app.core.vault.VaultImport
+import org.relyra.app.core.resources.ResourceSnapshot
 
 sealed interface StorageState {
     data object Opening : StorageState
@@ -86,6 +87,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val pendingShare = MutableStateFlow<ShareRequest?>(null)
     val openRequest = MutableStateFlow<OpenRequest?>(null)
     val diagnostics = MutableStateFlow<DiagnosticsReport?>(null)
+    val resourceSnapshot = MutableStateFlow<ResourceSnapshot?>(null)
     val usage = MutableStateFlow<StorageUsage?>(null)
     val vaultItems = MutableStateFlow<List<VaultItemEntity>>(emptyList())
     /** The vault asks for biometrics or the screen lock each time; this is cleared whenever the app leaves the screen. */
@@ -501,6 +503,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { ctr().backup.cancelPending() }
             restorePending.value = false
+        }
+    }
+
+    fun refreshResourceSnapshot() {
+        viewModelScope.launch(Dispatchers.IO) {
+            resourceSnapshot.value = runCatching { ctr().resourceManager.sample() }.getOrNull()
         }
     }
 

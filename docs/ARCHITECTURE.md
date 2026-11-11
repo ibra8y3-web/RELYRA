@@ -17,7 +17,7 @@ This document describes the implementation currently present in the repository. 
 | Persistence | Private application state | Room + SQLCipher; key material wrapped by Android Keystore |
 | Transport | Carry already encrypted wire payloads | Transport contract, Connector contract, AdaptiveRouter and NostrConnector |
 | File transfer | Encrypt, upload and retrieve file blobs | FileCrypto and Blossom client |
-| Local utilities | Diagnostics and safe file inspection | Diagnostics, tools and vault packages |
+| Local utilities and resources | Diagnostics, safe file inspection and live app resource samples | Diagnostics, tools, vault and resources packages |
 
 ## Direct message path
 

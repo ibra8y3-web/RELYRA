@@ -25,6 +25,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.delay
+import java.util.Locale
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.relyra.app.MainViewModel
 import org.relyra.app.R
@@ -38,6 +40,7 @@ import org.relyra.app.ui.components.SectionCard
 fun DiagnosticsScreen(vm: MainViewModel) {
     val ctx = LocalContext.current
     val report by vm.diagnostics.collectAsStateWithLifecycle()
+    val resourceSnapshot by vm.resourceSnapshot.collectAsStateWithLifecycle()
     val busy by vm.busy.collectAsStateWithLifecycle()
     val relays by vm.relays.collectAsStateWithLifecycle()
     val relayStatus by vm.relayStatus.collectAsStateWithLifecycle()
@@ -45,14 +48,20 @@ fun DiagnosticsScreen(vm: MainViewModel) {
     val servers by vm.fileServers.collectAsStateWithLifecycle()
     val serverStatus by vm.fileServerStatus.collectAsStateWithLifecycle()
     val shareTitle = stringResource(R.string.diag_share)
-    LaunchedEffect(Unit) { vm.runDiagnostics() }
+    LaunchedEffect(Unit) {
+        vm.runDiagnostics()
+        while (true) {
+            vm.refreshResourceSnapshot()
+            delay(2_000)
+        }
+    }
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            OutlinedButton(onClick = { vm.runDiagnostics() }, enabled = !busy) { Text(stringResource(R.string.diag_refresh)) }
+            OutlinedButton(onClick = { vm.runDiagnostics(); vm.refreshResourceSnapshot() }, enabled = !busy) { Text(stringResource(R.string.diag_refresh)) }
             OutlinedButton(onClick = {
                 relays.filter { it.enabled }.forEach { vm.testRelay(it.url) }
                 servers.filter { it.enabled }.forEach { vm.testFileServer(it.url) }
@@ -90,6 +99,38 @@ fun DiagnosticsScreen(vm: MainViewModel) {
                 stringResource(R.string.diag_memory),
                 Formatter.formatShortFileSize(ctx, r.memory.appUsedBytes) + " / " + Formatter.formatShortFileSize(ctx, r.memory.appMaxBytes),
             )
+        }
+        SectionCard(stringResource(R.string.diag_resources)) {
+            val snapshot = resourceSnapshot
+            if (snapshot == null) {
+                Text(stringResource(R.string.diag_resources_waiting), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                InfoRow(
+                    stringResource(R.string.diag_app_cpu),
+                    snapshot.appCpuPercent?.let { String.format(Locale.ROOT, "%.1f%%", it) }
+                        ?: stringResource(R.string.diag_resources_waiting),
+                )
+                InfoRow(
+                    stringResource(R.string.diag_app_rx),
+                    snapshot.rxBytesPerSecond?.let { Formatter.formatShortFileSize(ctx, it) + "/s" }
+                        ?: stringResource(R.string.diag_resources_unavailable),
+                )
+                InfoRow(
+                    stringResource(R.string.diag_app_tx),
+                    snapshot.txBytesPerSecond?.let { Formatter.formatShortFileSize(ctx, it) + "/s" }
+                        ?: stringResource(R.string.diag_resources_unavailable),
+                )
+                InfoRow(
+                    stringResource(R.string.diag_filesystem_free),
+                    if (snapshot.storageAvailableBytes != null && snapshot.storageTotalBytes != null)
+                        Formatter.formatShortFileSize(ctx, snapshot.storageAvailableBytes) + " / " +
+                            Formatter.formatShortFileSize(ctx, snapshot.storageTotalBytes)
+                    else stringResource(R.string.diag_resources_unavailable),
+                )
+            }
+            Text(stringResource(R.string.diag_resources_note), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         SectionCard(stringResource(R.string.diag_messages)) {
             InfoRow(stringResource(R.string.diag_total_messages), r.counts.messages.toString())

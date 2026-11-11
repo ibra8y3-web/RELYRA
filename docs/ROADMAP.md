@@ -15,7 +15,7 @@ This roadmap separates source code that is already present from features that st
 | Groups/channels using per-member one-to-one sessions | Implemented in source; not MLS |
 | Blossom encrypted attachment transfer | Implemented in source |
 | Background notifications and optional foreground connection service | Implemented in source; Android restrictions apply |
-| Local file tools, diagnostics and redacted report | Implemented in source |
+| Local file tools, diagnostics and redacted report | Implemented in source |\n| Live resource sampling (app CPU, app UID RX/TX rate, app-filesystem free space) | Added in current implementation batch; CI/device validation required |
 | Passphrase backup/restore and encrypted local vault | Implemented in source; documented exclusions apply |
 
 ## Priority 1 — validate and harden the existing release
@@ -97,3 +97,10 @@ Do not mark a milestone complete until all of the following are true:
 5. English and Arabic strings are complete.
 6. Documentation states limitations and metadata exposure.
 7. CI passes from a clean checkout.
+
+
+## Additional resource monitoring work
+
+The current implementation batch adds a real `ResourceManager` sampler. It reads Android process CPU elapsed time, per-UID receive/transmit counters and available bytes on the app's filesystem. First-sample and unsupported counters remain unknown rather than being represented as zero. JVM tests cover the pure CPU/rate calculations and counter-reset handling.
+
+The resource screen reports only what Android exposes for the RELYRA process/app UID. It is not a system-wide CPU profiler or a packet inspector.
