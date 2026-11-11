@@ -52,11 +52,11 @@ object WebRtcFrameCodec {
             TYPE_MESSAGE -> {
                 if (!input.hasRemaining()) return null
                 val payload = ByteArray(input.remaining()).also(input::get)
-                if (!MessageDigest.isEqual(digest, sha256(payload))) null else Frame.Message(digest, payload)
+                if (!MessageDigest.isEqual(digest, digestPayload(payload))) null else Frame.Message(digest, payload)
             }
             TYPE_ACK -> {
                 if (input.remaining() != 1) return null
-                when (val value = input.get().toInt()) {
+                when (input.get().toInt()) {
                     0 -> Frame.Ack(digest, false)
                     1 -> Frame.Ack(digest, true)
                     else -> null
