@@ -78,14 +78,14 @@ fun SettingsScreen(
         }
         NotificationSettingsCard(vm)
         PrivacyAppearanceCards(vm)
-        SectionCard(stringResource(R.string.net_title)) {
+        SectionCard(stringResource(R.string.settings_connections_group)) {
             ListItem(
                 headlineContent = { Text(stringResource(R.string.net_title)) },
                 supportingContent = { Text(stringResource(R.string.settings_network_desc)) },
                 modifier = Modifier.clickable(onClick = onOpenNetwork),
             )
         }
-        SectionCard(stringResource(R.string.settings_tools_group)) {
+        SectionCard(stringResource(R.string.settings_personal_tools_group)) {
             ListItem(
                 headlineContent = { Text(stringResource(R.string.vault_title)) },
                 supportingContent = { Text(stringResource(R.string.vault_desc)) },
@@ -109,7 +109,8 @@ fun SettingsScreen(
                 supportingContent = { Text(stringResource(R.string.tools_desc)) },
                 modifier = Modifier.clickable(onClick = onOpenTools),
             )
-            HorizontalDivider()
+        }
+        SectionCard(stringResource(R.string.settings_diagnostics_group)) {
             ListItem(
                 headlineContent = { Text(stringResource(R.string.diag_title)) },
                 supportingContent = { Text(stringResource(R.string.diag_desc)) },

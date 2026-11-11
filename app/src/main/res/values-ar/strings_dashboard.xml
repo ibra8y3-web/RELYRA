@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_dashboard_greeting">مساحتك الخاصة</string>
+    <string name="home_dashboard_services">الخدمات</string>
+    <string name="home_dashboard_activity">النشاط</string>
+    <string name="home_dashboard_tools">أدواتك</string>
+    <string name="home_manage">إدارة</string>
+    <string name="home_service_messages">المراسلة المشفّرة</string>
+    <string name="home_service_files">الملفات المشفّرة</string>
+    <string name="home_service_nearby">الاتصالات القريبة</string>
+    <string name="home_service_tor">مسار Tor</string>
+    <string name="home_service_configured">مُعدّة</string>
+    <string name="home_service_setup">تحتاج إلى إعداد</string>
+    <string name="home_service_enabled">مفعّلة</string>
+    <string name="home_service_disabled">متوقفة</string>
+    <string name="home_service_relays_detail">%1$d متصل · %2$d مرحّلات مفعّلة</string>
+    <string name="home_service_files_detail">%1$d خوادم ملفات مفعّلة</string>
+    <string name="home_service_nearby_detail">%1$d من 3 وسائل اتصال محلية مفعّلة</string>
+    <string name="home_service_tor_strict">توجيه صارم عبر الوكيل</string>
+    <string name="home_service_tor_flexible">وكيل SOCKS خارجي</string>
+    <string name="home_network_details">إعدادات الاتصالات</string>
+    <string name="home_pending_detail">%1$d رسائل في انتظار الإرسال</string>
+    <string name="home_contacts_detail">%1$d جهة اتصال محفوظة على هذا الجهاز</string>
+    <string name="home_connection_service">الاتصال في الخلفية</string>
+    <string name="home_connection_on">يُبقي الاتصالات المفعّلة قيد التشغيل في الخلفية</string>
+    <string name="home_connection_off">الاتصال في الخلفية متوقف</string>
+    <string name="settings_connections_group">الاتصالات والشبكة</string>
+    <string name="settings_personal_tools_group">الأدوات الشخصية</string>
+    <string name="settings_diagnostics_group">التشخيص وحالة النظام</string>
+</resources>

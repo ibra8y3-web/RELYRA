@@ -6,9 +6,9 @@ import android.webkit.CookieManager
 import android.webkit.SslErrorHandler
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
-import android.webkit.WebResourceResponse
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,12 +16,15 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.weight
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
 import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -32,6 +35,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
@@ -45,24 +49,26 @@ import org.relyra.app.core.network.TorSocksProxySelector
 import java.io.ByteArrayInputStream
 
 /**
- * Minimal, user-driven WebView. JavaScript, cookies, DOM storage, mixed content and local-file access
- * are disabled by default. TLS certificate errors are always cancelled.
- * This is not a Tor browser, tracker blocker, multi-tab browser or a promise of anonymity.
+ * A privacy-conscious WebView browser. JavaScript and DOM storage are enabled to support modern
+ * sites; persistent cookies remain opt-in. Local-file access and mixed content stay disabled.
+ * WebView cannot use RELYRA's SOCKS5 selector, so navigation is blocked while Tor routing is on.
  */
 @Composable
-fun BrowserScreen() {
+fun BrowserScreen(onOpenNetwork: () -> Unit) {
     val context = LocalContext.current
     val keyboard = LocalSoftwareKeyboardController.current
     var address by rememberSaveable { mutableStateOf("") }
-    var currentUrl by remember { mutableStateOf("") }
+    var currentUrl by rememberSaveable { mutableStateOf("") }
     var pageTitle by remember { mutableStateOf("") }
     var progress by remember { mutableIntStateOf(0) }
     var pageError by remember { mutableStateOf<String?>(null) }
+    var javaScriptEnabled by rememberSaveable { mutableStateOf(true) }
+    var cookiesEnabled by rememberSaveable { mutableStateOf(false) }
 
-    val webView = remember {
+    val webView = remember(context) {
         WebView(context).apply {
-            settings.javaScriptEnabled = false
-            settings.domStorageEnabled = false
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
             settings.databaseEnabled = false
             settings.allowFileAccess = false
             settings.allowContentAccess = false
@@ -70,7 +76,7 @@ fun BrowserScreen() {
             settings.setSupportMultipleWindows(false)
             settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
             settings.safeBrowsingEnabled = true
-            settings.cacheMode = android.webkit.WebSettings.LOAD_NO_CACHE
+            settings.cacheMode = android.webkit.WebSettings.LOAD_DEFAULT
             CookieManager.getInstance().setAcceptThirdPartyCookies(this, false)
             CookieManager.getInstance().setAcceptCookie(false)
 
@@ -124,12 +130,30 @@ fun BrowserScreen() {
                     }
                 }
 
+                override fun onReceivedHttpError(
+                    view: WebView,
+                    request: WebResourceRequest,
+                    errorResponse: android.webkit.WebResourceResponse,
+                ) {
+                    if (request.isForMainFrame && errorResponse.statusCode >= 400) {
+                        pageError = context.getString(R.string.browser_http_error, errorResponse.statusCode)
+                    }
+                }
+
                 override fun onReceivedSslError(view: WebView, handler: SslErrorHandler, error: SslError) {
                     handler.cancel()
                     pageError = context.getString(R.string.browser_tls_blocked)
                 }
             }
         }
+    }
+
+    DisposableEffect(webView, javaScriptEnabled, cookiesEnabled) {
+        webView.settings.javaScriptEnabled = javaScriptEnabled
+        webView.settings.domStorageEnabled = javaScriptEnabled
+        CookieManager.getInstance().setAcceptCookie(cookiesEnabled)
+        CookieManager.getInstance().setAcceptThirdPartyCookies(webView, false)
+        onDispose { }
     }
 
     fun openAddress() {
@@ -148,9 +172,7 @@ fun BrowserScreen() {
         webView.loadUrl(normalized)
     }
 
-    BackHandler(enabled = webView.canGoBack()) {
-        webView.goBack()
-    }
+    BackHandler(enabled = webView.canGoBack()) { webView.goBack() }
 
     DisposableEffect(webView) {
         onDispose {
@@ -165,7 +187,8 @@ fun BrowserScreen() {
         modifier = Modifier.fillMaxSize().padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically) {
             OutlinedTextField(
                 value = address,
                 onValueChange = { address = it; pageError = null },
@@ -186,8 +209,20 @@ fun BrowserScreen() {
             TextButton(onClick = { if (webView.canGoForward()) webView.goForward() }, enabled = webView.canGoForward()) {
                 Text(stringResource(R.string.browser_forward))
             }
-            TextButton(onClick = { webView.reload() }, enabled = currentUrl.isNotBlank()) {
+            TextButton(onClick = { if (currentUrl.isNotBlank()) webView.reload() }, enabled = currentUrl.isNotBlank()) {
                 Text(stringResource(R.string.browser_reload))
+            }
+        }
+        Card(Modifier.fillMaxWidth()) {
+            Column(Modifier.padding(horizontal = 12.dp, vertical = 6.dp)) {
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(stringResource(R.string.browser_javascript), style = MaterialTheme.typography.bodyMedium)
+                    Switch(checked = javaScriptEnabled, onCheckedChange = { javaScriptEnabled = it })
+                }
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.SpaceBetween) {
+                    Text(stringResource(R.string.browser_cookies), style = MaterialTheme.typography.bodyMedium)
+                    Switch(checked = cookiesEnabled, onCheckedChange = { cookiesEnabled = it })
+                }
             }
         }
         if (progress in 1..99) {
@@ -195,14 +230,14 @@ fun BrowserScreen() {
         }
         pageError?.let {
             Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            if (TorSocksProxySelector.isEnabled()) {
+                TextButton(onClick = onOpenNetwork) { Text(stringResource(R.string.browser_open_network)) }
+            }
         }
         if (pageTitle.isNotBlank()) {
             Text(pageTitle, style = MaterialTheme.typography.labelMedium, maxLines = 1)
         }
-        AndroidView(
-            factory = { webView },
-            modifier = Modifier.weight(1f).fillMaxWidth(),
-        )
+        AndroidView(factory = { webView }, modifier = Modifier.weight(1f).fillMaxWidth())
         Text(
             stringResource(R.string.browser_security_note),
             style = MaterialTheme.typography.bodySmall,

@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="browser_title">Private web viewer</string>
-    <string name="browser_settings_desc">Open web pages inside RELYRA with scripts, cookies and local-file access disabled by default.</string>
+    <string name="browser_settings_desc">Browse modern websites with JavaScript enabled; cookies remain off until you allow them. Local-file access stays blocked.</string>
     <string name="browser_address">Website address (HTTPS preferred)</string>
     <string name="browser_go">Open</string>
     <string name="browser_back">Back</string>
@@ -10,8 +10,12 @@
     <string name="browser_invalid_address">Enter a valid HTTP or HTTPS website address. Other URL schemes are blocked.</string>
     <string name="browser_load_failed">The page could not be loaded.</string>
     <string name="browser_tls_blocked">The page was blocked because its TLS certificate could not be verified.</string>
-    <string name="browser_security_note">Privacy defaults: JavaScript, cookies, DOM storage, mixed content and local-file access are disabled. This viewer is not Tor and does not guarantee anonymity.</string>
+    <string name="browser_security_note">JavaScript is enabled for modern sites and can be switched off. Cookies are off until allowed. Mixed content and local-file access stay blocked. This viewer does not route through Tor and does not guarantee anonymity.</string>
     <string name="browser_tor_proxy_blocked">The built-in WebView does not use RELYRA\'s SOCKS proxy. It is blocked while Tor proxy mode is enabled to prevent a direct browser connection.</string>
+    <string name="browser_javascript">Enable JavaScript for modern websites</string>
+    <string name="browser_cookies">Allow website cookies (including sign-in cookies)</string>
+    <string name="browser_open_network">Open network settings</string>
+    <string name="browser_http_error">Website returned HTTP %1$d.</string>
     <string name="pdf_title">PDF reader</string>
     <string name="pdf_settings_desc">Open and read local PDF files without uploading them.</string>
     <string name="pdf_open">Choose PDF file</string>

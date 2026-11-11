@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="browser_title">عارض الويب الخاص</string>
-    <string name="browser_settings_desc">فتح صفحات الويب داخل RELYRA مع تعطيل السكربتات وملفات الارتباط والوصول إلى الملفات المحلية افتراضيًا.</string>
+    <string name="browser_settings_desc">تصفح المواقع الحديثة مع تفعيل JavaScript؛ وتظل ملفات الارتباط متوقفة حتى تسمح بها. يظل الوصول إلى الملفات المحلية محظورًا.</string>
     <string name="browser_address">عنوان الموقع (يفضّل HTTPS)</string>
     <string name="browser_go">فتح</string>
     <string name="browser_back">رجوع</string>
@@ -10,8 +10,12 @@
     <string name="browser_invalid_address">أدخل عنوان موقع HTTP أو HTTPS صالحًا. تُحظر مخططات الروابط الأخرى.</string>
     <string name="browser_load_failed">تعذر تحميل الصفحة.</string>
     <string name="browser_tls_blocked">تم حظر الصفحة لتعذر التحقق من شهادة TLS.</string>
-    <string name="browser_security_note">إعدادات الخصوصية الافتراضية: JavaScript وملفات الارتباط وتخزين DOM والمحتوى المختلط والوصول إلى الملفات المحلية معطلة. هذا العارض ليس Tor ولا يضمن إخفاء الهوية.</string>
+    <string name="browser_security_note">يعمل JavaScript لدعم المواقع الحديثة ويمكن إيقافه. تظل ملفات الارتباط متوقفة حتى تسمح بها. يظل المحتوى المختلط والوصول إلى الملفات المحلية محظورين. هذا العارض لا يمر عبر Tor ولا يضمن إخفاء الهوية.</string>
     <string name="browser_tor_proxy_blocked">عارض WebView المدمج لا يستخدم وكيل SOCKS الخاص بـ RELYRA؛ لذلك يتم حظره أثناء تشغيل وضع Tor لمنع الاتصال المباشر بالإنترنت.</string>
+    <string name="browser_javascript">تفعيل JavaScript للمواقع الحديثة</string>
+    <string name="browser_cookies">السماح بملفات ارتباط المواقع (بما فيها تسجيل الدخول)</string>
+    <string name="browser_open_network">فتح إعدادات الشبكة</string>
+    <string name="browser_http_error">أعاد الموقع خطأ HTTP رقم %1$d.</string>
     <string name="pdf_title">قارئ PDF</string>
     <string name="pdf_settings_desc">فتح وقراءة ملفات PDF المحلية دون رفعها إلى الإنترنت.</string>
     <string name="pdf_open">اختيار ملف PDF</string>

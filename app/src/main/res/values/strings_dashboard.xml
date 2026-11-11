@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="home_dashboard_greeting">Your private space</string>
+    <string name="home_dashboard_services">Services</string>
+    <string name="home_dashboard_activity">Activity</string>
+    <string name="home_dashboard_tools">Your tools</string>
+    <string name="home_manage">Manage</string>
+    <string name="home_service_messages">Encrypted messaging</string>
+    <string name="home_service_files">Encrypted files</string>
+    <string name="home_service_nearby">Nearby connections</string>
+    <string name="home_service_tor">Tor route</string>
+    <string name="home_service_configured">Configured</string>
+    <string name="home_service_setup">Needs setup</string>
+    <string name="home_service_enabled">Enabled</string>
+    <string name="home_service_disabled">Disabled</string>
+    <string name="home_service_relays_detail">%1$d connected · %2$d enabled relays</string>
+    <string name="home_service_files_detail">%1$d enabled file servers</string>
+    <string name="home_service_nearby_detail">%1$d of 3 local transports enabled</string>
+    <string name="home_service_tor_strict">Strict proxy routing</string>
+    <string name="home_service_tor_flexible">External SOCKS proxy</string>
+    <string name="home_network_details">Connection settings</string>
+    <string name="home_pending_detail">%1$d messages waiting to send</string>
+    <string name="home_contacts_detail">%1$d contacts saved on this device</string>
+    <string name="home_connection_service">Background connection</string>
+    <string name="home_connection_on">Keeps enabled connections running in the background</string>
+    <string name="home_connection_off">Background connection is disabled</string>
+    <string name="settings_connections_group">Connections and network</string>
+    <string name="settings_personal_tools_group">Personal tools</string>
+    <string name="settings_diagnostics_group">Diagnostics and system status</string>
+</resources>
