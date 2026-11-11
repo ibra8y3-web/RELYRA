@@ -70,6 +70,7 @@ fun NetworkScreen(vm: MainViewModel) {
     val wifiDirectVerifiedPeers by vm.wifiDirectVerifiedPeers.collectAsStateWithLifecycle()
     val wifiDirectStatus by vm.wifiDirectStatus.collectAsStateWithLifecycle()
     val internetPeerStates by vm.internetPeerStates.collectAsStateWithLifecycle()
+    val incomingInternetOffers by vm.incomingInternetOffers.collectAsStateWithLifecycle()
     val internetSignal by vm.internetSignal.collectAsStateWithLifecycle()
     val torSettings by vm.torProxySettings.collectAsStateWithLifecycle()
     val torStatus by vm.torProxyStatus.collectAsStateWithLifecycle()
@@ -226,6 +227,24 @@ fun NetworkScreen(vm: MainViewModel) {
         SectionCard(stringResource(R.string.net_p2p_title)) {
             Text(stringResource(R.string.net_p2p_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(value = p2pPeerId, onValueChange = { p2pPeerId = it.trim() }, label = { Text(stringResource(R.string.net_p2p_peer_id)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            if (incomingInternetOffers.isNotEmpty()) {
+                Text(stringResource(R.string.net_p2p_incoming_offer), style = MaterialTheme.typography.titleSmall)
+                incomingInternetOffers.values.forEach { offer ->
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(offer.peerId, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Button(
+                                onClick = { vm.approveIncomingInternetOffer(offer.peerId) },
+                                modifier = Modifier.weight(1f),
+                            ) { Text(stringResource(R.string.net_p2p_approve)) }
+                            TextButton(
+                                onClick = { vm.declineIncomingInternetOffer(offer.peerId) },
+                                modifier = Modifier.weight(1f),
+                            ) { Text(stringResource(R.string.net_p2p_decline)) }
+                        }
+                    }
+                }
+            }
             internetPeerStates.forEach { (peer, state) ->
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     Text(peer, Modifier.weight(1f), fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
