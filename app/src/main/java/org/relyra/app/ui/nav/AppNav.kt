@@ -3,10 +3,10 @@ package org.relyra.app.ui.nav
 import androidx.annotation.StringRes
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.filled.Email
-import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.Group
+import androidx.compose.material.icons.filled.Campaign
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.padding
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -39,7 +40,8 @@ import org.relyra.app.ui.screens.AddContactScreen
 import org.relyra.app.ui.screens.ChatScreen
 import org.relyra.app.ui.screens.BrowserScreen
 import org.relyra.app.ui.screens.PdfReaderScreen
-import org.relyra.app.ui.screens.ChatsScreen
+import org.relyra.app.ui.screens.DirectChatsDestination
+import org.relyra.app.ui.screens.GroupsSectionScreen
 import org.relyra.app.ui.screens.CreateGroupScreen
 import org.relyra.app.ui.screens.DiagnosticsScreen
 import org.relyra.app.ui.screens.ShareScreen
@@ -62,6 +64,9 @@ import org.relyra.app.ui.screens.BrowserDocumentsSettingsScreen
 private object Routes {
     const val HOME = "home"
     const val CHATS = "chats"
+    const val GROUPS = "groups"
+    const val CHANNELS = "channels"
+    const val CHANNEL_NEW = "channels/new"
     const val CHAT = "chat/{id}"
     const val CONTACTS = "contacts"
     const val IDENTITY = "identity"
@@ -88,17 +93,19 @@ private object Routes {
 private class Tab(val route: String, @StringRes val label: Int, val icon: ImageVector)
 
 private val tabs = listOf(
-    Tab(Routes.HOME, R.string.nav_home, Icons.Default.Home),
-    Tab(Routes.CHATS, R.string.nav_chats, Icons.Default.Email),
+    Tab(Routes.CHATS, R.string.nav_direct_chats, Icons.Default.Email),
+    Tab(Routes.GROUPS, R.string.nav_groups, Icons.Default.Group),
+    Tab(Routes.CHANNELS, R.string.nav_channels, Icons.Default.Campaign),
     Tab(Routes.CONTACTS, R.string.nav_contacts, Icons.Default.Person),
-    Tab(Routes.IDENTITY, R.string.nav_identity, Icons.Default.AccountCircle),
     Tab(Routes.SETTINGS, R.string.nav_settings, Icons.Default.Settings),
 )
 
 @StringRes
 private fun titleFor(route: String): Int = when (route) {
     Routes.HOME -> R.string.nav_home
-    Routes.CHATS, Routes.CHAT -> R.string.nav_chats
+    Routes.CHATS, Routes.CHAT -> R.string.nav_direct_chats
+    Routes.GROUPS, Routes.GROUP -> R.string.nav_groups
+    Routes.CHANNELS, Routes.CHANNEL_NEW -> R.string.nav_channels
     Routes.GROUP_NEW -> R.string.groups_new_title
     Routes.GROUP_INFO -> R.string.groups_info
     Routes.CONTACTS -> R.string.nav_contacts
@@ -129,7 +136,7 @@ fun AppNav(
 ) {
     val nav = rememberNavController()
     val backStack by nav.currentBackStackEntryAsState()
-    val route = backStack?.destination?.route ?: Routes.HOME
+    val route = backStack?.destination?.route ?: Routes.CHATS
     val isTab = tabs.any { it.route == route }
     val snackbar = rememberMessageHost(vm)
     val allContacts by vm.contacts.collectAsStateWithLifecycle()
@@ -205,8 +212,8 @@ fun AppNav(
                                     restoreState = true
                                 }
                             },
-                            icon = { Icon(t.icon, contentDescription = null) },
-                            label = { Text(stringResource(t.label)) },
+                            icon = { Icon(t.icon, contentDescription = null, modifier = Modifier.size(20.dp)) },
+                            label = { Text(stringResource(t.label), style = androidx.compose.material3.MaterialTheme.typography.labelSmall, maxLines = 1) },
                         )
                     }
                 }
@@ -214,7 +221,7 @@ fun AppNav(
         },
         snackbarHost = { SnackbarHost(snackbar) },
     ) { padding ->
-        NavHost(nav, startDestination = Routes.HOME, modifier = Modifier.padding(padding)) {
+        NavHost(nav, startDestination = Routes.CHATS, modifier = Modifier.padding(padding)) {
             composable(Routes.HOME) {
                 HomeScreen(
                     vm,
@@ -223,25 +230,29 @@ fun AppNav(
                 )
             }
             composable(Routes.CHATS) {
-                ChatsScreen(
-                    vm,
-                    onOpen = { nav.navigate("chat/$it") },
-                    onOpenGroup = { nav.navigate("group/$it") },
-                    onCreateGroup = { nav.navigate(Routes.GROUP_NEW) },
-                    onAddContact = { nav.navigate(Routes.ADD) },
-                )
+                DirectChatsDestination(vm, onOpen = { nav.navigate("chat/$it") }, onAddContact = { nav.navigate(Routes.ADD) })
+            }
+            composable(Routes.GROUPS) {
+                GroupsSectionScreen(vm, org.relyra.app.core.messaging.GroupKind.GROUP,
+                    onOpen = { nav.navigate("group/$it") }, onCreate = { nav.navigate(Routes.GROUP_NEW) })
+            }
+            composable(Routes.CHANNELS) {
+                GroupsSectionScreen(vm, org.relyra.app.core.messaging.GroupKind.CHANNEL,
+                    onOpen = { nav.navigate("group/$it") }, onCreate = { nav.navigate(Routes.CHANNEL_NEW) })
             }
             composable(Routes.GROUP) { entry -> GroupChatScreen(vm, entry.arguments?.getString("id") ?: "") }
             composable(Routes.GROUP_INFO) { entry ->
                 GroupInfoScreen(vm, entry.arguments?.getString("id") ?: "", onGone = {
-                    nav.popBackStack(Routes.CHATS, inclusive = false)
+                    nav.popBackStack(Routes.GROUPS, inclusive = false)
                 })
             }
             composable(Routes.GROUP_NEW) {
-                CreateGroupScreen(vm, onCreated = { id ->
-                    nav.popBackStack()
-                    nav.navigate("group/$id")
-                }, onAddContact = { nav.navigate(Routes.ADD) })
+                CreateGroupScreen(vm, onCreated = { id -> nav.popBackStack(); nav.navigate("group/$id") },
+                    onAddContact = { nav.navigate(Routes.ADD) }, initialKind = org.relyra.app.core.messaging.GroupKind.GROUP)
+            }
+            composable(Routes.CHANNEL_NEW) {
+                CreateGroupScreen(vm, onCreated = { id -> nav.popBackStack(); nav.navigate("group/$id") },
+                    onAddContact = { nav.navigate(Routes.ADD) }, initialKind = org.relyra.app.core.messaging.GroupKind.CHANNEL)
             }
             composable(Routes.CHAT) { entry -> ChatScreen(vm, entry.arguments?.getString("id") ?: "") }
             composable(Routes.CONTACTS) { ContactsScreen(vm, onAdd = { nav.navigate(Routes.ADD) }) }
@@ -257,6 +268,7 @@ fun AppNav(
                     onOpenTools = { nav.navigate(Routes.TOOLS) },
                     onOpenNotifications = { nav.navigate(Routes.SETTINGS_NOTIFICATIONS) },
                     onOpenDiagnostics = { nav.navigate(Routes.DIAG) },
+                    onOpenHome = { nav.navigate(Routes.HOME) },
                 )
             }
             composable(Routes.SETTINGS_PRIVACY) {

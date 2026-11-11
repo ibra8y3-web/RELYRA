@@ -2,6 +2,15 @@
 <resources>
     <string name="app_name">ريلايرا</string>
     <string name="tagline">لامركزي. خاص. مستقل.</string>
+    <string name="nav_direct_chats">المحادثات</string>
+    <string name="nav_groups">المجموعات</string>
+    <string name="nav_channels">القنوات</string>
+    <string name="groups_search_hint">البحث في المجموعات</string>
+    <string name="channels_search_hint">البحث في القنوات</string>
+    <string name="channels_new">إنشاء قناة</string>
+    <string name="channels_empty_body">ستظهر هنا القنوات التي تنضم إليها أو تنشئها.</string>
+    <string name="settings_overview">نظرة عامة على الأمان</string>
+    <string name="settings_overview_desc">هوية الجهاز والحماية المحلية وحالة التطبيق.</string>
     <string name="nav_home">الرئيسية</string>
     <string name="nav_contacts">جهات الاتصال</string>
     <string name="nav_identity">الهوية</string>

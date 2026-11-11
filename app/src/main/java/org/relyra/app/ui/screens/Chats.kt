@@ -73,30 +73,14 @@ import java.text.DateFormat
 import java.util.Date
 
 @Composable
-fun ChatsScreen(
-    vm: MainViewModel,
-    onOpen: (String) -> Unit,
-    onOpenGroup: (String) -> Unit,
-    onCreateGroup: () -> Unit,
-    onAddContact: () -> Unit,
-) {
-    var tab by rememberSaveable { mutableStateOf(0) }
+fun DirectChatsDestination(vm: MainViewModel, onOpen: (String) -> Unit, onAddContact: () -> Unit) {
     var query by rememberSaveable { mutableStateOf("") }
     Column(Modifier.fillMaxSize()) {
-        TabRow(selectedTabIndex = tab) {
-            Tab(selected = tab == 0, onClick = { tab = 0 }, text = { Text(stringResource(R.string.groups_tab_direct)) })
-            Tab(selected = tab == 1, onClick = { tab = 1 }, text = { Text(stringResource(R.string.groups_tab_groups)) })
-        }
-        OutlinedTextField(
-            value = query, onValueChange = { query = it.take(60) },
+        OutlinedTextField(value = query, onValueChange = { query = it.take(60) },
             placeholder = { Text(stringResource(R.string.chats_search_hint)) },
             leadingIcon = { Icon(Icons.Default.Search, contentDescription = null) },
-            singleLine = true,
-            modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
-        )
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (tab == 0) DirectChats(vm, query, onOpen, onAddContact) else GroupsList(vm, query, onOpenGroup, onCreateGroup)
-        }
+            singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp))
+        DirectChats(vm, query, onOpen, onAddContact)
     }
 }
 

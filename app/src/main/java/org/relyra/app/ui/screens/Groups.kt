@@ -84,7 +84,7 @@ private fun myPublicId(vm: MainViewModel): String? {
 // ---- list --------------------------------------------------------------------------------------------------
 
 @Composable
-fun GroupsList(vm: MainViewModel, query: String, onOpen: (String) -> Unit, onCreate: () -> Unit) {
+fun GroupsList(vm: MainViewModel, query: String, onOpen: (String) -> Unit, onCreate: () -> Unit, kindFilter: GroupKind? = null) {
     val groups by vm.groups.collectAsStateWithLifecycle()
     val sums by vm.groupSummaries.collectAsStateWithLifecycle()
     val prefs by vm.chatPrefs.collectAsStateWithLifecycle()
@@ -92,7 +92,7 @@ fun GroupsList(vm: MainViewModel, query: String, onOpen: (String) -> Unit, onCre
     var clearTarget by remember { mutableStateOf<String?>(null) }
     val byId = sums.associateBy { it.groupId }
     val q = query.trim()
-    val matching = groups.filter { q.isEmpty() || it.name.contains(q, ignoreCase = true) }
+    val matching = groups.filter { (kindFilter == null || GroupKind.valueOf(it.kind) == kindFilter) && (q.isEmpty() || it.name.contains(q, ignoreCase = true)) }
     val archivedCount = matching.count { prefs[it.groupId]?.archived == true }
     val visible = matching
         .filter { (prefs[it.groupId]?.archived == true) == showArchived }
@@ -101,14 +101,14 @@ fun GroupsList(vm: MainViewModel, query: String, onOpen: (String) -> Unit, onCre
                 .thenByDescending { byId[it.groupId]?.lastAt ?: it.createdAt }
         )
     Box(Modifier.fillMaxSize()) {
-        if (groups.isEmpty()) {
+        if (matching.isEmpty()) {
             Column(
                 Modifier.fillMaxSize().padding(32.dp),
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
                 Text(stringResource(R.string.groups_empty_title), style = MaterialTheme.typography.titleMedium)
-                Text(stringResource(R.string.groups_empty_body), color = MaterialTheme.colorScheme.onSurfaceVariant,
+                Text(stringResource(if (kindFilter == GroupKind.CHANNEL) R.string.channels_empty_body else R.string.groups_empty_body), color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp))
             }
         } else {
@@ -184,7 +184,7 @@ fun GroupsList(vm: MainViewModel, query: String, onOpen: (String) -> Unit, onCre
         ExtendedFloatingActionButton(
             onClick = onCreate,
             icon = { Icon(Icons.Default.Add, contentDescription = null) },
-            text = { Text(stringResource(R.string.groups_new)) },
+            text = { Text(stringResource(if (kindFilter == GroupKind.CHANNEL) R.string.channels_new else R.string.groups_new)) },
             modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
         )
     }
@@ -193,14 +193,25 @@ fun GroupsList(vm: MainViewModel, query: String, onOpen: (String) -> Unit, onCre
     }
 }
 
+@Composable
+fun GroupsSectionScreen(vm: MainViewModel, kind: GroupKind, onOpen: (String) -> Unit, onCreate: () -> Unit) {
+    var query by rememberSaveable(kind) { mutableStateOf("") }
+    Column(Modifier.fillMaxSize()) {
+        OutlinedTextField(value = query, onValueChange = { query = it.take(60) },
+            placeholder = { Text(stringResource(if (kind == GroupKind.CHANNEL) R.string.channels_search_hint else R.string.groups_search_hint)) },
+            singleLine = true, modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp))
+        GroupsList(vm, query, onOpen, onCreate, kindFilter = kind)
+    }
+}
+
 // ---- create ------------------------------------------------------------------------------------------------
 
 @Composable
-fun CreateGroupScreen(vm: MainViewModel, onCreated: (String) -> Unit, onAddContact: () -> Unit) {
+fun CreateGroupScreen(vm: MainViewModel, onCreated: (String) -> Unit, onAddContact: () -> Unit, initialKind: GroupKind = GroupKind.GROUP) {
     val contacts by vm.contacts.collectAsStateWithLifecycle()
     val candidates = contacts.filter { usable(it) }
     var name by remember { mutableStateOf("") }
-    var kind by remember { mutableStateOf(GroupKind.GROUP) }
+    var kind by remember { mutableStateOf(initialKind) }
     var picked by remember { mutableStateOf(setOf<String>()) }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         OutlinedTextField(

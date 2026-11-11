@@ -2,6 +2,15 @@
 <resources>
     <string name="app_name">RELYRA</string>
     <string name="tagline">Decentralized. Private. Independent.</string>
+    <string name="nav_direct_chats">Chats</string>
+    <string name="nav_groups">Groups</string>
+    <string name="nav_channels">Channels</string>
+    <string name="groups_search_hint">Search groups</string>
+    <string name="channels_search_hint">Search channels</string>
+    <string name="channels_new">Create channel</string>
+    <string name="channels_empty_body">Channels you join or create will appear here.</string>
+    <string name="settings_overview">Security overview</string>
+    <string name="settings_overview_desc">Device identity, local protection and application status.</string>
     <string name="nav_home">Home</string>
     <string name="nav_contacts">Contacts</string>
     <string name="nav_identity">Identity</string>

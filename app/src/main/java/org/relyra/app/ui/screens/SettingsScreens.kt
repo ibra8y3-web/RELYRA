@@ -57,6 +57,7 @@ fun SettingsScreen(
     onOpenTools: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenDiagnostics: () -> Unit,
+    onOpenHome: () -> Unit,
 ) {
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(horizontal = 16.dp, vertical = 12.dp),
@@ -64,6 +65,8 @@ fun SettingsScreen(
     ) {
         Text(stringResource(R.string.settings_hub_subtitle), style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant)
+        SettingsHubTile(R.string.settings_overview, R.string.settings_overview_desc,
+            Icons.Default.Person, onOpenHome, Modifier.fillMaxWidth())
         Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
             SettingsHubTile(R.string.settings_cat_connections, R.string.settings_cat_connections_desc,
                 Icons.Default.Wifi, onOpenNetwork, Modifier.weight(1f))
