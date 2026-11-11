@@ -69,17 +69,19 @@ object InternetSignalCodec {
         issuedAt: Long,
         sign: (ByteArray) -> ByteArray?,
     ): String? {
-        if (IdentityCrypto.parsePublicId(fromId) == null ||
-            IdentityCrypto.parsePublicId(toId) == null ||
-            fromId == toId || type !in setOf("offer", "answer") ||
+        val from = fromId.trim().lowercase()
+        val to = toId.trim().lowercase()
+        if (IdentityCrypto.parsePublicId(from) == null ||
+            IdentityCrypto.parsePublicId(to) == null ||
+            from == to || type !in setOf("offer", "answer") ||
             sdp.isBlank() || sdp.length > MAX_SDP_CHARS
         ) return null
-        val signature = sign(transcript(fromId, toId, type, sdp, issuedAt)) ?: return null
+        val signature = sign(transcript(from, to, type, sdp, issuedAt)) ?: return null
         if (signature.size != 64) return null
         return JSONObject()
             .put("v", 1)
-            .put("from", fromId)
-            .put("to", toId)
+            .put("from", from)
+            .put("to", to)
             .put("type", type)
             .put("sdp", sdp)
             .put("issuedAt", issuedAt)
@@ -236,46 +238,49 @@ class WebRtcP2pConnector(
     }
 
     suspend fun createOffer(peerId: String): String? {
-        if (ownId() == null || IdentityCrypto.parsePublicId(peerId) == null || !knownPeer(peerId)) return null
+        val targetId = peerId.trim().lowercase()
+        if (ownId() == null || IdentityCrypto.parsePublicId(targetId) == null || !knownPeer(targetId)) return null
         return runCatching {
             withContext(Dispatchers.IO) {
-                val peer = createPeer(peerId) ?: return@withContext null
+                val peer = createPeer(targetId) ?: return@withContext null
                 val init = DataChannel.Init().apply { ordered = true }
-                attachChannel(peerId, peer, peer.connection.createDataChannel("relyra-wire-v1", init))
+                attachChannel(targetId, peer, peer.connection.createDataChannel("relyra-wire-v1", init))
                 val offer = createDescription(peer.connection, true)
                 setDescription(peer.connection, true, offer)
                 awaitGathering(peer)
                 val local = peer.connection.localDescription?.description ?: return@withContext null
-                InternetSignalCodec.encode(ownId()!!, peerId, "offer", local, System.currentTimeMillis() / 1000, sign)
+                InternetSignalCodec.encode(ownId()!!, targetId, "offer", local, System.currentTimeMillis() / 1000, sign)
             }
         }.getOrNull()
     }
 
     suspend fun acceptOffer(peerId: String, encodedOffer: String): String? {
         val me = ownId() ?: return null
-        if (!knownPeer(peerId)) return null
-        val signal = InternetSignalCodec.decode(encodedOffer, me, peerId) ?: return null
+        val targetId = peerId.trim().lowercase()
+        if (!knownPeer(targetId)) return null
+        val signal = InternetSignalCodec.decode(encodedOffer, me, targetId) ?: return null
         if (signal.type != "offer") return null
         return runCatching {
             withContext(Dispatchers.IO) {
-                val peer = createPeer(peerId) ?: return@withContext null
+                val peer = createPeer(targetId) ?: return@withContext null
                 val remote = SessionDescription(SessionDescription.Type.OFFER, signal.sdp)
                 setDescription(peer.connection, false, remote)
                 val answer = createDescription(peer.connection, false)
                 setDescription(peer.connection, true, answer)
                 awaitGathering(peer)
                 val local = peer.connection.localDescription?.description ?: return@withContext null
-                InternetSignalCodec.encode(me, peerId, "answer", local, System.currentTimeMillis() / 1000, sign)
+                InternetSignalCodec.encode(me, targetId, "answer", local, System.currentTimeMillis() / 1000, sign)
             }
         }.getOrNull()
     }
 
     suspend fun acceptAnswer(peerId: String, encodedAnswer: String): Boolean {
         val me = ownId() ?: return false
-        if (!knownPeer(peerId)) return false
-        val signal = InternetSignalCodec.decode(encodedAnswer, me, peerId) ?: return false
+        val targetId = peerId.trim().lowercase()
+        if (!knownPeer(targetId)) return false
+        val signal = InternetSignalCodec.decode(encodedAnswer, me, targetId) ?: return false
         if (signal.type != "answer") return false
-        val peer = peers[peerId] ?: return false
+        val peer = peers[targetId] ?: return false
         return runCatching {
             setDescription(peer.connection, false, SessionDescription(SessionDescription.Type.ANSWER, signal.sdp))
             true
