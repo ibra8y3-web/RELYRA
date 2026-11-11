@@ -39,6 +39,7 @@ object ContactCardCodec {
         bundle.signedPreKeyId.toString(), b64(bundle.signedPreKey),
         bundle.signedPreKeyExpiresAt.toString(), b64(bundle.signedPreKeySignature),
         bundle.oneTimePreKeyId?.toString().orEmpty(), bundle.oneTimePreKey?.let(::b64).orEmpty(),
+        b64(X3dh.encodeOneTimePreKeys(bundle.oneTimePreKeys)),
     ).joinToString("\n").toByteArray(Charsets.UTF_8)
 
     fun encode(name: String, seed: ByteArray, publicKey: ByteArray, encKey: ByteArray, nostrKey: ByteArray): String {
@@ -61,6 +62,7 @@ object ContactCardCodec {
             "pi" to bundle.signedPreKeyId.toString(), "p" to b64(bundle.signedPreKey),
             "pe" to bundle.signedPreKeyExpiresAt.toString(), "ps" to b64(bundle.signedPreKeySignature),
             "oi" to (bundle.oneTimePreKeyId?.toString() ?: ""), "o" to (bundle.oneTimePreKey?.let(::b64) ?: ""),
+            "ot" to b64(X3dh.encodeOneTimePreKeys(bundle.oneTimePreKeys)),
             "s" to b64(sig),
         )
         return PREFIX + params.entries.joinToString("&") { (k, v) ->
@@ -103,8 +105,9 @@ object ContactCardCodec {
             val oneTime = params["o"]?.takeIf { it.isNotEmpty() }?.let(dec::decode)
             if (signedId < 0 || signed.size != 32 || expiry <= 0 || signedSig.size != 64 ||
                 ((oneTimeId == null) != (oneTime == null)) || (oneTime != null && oneTime.size != 32)) return CardDecode.Malformed
+            val oneTimes = params["ot"]?.let { X3dh.decodeOneTimePreKeys(dec.decode(it)) } ?: emptyList()
             val bundle = X3dh.PreKeyBundle(
-                IdentityCrypto.publicId(key), key, x, signedId, signed, expiry, signedSig, oneTimeId, oneTime,
+                IdentityCrypto.publicId(key), key, x, signedId, signed, expiry, signedSig, oneTimeId, oneTime, oneTimes,
             )
             if (!IdentityCrypto.verify(key, sig, messageV3(name, key, x, m, bundle))) CardDecode.BadSignature
             else CardDecode.Ok(ContactCard(name, key, x, m, bundle))
