@@ -90,14 +90,6 @@ interface PayloadProtector {
     suspend fun open(wire: ByteArray): Opened?
 }
 
-/**
- * Receivers that advance cryptographic state implement this callback form so the ratchet state is committed
- * only after the authenticated plaintext has been durably accepted by the message layer.
- */
-interface CommitAwarePayloadProtector : PayloadProtector {
-    suspend fun accept(wire: ByteArray, consume: suspend (Opened) -> Boolean): Boolean
-}
-
 /** Told about every NEW incoming message (a replayed copy is not new). Used for notifications; must not block. */
 interface IncomingListener {
     /** [conversation] is the sender's public ID for a one-to-one chat, or the group ID. [body] is null for files. */

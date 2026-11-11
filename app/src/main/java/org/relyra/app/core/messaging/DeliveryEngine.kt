@@ -223,14 +223,7 @@ class DeliveryEngine(
      * Duplicate but authentic packets return true because they are safely re-acknowledged by [onPacket].
      */
     suspend fun acceptWire(wire: ByteArray): Boolean {
-        if (protector is CommitAwarePayloadProtector) {
-            return protector.accept(wire) { opened -> acceptOpened(opened) }
-        }
         val opened = protector.open(wire) ?: return false
-        return acceptOpened(opened)
-    }
-
-    private suspend fun acceptOpened(opened: Opened): Boolean {
         val env = EnvelopeCodec.decode(opened.plaintext) ?: return false
         if (env.from != opened.senderId) return false
         val me = ownId() ?: return false
