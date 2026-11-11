@@ -10,6 +10,9 @@ import org.relyra.app.core.identity.ContactRepository
 import org.relyra.app.core.identity.IdentityRepository
 import org.relyra.app.core.identity.SecurityLog
 import org.relyra.app.core.messaging.DeliveryEngine
+import org.relyra.app.core.messaging.Envelope
+import org.relyra.app.core.messaging.EnvelopeCodec
+import org.relyra.app.core.messaging.P2pSignalKind
 import org.relyra.app.core.messaging.GroupEngine
 import org.relyra.app.core.messaging.IncomingListener
 import org.relyra.app.core.notify.Notifier
@@ -29,6 +32,7 @@ import org.relyra.app.core.transfer.BlossomServers
 import org.relyra.app.core.transfer.TransferEngine
 import org.relyra.app.core.vault.VaultEngine
 import org.relyra.app.core.resources.ResourceManager
+import java.util.UUID
 
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
@@ -138,6 +142,24 @@ class AppContainer(context: Context) {
             uploader = transfers,
             groups = groups,
             incoming = incomingListener,
+            onP2pSignal = { peerId, signal ->
+                when (signal.kind) {
+                    P2pSignalKind.OFFER -> {
+                        val answer = internetP2p.acceptOffer(peerId, signal.signedSignal)
+                        val ownId = database.identityDao().get()?.publicId
+                        if (answer != null && ownId != null) {
+                            val reply = Envelope.P2pSignal(
+                                UUID.randomUUID().toString(), ownId, peerId,
+                                P2pSignalKind.ANSWER, answer,
+                            )
+                            delivery.transmit(peerId, EnvelopeCodec.encode(reply))
+                        }
+                    }
+                    P2pSignalKind.ANSWER -> {
+                        internetP2p.acceptAnswer(peerId, signal.signedSignal)
+                    }
+                }
+            },
         )
     }
 
