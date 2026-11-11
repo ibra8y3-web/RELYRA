@@ -74,3 +74,11 @@ data class RatchetEntity(
     @PrimaryKey val peerId: String,
     val state: ByteArray,
 )
+
+/** Ciphertext cache keyed by outgoing message ID, committed atomically with its ratchet advancement. */
+@Entity(tableName = "encrypted_packets")
+data class EncryptedPacketEntity(
+    @PrimaryKey val messageId: String,
+    val peerId: String,
+    val packet: ByteArray,
+)
