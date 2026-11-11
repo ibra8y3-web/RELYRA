@@ -219,6 +219,20 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) { runCatching { ctr().identities.rename(name) }.onFailure(::fail) }
     }
 
+    /** Creates a fresh one-time prekey bundle before sharing the contact card. */
+    fun refreshIdentityCard(onReady: (String) -> Unit) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val identity = ctr().database.identityDao().get() ?: return@launch
+                val link = ctr().identities.cardUri(identity, rotateOneTime = true) ?: return@launch
+                myCard.value = link
+                withContext(Dispatchers.Main) { onReady(link) }
+            } catch (t: Throwable) {
+                fail(t)
+            }
+        }
+    }
+
     suspend fun loadRecoveryKey(): String? = withContext(Dispatchers.IO) {
         val key = ctr().identities.recoveryKey()
         if (key != null) ctr().events.log(EventType.RECOVERY_VIEWED)
