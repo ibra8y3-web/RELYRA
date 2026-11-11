@@ -88,9 +88,15 @@ class DeliveryEngine(
         // Do not encrypt (which advances the ratchet) when there is no route to send on anyway.
         if (transports().none { it.isReady() }) return SendOutcome.Unavailable
         val payload = protector.protect(peer, plaintext) ?: return SendOutcome.Rejected("no encryption key for peer")
+        return transmitWire(peer, payload)
+    }
+
+    /** Sends an already encrypted packet without advancing the ratchet again. */
+    private suspend fun transmitWire(peer: String, payload: ByteArray): SendOutcome {
         var rejected: SendOutcome.Rejected? = null
         var unavailable = false
         for (t in transports()) {
+            if (!t.isReady()) continue
             when (val r = t.send(peer, payload)) {
                 SendOutcome.Accepted, SendOutcome.Relayed -> return r
                 SendOutcome.Unavailable -> unavailable = true
@@ -121,12 +127,12 @@ class DeliveryEngine(
                     continue
                 }
                 val attachment = store.attachment(m.messageId)
-                val payload: ByteArray
+                val plaintext: ByteArray
                 if (attachment == null) {
-                    payload = EnvelopeCodec.encode(Envelope.Chat(m.messageId, me, m.chatId, m.createdAt, m.body))
+                    plaintext = EnvelopeCodec.encode(Envelope.Chat(m.messageId, me, m.chatId, m.createdAt, m.body))
                 } else when (attachment.phase) {
                     AttachmentPhase.UPLOADED -> {
-                        payload = EnvelopeCodec.encode(
+                        plaintext = EnvelopeCodec.encode(
                             Envelope.Attachment(
                                 m.messageId, me, m.chatId, m.createdAt, attachment.name, attachment.mime,
                                 attachment.size, attachment.blobSize, attachment.plainSha256, attachment.blobSha256,
@@ -135,25 +141,39 @@ class DeliveryEngine(
                         )
                     }
                     AttachmentPhase.AWAITING_UPLOAD -> {
-                        // An upload is running right now: leave the message alone, it becomes due when that finishes.
                         if (uploadLock.isLocked) continue
-                        // The upload has not succeeded (no server, no network). Try again later with backoff.
                         val attempts = m.attempts + 1
                         store.update(m.copy(attempts = attempts, nextAttemptAt = now + backoff(attempts)))
                         continue
                     }
                     else -> {
-                        store.update(m.copy(state = MessageState.FAILED, nextAttemptAt = Long.MAX_VALUE))
+                        store.update(m.copy(state = MessageState.FAILED, nextAttemptAt = Long.MAX_VALUE, wirePayload = null))
                         continue
                     }
                 }
-                when (val r = transmit(m.chatId, payload)) {
+
+                // A packet is encrypted once and persisted before transport. Retries reuse the same ciphertext,
+                // which is essential for X3DH's first packet and for all Double Ratchet chain counters.
+                if (m.wirePayload == null && transports().none { it.isReady() }) {
+                    val attempts = m.attempts + 1
+                    store.update(m.copy(attempts = attempts, nextAttemptAt = now + backoff(attempts)))
+                    continue
+                }
+                val protected = m.wirePayload ?: protector.protect(m.chatId, plaintext)
+                if (protected == null) {
+                    store.update(m.copy(state = MessageState.FAILED, nextAttemptAt = Long.MAX_VALUE))
+                    continue
+                }
+                val current = if (m.wirePayload == null) m.copy(wirePayload = protected) else m
+                if (m.wirePayload == null) store.update(current)
+
+                when (val r = transmitWire(m.chatId, protected)) {
                     SendOutcome.Accepted, SendOutcome.Relayed -> {
                         val target = if (r == SendOutcome.Relayed) MessageState.RELAYED else MessageState.SENT
-                        val attempts = m.attempts + 1
+                        val attempts = current.attempts + 1
                         store.update(
-                            m.copy(
-                                state = if (MessageState.canAdvance(m.state, target)) target else m.state,
+                            current.copy(
+                                state = if (MessageState.canAdvance(current.state, target)) target else current.state,
                                 attempts = attempts,
                                 nextAttemptAt = now + ackWait(attempts),
                             )
@@ -161,11 +181,11 @@ class DeliveryEngine(
                         sent++
                     }
                     SendOutcome.Unavailable -> {
-                        val attempts = m.attempts + 1
-                        store.update(m.copy(attempts = attempts, nextAttemptAt = now + backoff(attempts)))
+                        val attempts = current.attempts + 1
+                        store.update(current.copy(attempts = attempts, nextAttemptAt = now + backoff(attempts)))
                     }
                     is SendOutcome.Rejected ->
-                        store.update(m.copy(state = MessageState.FAILED, nextAttemptAt = Long.MAX_VALUE))
+                        store.update(current.copy(state = MessageState.FAILED, nextAttemptAt = Long.MAX_VALUE, wirePayload = null))
                 }
             }
             return sent
