@@ -65,6 +65,18 @@ class BlossomClient(base: OkHttpClient = Http.client) {
 
     suspend fun upload(server: String, file: File, sha256Hex: String, secret: ByteArray, nowSeconds: Long): BlossomUpload =
         withContext(Dispatchers.IO) {
+            if (!sha256Hex.matches(Regex("(?i)[0-9a-f]{64}"))) {
+                return@withContext BlossomUpload.Rejected("invalid SHA-256")
+            }
+            if (!file.isFile || !file.canRead()) {
+                return@withContext BlossomUpload.Rejected("encrypted file is missing or unreadable")
+            }
+            val actualHash = try { Hex.encode(FileCrypto.sha256(file)) } catch (e: IOException) {
+                return@withContext BlossomUpload.Unavailable
+            }
+            if (!actualHash.equals(sha256Hex, ignoreCase = true)) {
+                return@withContext BlossomUpload.Rejected("encrypted file changed after it was prepared")
+            }
             val auth = NostrEvents.create(
                 secret, AUTH_KIND,
                 listOf(listOf("t", "upload"), listOf("x", sha256Hex), listOf("expiration", (nowSeconds + 600).toString())),
@@ -91,7 +103,10 @@ class BlossomClient(base: OkHttpClient = Http.client) {
         if (code in 200..299) {
             val text = resp.body?.string().orEmpty()
             val reported = try { JSONObject(text).optString("sha256", "") } catch (e: JSONException) { "" }
-            if (reported.isNotEmpty() && !reported.equals(sha256Hex, ignoreCase = true)) {
+            if (!reported.matches(Regex("(?i)[0-9a-f]{64}"))) {
+                return BlossomUpload.Rejected("the server response did not contain a valid SHA-256")
+            }
+            if (!reported.equals(sha256Hex, ignoreCase = true)) {
                 return BlossomUpload.Rejected("the server reported a different hash")
             }
             return BlossomUpload.Ok(server)
@@ -112,6 +127,9 @@ class BlossomClient(base: OkHttpClient = Http.client) {
         expectedSize: Long,
         onProgress: (Long) -> Unit,
     ): BlossomDownload = withContext(Dispatchers.IO) {
+        if (!sha256Hex.matches(Regex("(?i)[0-9a-f]{64}")) || expectedSize <= 0L) {
+            return@withContext BlossomDownload.Failed("invalid file descriptor", false)
+        }
         if (part.exists() && part.length() > expectedSize) part.delete()
         if (!part.exists() || part.length() < expectedSize) {
             val failure = fetch(server, sha256Hex, part, expectedSize, onProgress)
@@ -158,6 +176,10 @@ class BlossomClient(base: OkHttpClient = Http.client) {
         resp: Response, part: File, have: Long, expectedSize: Long, onProgress: (Long) -> Unit,
     ): BlossomDownload.Failed? {
         val body = resp.body ?: return BlossomDownload.Failed("empty response", true)
+        if (resp.code == 206 && have == 0L) {
+            part.delete()
+            return BlossomDownload.Failed("the server returned a partial response without a resume request", true)
+        }
         val resumed = resp.code == 206 && have > 0
         if (resumed) {
             val start = Regex("bytes (\\d+)-").find(resp.header("Content-Range").orEmpty())

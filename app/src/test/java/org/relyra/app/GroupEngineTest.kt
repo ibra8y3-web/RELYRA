@@ -257,5 +257,6 @@ class GroupEngineTest {
         assertNotNull(EnvelopeCodec.decode(EnvelopeCodec.encode(Envelope.GroupLeave(id, "a", "b", gid))))
         val bytes = EnvelopeCodec.encode(sync)
         for (cut in 1 until bytes.size) assertNull(EnvelopeCodec.decode(bytes.copyOf(cut)))
+        assertNull(EnvelopeCodec.decode(bytes + byteArrayOf(0)))
     }
 }

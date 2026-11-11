@@ -79,7 +79,18 @@ class NostrPool(
             }
         }
 
-        fun stop() { job?.cancel(); ws?.cancel(); isConnected = false }
+        private fun failPending() {
+            pending.values.forEach { it.complete(false) }
+            pending.clear()
+        }
+
+        fun stop() {
+            job?.cancel()
+            ws?.cancel()
+            failPending()
+            isConnected = false
+            eose = false
+        }
 
         private suspend fun runOnce() = suspendCancellableCoroutine<Unit> { cont ->
             val socket = http.newWebSocket(Request.Builder().url(url).build(), object : WebSocketListener() {
@@ -99,8 +110,19 @@ class NostrPool(
                     }
                 }
 
-                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) { if (cont.isActive) cont.resume(Unit) }
-                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) { if (cont.isActive) cont.resume(Unit) }
+                override fun onFailure(webSocket: WebSocket, t: Throwable, response: Response?) {
+                    isConnected = false
+                    failPending()
+                    publishStates()
+                    if (cont.isActive) cont.resume(Unit)
+                }
+
+                override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
+                    isConnected = false
+                    failPending()
+                    publishStates()
+                    if (cont.isActive) cont.resume(Unit)
+                }
             })
             ws = socket
             cont.invokeOnCancellation { socket.cancel() }

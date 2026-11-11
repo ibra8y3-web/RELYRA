@@ -86,11 +86,18 @@ object NostrEvents {
     }
 
     fun verify(e: NostrEvent): Boolean {
+        if (e.createdAt < 0 || e.kind < 0) return false
+        if (!e.id.matches(Regex("[0-9a-f]{64}")) ||
+            !e.pubkey.matches(Regex("[0-9a-f]{64}")) ||
+            !e.sig.matches(Regex("[0-9a-f]{128}"))) return false
+        if (e.tags.size > 2_000 || e.tags.any { tag -> tag.isEmpty() || tag.size > 256 || tag.any { it.length > 8_192 } }) {
+            return false
+        }
         val hash = sha256(serializeForId(e.pubkey, e.createdAt, e.kind, e.tags, e.content))
         if (Hex.encode(hash) != e.id) return false
         val sig = Hex.decode(e.sig) ?: return false
         val pub = Hex.decode(e.pubkey) ?: return false
-        return sig.size == 64 && pub.size == 32 && NostrCrypto.verify(sig, hash, pub)
+        return NostrCrypto.verify(sig, hash, pub)
     }
 
     fun toJson(e: NostrEvent) =
@@ -98,13 +105,25 @@ object NostrEvents {
             "\"tags\":${tagsJson(e.tags)},\"content\":\"${escape(e.content)}\",\"sig\":\"${e.sig}\"}"
 
     fun fromJson(o: JSONObject): NostrEvent? = try {
-        val tags = o.getJSONArray("tags").let { arr ->
-            (0 until arr.length()).map { i -> arr.getJSONArray(i).let { t -> (0 until t.length()).map { t.getString(it) } } }
+        val id = o.opt("id") as? String ?: return null
+        val pubkey = o.opt("pubkey") as? String ?: return null
+        val created = o.opt("created_at") as? Number ?: return null
+        val kindNumber = o.opt("kind") as? Number ?: return null
+        val createdAt = created.toLong()
+        val kind = kindNumber.toInt()
+        if (createdAt < 0 || kind < 0 || created.toDouble() != createdAt.toDouble() ||
+            kindNumber.toDouble() != kind.toDouble()) return null
+        val content = o.opt("content") as? String ?: return null
+        val sig = o.opt("sig") as? String ?: return null
+        val arr = o.optJSONArray("tags") ?: return null
+        if (arr.length() > 2_000) return null
+        val tags = (0 until arr.length()).map { i ->
+            val tag = arr.optJSONArray(i) ?: return null
+            if (tag.length() == 0 || tag.length() > 256) return null
+            (0 until tag.length()).map { j -> tag.opt(j) as? String ?: return null }
         }
-        val e = NostrEvent(o.getString("id"), o.getString("pubkey"), o.getLong("created_at"), o.getInt("kind"),
-            tags, o.getString("content"), o.getString("sig"))
-        if (e.id.length == 64 && e.pubkey.length == 64 && e.sig.length == 128) e else null
-    } catch (ex: JSONException) { null }
+        NostrEvent(id, pubkey, createdAt, kind, tags, content, sig).takeIf(::verify)
+    } catch (ex: JSONException) { null } catch (ex: RuntimeException) { null }
 }
 
 sealed interface RelayMessage {
