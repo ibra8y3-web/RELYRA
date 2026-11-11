@@ -72,13 +72,20 @@ Acceptance criteria:
 
 ## Priority 4 — privacy network options
 
-Work items:
-- Evaluate Tor integration and its effect on relay reachability and battery use.
-- Evaluate Bluetooth Low Energy only if a real, interoperable use case is required; the current Bluetooth transport is Classic RFCOMM over already-paired devices.
-- Specify metadata exposure, user consent, discovery limits and fallback behaviour for every nearby transport.
+Current source:
+- An external Tor SOCKS5 proxy is supported for the shared OkHttp client. Strict mode omits the DIRECT fallback, and the Tor Project check endpoint verifies whether the exit is a Tor exit.
+- A locally installed Tor service (for example, Orbot) is still required. RELYRA does not bundle Tor, manage Bridges or provide Onion Services.
+- Bluetooth Low Energy is not implemented; the current Bluetooth transport is Classic RFCOMM over already-paired devices.
+- Nearby LAN, Bluetooth and Wi-Fi Direct are local transports and are not routed through Tor SOCKS.
+
+Remaining work:
+- Evaluate whether a bundled Tor service is viable and supportable on Android, including its lifecycle and battery impact.
+- Decide whether RELYRA needs its own bridge/onion-service management or should continue delegating that to the installed Tor application.
+- Continue documenting metadata exposure and the exact scope of Strict Mode.
 
 Acceptance criteria:
 - The app clearly states which transport is active and what metadata it reveals.
+- Strict Tor tests confirm SOCKS is the only route and fail closed when the local proxy is unavailable; non-strict fallback is visibly warned.
 - No nearby device is trusted based only on discovery.
 - Background execution and battery restrictions are tested on supported Android versions.
 - Two Android devices complete Bluetooth Classic and Wi-Fi Direct handshake/message tests on supported vendors and OS releases.
