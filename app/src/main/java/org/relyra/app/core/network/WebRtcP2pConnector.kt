@@ -144,7 +144,7 @@ object InternetSignalCodec {
  */
 class WebRtcP2pConnector(
     context: Context,
-    private val ownId: () -> String?,
+    private val ownId: suspend () -> String?,
     private val sign: (ByteArray) -> ByteArray?,
     private val knownPeer: suspend (String) -> Boolean,
     private val onWire: suspend (ByteArray) -> Boolean,
