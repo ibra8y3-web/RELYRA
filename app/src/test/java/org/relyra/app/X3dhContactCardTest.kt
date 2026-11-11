@@ -9,13 +9,13 @@ import org.relyra.app.core.crypto.IdentityCrypto
 import org.relyra.app.core.crypto.PayloadCrypto
 import org.relyra.app.core.crypto.X3dh
 
-class X3dhContactCardTest {
+class X3dhContactCardTest {\n    private val now = System.currentTimeMillis() / 1000
     @Test fun versionThreeCardCarriesIdentityBoundSignedAndOneTimePrekeys() {
         val seed = ByteArray(32) { (it + 17).toByte() }
         val identity = IdentityCrypto.fromSeed(seed)
         val id = IdentityCrypto.publicId(identity.publicKey)
         val identityDh = PayloadCrypto.deriveSecret(seed)
-        val signed = X3dh.createSignedPreKey(id, seed, 42, 1_800_000_000L)
+        val signed = X3dh.createSignedPreKey(id, seed, 42, now)
         val oneTime = X3dh.createOneTimePreKey(43)
         val bundle = X3dh.bundle(
             id, identity.publicKey, X25519.publicFromPrivate(identityDh), signed, oneTime,
@@ -28,7 +28,7 @@ class X3dhContactCardTest {
         val actual = decoded.card.preKeyBundle!!
         assertEquals(42L, actual.signedPreKeyId)
         assertEquals(43L, actual.oneTimePreKeyId)
-        assertTrue(X3dh.verifyBundle(actual, 1_800_000_000L))
+        assertTrue(X3dh.verifyBundle(actual, now))
     }
 
     @Test fun versionThreeCardRejectsChangesToPrekeyFields() {
@@ -36,7 +36,7 @@ class X3dhContactCardTest {
         val identity = IdentityCrypto.fromSeed(seed)
         val id = IdentityCrypto.publicId(identity.publicKey)
         val identityDh = PayloadCrypto.deriveSecret(seed)
-        val signed = X3dh.createSignedPreKey(id, seed, 77, 1_800_000_000L)
+        val signed = X3dh.createSignedPreKey(id, seed, 77, now)
         val bundle = X3dh.bundle(id, identity.publicKey, X25519.publicFromPrivate(identityDh), signed)
         val uri = ContactCardCodec.encodeV3(
             "Relyra Test", seed, identity.publicKey, X25519.publicFromPrivate(identityDh),
@@ -46,3 +46,19 @@ class X3dhContactCardTest {
         assertTrue(ContactCardCodec.decode(changed) is org.relyra.app.core.crypto.CardDecode.BadSignature)
     }
 }
+    @Test fun v3CardRejectsAValidOuterSignatureAroundAnInvalidSignedPrekey() {
+        val seed = ByteArray(32) { (it + 51).toByte() }
+        val identity = IdentityCrypto.fromSeed(seed)
+        val id = IdentityCrypto.publicId(identity.publicKey)
+        val dh = PayloadCrypto.deriveSecret(seed)
+        val signed = X3dh.createSignedPreKey(id, seed, 88, now).copy(
+            signature = ByteArray(64) { 4 },
+        )
+        val bundle = X3dh.bundle(id, identity.publicKey, X25519.publicFromPrivate(dh), signed)
+        val uri = ContactCardCodec.encodeV3(
+            "Relyra Test", seed, identity.publicKey, X25519.publicFromPrivate(dh),
+            ByteArray(32) { 3 }, bundle,
+        )
+        assertTrue(ContactCardCodec.decode(uri) is org.relyra.app.core.crypto.CardDecode.BadSignature)
+    }
+
