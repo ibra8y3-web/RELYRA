@@ -35,6 +35,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.platform.LocalContext
 import androidx.core.content.ContextCompat
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.relyra.app.MainViewModel
@@ -242,7 +243,7 @@ fun NetworkScreen(vm: MainViewModel) {
             Text(stringResource(R.string.net_p2p_turn_optional), style = MaterialTheme.typography.titleSmall)
             OutlinedTextField(value = turnUrl, onValueChange = { turnUrl = it; turnError = false }, label = { Text(stringResource(R.string.net_p2p_turn_url)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(value = turnUsername, onValueChange = { turnUsername = it; turnError = false }, label = { Text(stringResource(R.string.net_p2p_turn_username)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-            OutlinedTextField(value = turnCredential, onValueChange = { turnCredential = it; turnError = false }, label = { Text(stringResource(R.string.net_p2p_turn_credential)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(value = turnCredential, onValueChange = { turnCredential = it; turnError = false }, label = { Text(stringResource(R.string.net_p2p_turn_credential)) }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
             if (turnError) Text(stringResource(R.string.net_p2p_turn_invalid), color = MaterialTheme.colorScheme.error)
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 TextButton(onClick = { turnError = !vm.setInternetTurnServer(turnUrl, turnUsername, turnCredential) }) { Text(stringResource(R.string.net_p2p_turn_apply)) }
