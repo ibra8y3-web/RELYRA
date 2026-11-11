@@ -19,6 +19,8 @@ import org.relyra.app.core.messaging.Transport
 import org.relyra.app.core.network.AdaptiveRouter
 import org.relyra.app.core.network.NetworkManager
 import org.relyra.app.core.network.NostrConnector
+import org.relyra.app.core.network.NearbyLanConnector
+import org.relyra.app.core.messaging.PeerStatus
 import org.relyra.app.core.storage.SecureStore
 import org.relyra.app.core.transfer.BlossomServers
 import org.relyra.app.core.transfer.TransferEngine
@@ -82,9 +84,17 @@ class AppContainer(context: Context) {
     val nostr by lazy {
         NostrConnector(network, { contacts.nostrKeyOf(it) }, { delivery.onWire(it) }, netScope)
     }
+    val nearby by lazy {
+        NearbyLanConnector(
+            context = appContext,
+            knownPeer = { id -> contacts.peers.status(id) == PeerStatus.Known },
+            onWire = { delivery.acceptWire(it) },
+            scope = netScope,
+        )
+    }
     val blossom by lazy { BlossomServers(appContext) }
     val transfers: TransferEngine by lazy { TransferEngine(appContext, blossom, messages, { identities.nostrSecret() }) }
-    val router by lazy { AdaptiveRouter { listOf(nostr) } }
+    val router by lazy { AdaptiveRouter { listOf(nearby, nostr) } }
     val transports: List<Transport> by lazy { listOf(router) }
 
     val delivery: DeliveryEngine by lazy {

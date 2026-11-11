@@ -47,6 +47,15 @@ class NetworkManager(context: Context, private val client: RelayClient = RelayCl
     private val _status = MutableStateFlow<Map<String, RelayStatus>>(emptyMap())
     val status: StateFlow<Map<String, RelayStatus>> = _status
 
+    /** Explicit opt-in: when enabled, the public RELYRA ID is advertised on the current local network. */
+    private val _nearbyEnabled = MutableStateFlow(prefs.getBoolean("nearby_enabled", false))
+    val nearbyEnabled: StateFlow<Boolean> = _nearbyEnabled
+
+    fun setNearbyEnabled(enabled: Boolean) {
+        prefs.edit { putBoolean("nearby_enabled", enabled) }
+        _nearbyEnabled.value = enabled
+    }
+
     /** Newest relay event (seconds) already processed; used to resume the inbox subscription. */
     var inboxSince: Long
         get() = prefs.getLong("inbox_since", 0L)

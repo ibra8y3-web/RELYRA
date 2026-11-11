@@ -11,7 +11,7 @@
 <p align="center"><strong>Private by design. Connected by choice.</strong></p>
 <p align="center">An Android communication project built around local identity, end-to-end encrypted messaging, and user-controlled network relays.</p>
 
-> **Current implementation:** Version 0.9.0. The live message transport is Nostr over user-configured secure WebSocket relays (WSS). The diagrams below separate working paths from planned capabilities. They are system illustrations, not screenshots of the running app.
+> **Current implementation:** Version 0.9.0. The active message paths are opt-in Nearby LAN for known contacts on the same local network, plus Nostr over user-configured secure WebSocket relays (WSS). The diagrams below separate working paths from planned capabilities. They are system illustrations, not screenshots of the running app.
 
 ## At a glance
 
@@ -73,6 +73,10 @@ Read the [Architecture guide](docs/ARCHITECTURE.md) and [Networking guide](docs/
 
 **Attachments use a separate path:** encrypt the file locally, upload only ciphertext to a configured Blossom server, then send the file descriptor inside the end-to-end encrypted message. Downloads are manual and verified before use.
 
+## Nearby LAN discovery
+
+The optional local transport can work without Internet when two devices share the same Wi-Fi network or local hotspot. It is off by default. Enabling it advertises your public RELYRA contact ID on that local network and only accepts discovery matches for contacts already in your address book. Use it only on a network you trust. This is not Bluetooth, Wi-Fi Direct or Internet P2P.
+
 ## Security and privacy
 
 - Message content is encrypted before it reaches a relay.
@@ -87,8 +91,8 @@ Read the [Architecture guide](docs/ARCHITECTURE.md) and [Networking guide](docs/
 
 The following are **not** present in the current build:
 
-- Direct device-to-device P2P, libp2p and ICE/STUN/TURN traversal.
-- Tor routing, Bluetooth mesh and Wi-Fi Direct.
+- Internet P2P across separate networks, libp2p and ICE/STUN/TURN traversal.
+- Tor routing, Bluetooth mesh and Wi-Fi Direct. Nearby LAN is not Wi-Fi Direct.
 - MLS group encryption. Current group messages are encrypted separately for each member using one-to-one sessions.
 - Group file attachments and group read receipts.
 - Communities, public group discovery and a RELYRA-operated relay/node network.

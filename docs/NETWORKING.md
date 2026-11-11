@@ -4,6 +4,15 @@
 
 ![RELYRA network map](assets/relyra-network-map.svg)
 
+## Optional nearby LAN transport
+
+An opt-in local connector is added alongside Nostr. When the user enables it, RELYRA advertises the public RELYRA contact ID via Android NSD/mDNS and discovers only IDs that already exist as known contacts. The connector carries the already end-to-end-encrypted wire payload over a bounded TCP frame and passes incoming bytes to `DeliveryEngine.onWire`.
+
+- Disabled by default; turning it on exposes the public contact ID to devices on the current local network.
+- Both devices must share the same IP LAN or local hotspot. The local network can operate without Internet access.
+- Nearby LAN is attempted before Nostr. Nostr remains the fallback if no known peer is discovered or the direct socket is unavailable.
+- This is not Bluetooth, Wi-Fi Direct, Internet P2P, libp2p, or NAT traversal. Real-device interoperability still needs verification.
+
 ## Implemented transport
 
 The current connected transport is **Nostr over user-configured secure WebSockets (WSS)**.
@@ -22,7 +31,7 @@ The presence of a Connector interface and AdaptiveRouter is only an extension po
 
 | Transport or capability | Status |
 |---|---|
-| Direct peer-to-peer sockets | Not implemented |
+| Internet P2P / direct sockets across separate networks | Not implemented |
 | libp2p | Not implemented |
 | ICE/STUN/TURN traversal | Not implemented |
 | Tor routing | Not implemented |
@@ -51,6 +60,7 @@ AdaptiveRouter attempts ready connectors in their configured order. The successf
 - A malicious relay can withhold, delay, reorder or replay events. Application-level authentication, message identifiers and deduplication are still required.
 - File servers observe file transfer metadata. Attachment encryption protects file contents and keys from the server.
 - Do not describe RELYRA as Tor-protected, fully P2P or anonymous in the current release.
+- When Nearby LAN is enabled, the public RELYRA ID is visible to devices on the local network. Enable it only on a trusted LAN; application message content remains end-to-end encrypted.
 
 ## Requirements for a future direct-P2P connector
 

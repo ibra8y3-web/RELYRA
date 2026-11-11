@@ -31,6 +31,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.relyra.app.MainViewModel
 import org.relyra.app.R
 import org.relyra.app.core.network.AddRelayResult
+import org.relyra.app.core.network.NearbyLanStatus
 import org.relyra.app.core.network.RelayStatus
 import org.relyra.app.core.transfer.ServerStatus
 import org.relyra.app.ui.components.InfoRow
@@ -42,6 +43,9 @@ fun NetworkScreen(vm: MainViewModel) {
     val status by vm.relayStatus.collectAsStateWithLifecycle()
     val connected by vm.relayConnected.collectAsStateWithLifecycle()
     val nostrKey by vm.nostrKey.collectAsStateWithLifecycle()
+    val nearbyEnabled by vm.nearbyEnabled.collectAsStateWithLifecycle()
+    val nearbyPeers by vm.nearbyPeers.collectAsStateWithLifecycle()
+    val nearbyStatus by vm.nearbyStatus.collectAsStateWithLifecycle()
     val fileServers by vm.fileServers.collectAsStateWithLifecycle()
     val fileStatus by vm.fileServerStatus.collectAsStateWithLifecycle()
     var input by rememberSaveable { mutableStateOf("") }
@@ -59,6 +63,42 @@ fun NetworkScreen(vm: MainViewModel) {
                 stringResource(if (relays.any { it.enabled }) R.string.net_transport_active else R.string.net_transport_inactive),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+        }
+        SectionCard(stringResource(R.string.net_nearby_title)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(stringResource(R.string.net_nearby_toggle), modifier = Modifier.weight(1f))
+                Switch(checked = nearbyEnabled, onCheckedChange = vm::setNearbyEnabled)
+            }
+            Text(
+                stringResource(R.string.net_nearby_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            InfoRow(stringResource(R.string.net_nearby_peers), nearbyPeers.size.toString())
+            Text(
+                stringResource(
+                    when (nearbyStatus) {
+                        NearbyLanStatus.Disabled -> R.string.net_nearby_status_disabled
+                        NearbyLanStatus.Starting -> R.string.net_nearby_status_starting
+                        NearbyLanStatus.Searching -> R.string.net_nearby_status_searching
+                        NearbyLanStatus.Active -> R.string.net_nearby_status_active
+                        NearbyLanStatus.Failed -> R.string.net_nearby_status_failed
+                    }
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            if (nearbyEnabled && nearbyPeers.isEmpty()) {
+                Text(stringResource(R.string.net_nearby_empty), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            }
+            nearbyPeers.forEach { peer ->
+                Text(peer.publicId, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+            }
         }
         nostrKey?.let { key ->
             SectionCard(stringResource(R.string.net_your_key)) {
