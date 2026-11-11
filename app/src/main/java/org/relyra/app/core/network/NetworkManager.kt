@@ -28,6 +28,8 @@ object RelayUrl {
 
 data class RelayConfig(val url: String, val enabled: Boolean)
 
+data class TorProxyConfig(val strictModeEnabled: Boolean, val socksPort: Int)
+
 sealed interface RelayStatus {
     data object Untested : RelayStatus
     data object Testing : RelayStatus
@@ -70,6 +72,32 @@ class NetworkManager(context: Context, private val client: RelayClient = RelayCl
     fun setWifiDirectEnabled(enabled: Boolean) {
         prefs.edit { putBoolean("wifi_direct_enabled", enabled) }
         _wifiDirectEnabled.value = enabled
+    }
+
+    private val _torProxyConfig = MutableStateFlow(
+        TorProxyConfig(
+            strictModeEnabled = prefs.getBoolean("tor_strict_mode", false),
+            socksPort = prefs.getInt("tor_socks_port", TorProxySelector.DEFAULT_SOCKS_PORT)
+                .takeIf { it in TorProxySelector.MIN_PORT..TorProxySelector.MAX_PORT }
+                ?: TorProxySelector.DEFAULT_SOCKS_PORT,
+        )
+    )
+    val torProxyConfig: StateFlow<TorProxyConfig> = _torProxyConfig
+
+    init {
+        Http.configureTorStrictMode(_torProxyConfig.value.strictModeEnabled, _torProxyConfig.value.socksPort)
+    }
+
+    /** Enables fail-closed SOCKS routing for all shared OkHttp traffic. */
+    fun setTorProxyConfig(strictModeEnabled: Boolean, socksPort: Int): Boolean {
+        if (socksPort !in TorProxySelector.MIN_PORT..TorProxySelector.MAX_PORT) return false
+        if (!Http.configureTorStrictMode(strictModeEnabled, socksPort)) return false
+        prefs.edit {
+            putBoolean("tor_strict_mode", strictModeEnabled)
+            putInt("tor_socks_port", socksPort)
+        }
+        _torProxyConfig.value = TorProxyConfig(strictModeEnabled, socksPort)
+        return true
     }
 
     /** Newest relay event (seconds) already processed; used to resume the inbox subscription. */

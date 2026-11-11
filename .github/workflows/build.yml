@@ -6,15 +6,33 @@ on:
   pull_request:
   workflow_dispatch:
 
+# All RELYRA build triggers share one queue. A new commit/PR validation
+# supersedes any previous build, even when it comes from another branch.
 concurrency:
-  group: build-${{ github.ref }}
+  group: relyra-build-${{ github.workflow }}
   cancel-in-progress: true
+
+permissions:
+  actions: write
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
+
+      - name: Cancel older RELYRA build runs
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml --limit 100 --json databaseId,status \
+            | jq -r --arg current "$GITHUB_RUN_ID" '.[] | select((.databaseId | tostring) != $current and (.status == "queued" or .status == "in_progress")) | .databaseId' \
+            | while read -r run_id; do
+                [ -n "$run_id" ] && gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY"
+              done
 
       - name: Validate docs and Arabic/English resources
         run: python3 scripts/verify_project.py

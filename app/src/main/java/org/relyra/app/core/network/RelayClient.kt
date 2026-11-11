@@ -13,7 +13,26 @@ import java.util.concurrent.atomic.AtomicBoolean
 import kotlin.coroutines.resume
 
 object Http {
+    /** A mutable selector is shared by all OkHttp clients, including existing relay and Blossom clients. */
+    val torProxySelector = TorProxySelector()
+
+    val isTorStrictModeEnabled: Boolean
+        get() = torProxySelector.isStrictModeEnabled
+
+    @Synchronized
+    fun configureTorStrictMode(enabled: Boolean, socksPort: Int): Boolean {
+        val previousRevision = torProxySelector.revision.value.revision
+        if (!torProxySelector.configure(enabled, socksPort)) return false
+        if (torProxySelector.revision.value.revision != previousRevision) {
+            // Drop pooled calls on policy change; persistent Nostr WebSockets are restarted by NostrPool.
+            client.dispatcher.cancelAll()
+            client.connectionPool.evictAll()
+        }
+        return true
+    }
+
     val client: OkHttpClient = OkHttpClient.Builder()
+        .proxySelector(torProxySelector)
         .pingInterval(30, TimeUnit.SECONDS)
         .readTimeout(0, TimeUnit.MILLISECONDS)
         .build()

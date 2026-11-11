@@ -25,6 +25,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -65,12 +66,28 @@ fun NetworkScreen(vm: MainViewModel) {
     val wifiDirectPeers by vm.wifiDirectPeers.collectAsStateWithLifecycle()
     val wifiDirectVerifiedPeers by vm.wifiDirectVerifiedPeers.collectAsStateWithLifecycle()
     val wifiDirectStatus by vm.wifiDirectStatus.collectAsStateWithLifecycle()
+    val torProxy by vm.torProxyConfig.collectAsStateWithLifecycle()
     val fileServers by vm.fileServers.collectAsStateWithLifecycle()
     val fileStatus by vm.fileServerStatus.collectAsStateWithLifecycle()
     var input by rememberSaveable { mutableStateOf("") }
     var error by rememberSaveable { mutableStateOf<Int?>(null) }
     var fileInput by rememberSaveable { mutableStateOf("") }
     var fileError by rememberSaveable { mutableStateOf<Int?>(null) }
+    var torPort by rememberSaveable { mutableStateOf("9050") }
+    var torPortError by rememberSaveable { mutableStateOf(false) }
+
+    LaunchedEffect(torProxy.socksPort) {
+        torPort = torProxy.socksPort.toString()
+    }
+
+    fun applyTorSettings(enabled: Boolean) {
+        val port = torPort.toIntOrNull()
+        if (port == null || port !in 1..65_535) {
+            torPortError = true
+            return
+        }
+        torPortError = !vm.setTorProxyConfig(enabled, port)
+    }
 
     val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -122,6 +139,54 @@ fun NetworkScreen(vm: MainViewModel) {
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
         }
+        SectionCard(stringResource(R.string.net_tor_title)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(stringResource(R.string.net_tor_strict_toggle), modifier = Modifier.weight(1f))
+                Switch(
+                    checked = torProxy.strictModeEnabled,
+                    onCheckedChange = { applyTorSettings(it) },
+                )
+            }
+            OutlinedTextField(
+                value = torPort,
+                onValueChange = { value ->
+                    torPort = value.filter(Char::isDigit).take(5)
+                    torPortError = false
+                },
+                label = { Text(stringResource(R.string.net_tor_port)) },
+                singleLine = true,
+                isError = torPortError,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (torPortError) {
+                Text(stringResource(R.string.net_tor_invalid_port), color = MaterialTheme.colorScheme.error)
+            }
+            Text(
+                stringResource(R.string.net_tor_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Text(
+                stringResource(
+                    if (torProxy.strictModeEnabled) R.string.net_tor_enabled
+                    else R.string.net_tor_disabled
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (torProxy.strictModeEnabled) MaterialTheme.colorScheme.primary
+                else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Button(
+                onClick = { applyTorSettings(torProxy.strictModeEnabled) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.net_tor_apply))
+            }
+        }
+
         SectionCard(stringResource(R.string.net_bt_title)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),

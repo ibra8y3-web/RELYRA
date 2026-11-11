@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="net_tor_title">اتصال Tor عبر SOCKS</string>
+    <string name="net_tor_strict_toggle">الوضع الصارم — مرّر اتصالات الإنترنت عبر Tor فقط</string>
+    <string name="net_tor_port">منفذ SOCKS5 المحلي لـ Tor</string>
+    <string name="net_tor_invalid_port">أدخل منفذًا صحيحًا من 1 إلى 65535.</string>
+    <string name="net_tor_desc">يتطلب خدمة Tor منفصلة مثل Orbot تعمل على الجهاز. المنفذ الافتراضي SOCKS هو 9050. يمرر الوضع الصارم اتصالات OkHttp المشتركة في RELYRA (مرحلات Nostr ونقل ملفات Blossom) عبر 127.0.0.1، ولا يعود للاتصال المباشر بالإنترنت عند تعطل Tor. اتصالات Bluetooth وWi-Fi Direct وLAN المحلية مستقلة. يتم إيقاف المتصفح الداخلي أثناء الوضع الصارم لأن WebView لا يستخدم بروكسي SOCKS هذا.</string>
+    <string name="net_tor_enabled">تم ضبط التوجيه الصارم. هذا لا يؤكد أن Tor يعمل؛ اختبر مرحّلًا بعد تشغيل خدمة Tor.</string>
+    <string name="net_tor_disabled">توجيه Tor متوقف. تستخدم اتصالات الإنترنت مسار أندرويد المعتاد.</string>
+    <string name="net_tor_apply">تطبيق إعدادات Tor</string>
+    <string name="tor_browser_blocked">تم إيقاف المتصفح الداخلي مؤقتًا أثناء تفعيل الوضع الصارم لـ Tor. لا يستخدم WebView بروكسي SOCKS الخاص بـ RELYRA، وفتح صفحة هنا قد يتجاوز Tor. أوقف الوضع الصارم لاستخدام المتصفح.</string>
+</resources>

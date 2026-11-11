@@ -35,6 +35,18 @@ class NostrPool(
     @Volatile private var pubHex: String? = null
     val connected = MutableStateFlow<Map<String, Boolean>>(emptyMap())
 
+    init {
+        var observedRevision = Http.torProxySelector.revision.value.revision
+        scope.launch {
+            Http.torProxySelector.revision.collect { config ->
+                if (config.revision != observedRevision) {
+                    observedRevision = config.revision
+                    reconnectForProxyChange()
+                }
+            }
+        }
+    }
+
     @Synchronized
     fun configure(newSecret: ByteArray?, urls: Set<String>) {
         val newPub = newSecret?.let { Hex.encode(NostrCrypto.publicKeyX(it)) }
@@ -45,6 +57,16 @@ class NostrPool(
             conns.keys.filter { !urls.contains(it) }.forEach { conns.remove(it)?.stop() }
             urls.filter { !conns.containsKey(it) }.forEach { u -> conns[u] = Conn(u).also { it.start() } }
         }
+        publishStates()
+    }
+
+    @Synchronized
+    private fun reconnectForProxyChange() {
+        if (secret == null) return
+        val currentUrls = conns.keys.toList()
+        conns.values.forEach { it.stop() }
+        conns.clear()
+        currentUrls.forEach { url -> conns[url] = Conn(url).also { it.start() } }
         publishStates()
     }
 

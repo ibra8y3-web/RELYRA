@@ -33,6 +33,19 @@ The current connected transport is **Nostr over user-configured secure WebSocket
 - The pool maintains inbox subscriptions, reconnects after disconnects and waits for relay OK responses when publishing.
 - NetworkManager persists relay configuration locally. The relay list is not part of the current backup export.
 
+## Optional Tor SOCKS routing
+
+RELYRA can use a local SOCKS5 endpoint provided by a separate Tor app/service such as Orbot:
+
+- Default endpoint: 127.0.0.1:9050. The port can be changed in Network settings.
+- Strict Mode applies to the app's shared OkHttp client, currently used for Nostr WSS relays and Blossom HTTP transfers.
+- When Strict Mode is enabled, the proxy selector returns only the loopback SOCKS proxy. It never returns DIRECT as a fallback. If the Tor service is not listening, the Internet request fails instead of leaving directly.
+- Existing OkHttp calls are cancelled, pooled connections evicted, and Nostr WebSockets restarted when the mode or port changes.
+- The internal WebView browser is blocked while Strict Mode is enabled because Android WebView does not use this OkHttp SOCKS selector.
+- Bluetooth, Wi-Fi Direct and Nearby LAN are direct local links and are not routed through Tor.
+- This is external SOCKS integration, not an embedded Tor daemon. RELYRA does not install Tor, launch Orbot, configure bridges, or verify that the SOCKS endpoint is actually a Tor process. A successful relay connection is still needed to check reachability.
+- Strict Mode protects only network paths using the shared OkHttp client. It is not a system-wide Android VPN and does not guarantee anonymity; users must still consider relay metadata and Tor exit-node exposure.
+
 ## What is not implemented
 
 The presence of a Connector interface and AdaptiveRouter is only an extension point. It is not proof of an active transport. These are not currently registered/implemented:
@@ -43,7 +56,7 @@ The presence of a Connector interface and AdaptiveRouter is only an extension po
 | libp2p | Not implemented |
 | ICE/STUN/TURN traversal | Not implemented |
 | Peer-to-peer multi-hop Store & Forward | Not implemented |
-| Tor routing | Not implemented |
+| Tor daemon, bridge management and pluggable transports | Not implemented |
 | Bluetooth Low Energy discovery/mesh | Not implemented |
 | Matrix / XMPP bridges | Not implemented |
 | Push relay infrastructure operated by RELYRA | Not implemented |
@@ -68,7 +81,7 @@ AdaptiveRouter attempts ready connectors in their configured order. The successf
 - End-to-end encryption protects message contents, but does not make the network anonymous.
 - A malicious relay can withhold, delay, reorder or replay events. Application-level authentication, message identifiers and deduplication are still required.
 - File servers observe file transfer metadata. Attachment encryption protects file contents and keys from the server.
-- Do not describe RELYRA as Tor-protected, fully P2P or anonymous in the current release.
+- Do not describe RELYRA as fully anonymous or as a system-wide Tor VPN. Tor SOCKS routing is an opt-in, app-level feature for shared OkHttp requests only.
 - When Nearby LAN is enabled, the public RELYRA ID is visible to devices on the local network. Enable it only on a trusted LAN; application message content remains end-to-end encrypted.
 - Wi-Fi Direct discovery exposes Android device names and Wi-Fi P2P device addresses to the local discovery layer; neither value is accepted as a RELYRA identity. The Ed25519 challenge is required.
 - Bluetooth currently uses Android's bonded-device list and RFCOMM service UUID. It does not perform BLE scans and does not accept an unpaired device.

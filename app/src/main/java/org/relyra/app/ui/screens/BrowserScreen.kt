@@ -40,6 +40,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import org.relyra.app.R
 import org.relyra.app.core.tools.BrowserUrlPolicy
+import org.relyra.app.core.network.Http
 
 /**
  * Minimal, user-driven WebView. JavaScript, cookies, DOM storage, mixed content and local-file access
@@ -49,6 +50,15 @@ import org.relyra.app.core.tools.BrowserUrlPolicy
 @Composable
 fun BrowserScreen() {
     val context = LocalContext.current
+    if (Http.isTorStrictModeEnabled) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(20.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            Text(stringResource(R.string.tor_browser_blocked), color = MaterialTheme.colorScheme.error)
+        }
+        return
+    }
     val keyboard = LocalSoftwareKeyboardController.current
     var address by rememberSaveable { mutableStateOf("") }
     var currentUrl by remember { mutableStateOf("") }

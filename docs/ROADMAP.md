@@ -15,6 +15,7 @@ This roadmap separates source code that is already present from features that st
 | Optional same-LAN transport via NSD/mDNS and TCP | Added in current implementation batch; real-device verification required |
 | Bluetooth Classic RFCOMM for already-bonded contacts | Added in current implementation batch; mutual Ed25519 identity check; device tests required |
 | Wi-Fi Direct discovery, group connection and authenticated TCP transport | Added in current implementation batch; Android permission/vendor and two-device tests required |
+| Tor SOCKS5 selector and fail-closed Strict Mode for shared OkHttp traffic | Added in current implementation batch; Orbot/SOCKS and no-leak integration test required |
 | Durable local outbox and relay backlog | Implemented for sender retries and Nostr relay retrieval; no third-party peer Store & Forward |
 | Groups/channels using per-member one-to-one sessions | Implemented in source; not MLS |
 | Blossom encrypted attachment transfer | Implemented in source |
@@ -73,9 +74,11 @@ Acceptance criteria:
 ## Priority 4 — privacy network options
 
 Work items:
-- Evaluate Tor integration and its effect on relay reachability and battery use.
+- Validate the new local SOCKS5 integration against a running Tor/Orbot service, including daemon restart and strict fail-closed behaviour.
+- Bridges, pluggable transports and a bundled Tor daemon remain future work.
 - Evaluate Bluetooth Low Energy only if a real, interoperable use case is required; the current Bluetooth transport is Classic RFCOMM over already-paired devices.
 - Specify metadata exposure, user consent, discovery limits and fallback behaviour for every nearby transport.
+- Prove that Nostr WebSockets reconnect through SOCKS on mode changes and that no OkHttp request falls back to DIRECT.
 
 Acceptance criteria:
 - The app clearly states which transport is active and what metadata it reveals.
