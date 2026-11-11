@@ -65,13 +65,14 @@ fun IdentityScreen(vm: MainViewModel, onRecovery: () -> Unit) {
         )
         Button(
             onClick = {
-                link ?: return@Button
-                vm.externalInFlight = true
-                val send = Intent(Intent.ACTION_SEND).apply {
-                    type = "text/plain"
-                    putExtra(Intent.EXTRA_TEXT, link)
+                vm.refreshIdentityCard { freshLink ->
+                    vm.externalInFlight = true
+                    val send = Intent(Intent.ACTION_SEND).apply {
+                        type = "text/plain"
+                        putExtra(Intent.EXTRA_TEXT, freshLink)
+                    }
+                    ctx.startActivity(Intent.createChooser(send, null))
                 }
-                ctx.startActivity(Intent.createChooser(send, null))
             },
             enabled = link != null,
             modifier = Modifier.fillMaxWidth(),
