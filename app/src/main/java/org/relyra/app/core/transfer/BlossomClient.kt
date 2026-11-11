@@ -71,7 +71,7 @@ class BlossomClient(base: OkHttpClient = Http.client) {
             if (!file.isFile || !file.canRead()) {
                 return@withContext BlossomUpload.Rejected("encrypted file is missing or unreadable")
             }
-            val actualHash = try { Hex.encode(FileCrypto.sha256(file)) } catch (e: IOException) {
+            val actualHash = try { Hex.encode(FileCrypto.sha256(file)) } catch (_: IOException) {
                 return@withContext BlossomUpload.Unavailable
             }
             if (!actualHash.equals(sha256Hex, ignoreCase = true)) {
@@ -82,32 +82,88 @@ class BlossomClient(base: OkHttpClient = Http.client) {
                 listOf(listOf("t", "upload"), listOf("x", sha256Hex), listOf("expiration", (nowSeconds + 600).toString())),
                 "Upload", nowSeconds,
             )
-            val header = "Nostr " + Base64.getEncoder().encodeToString(NostrEvents.toJson(auth).toByteArray(Charsets.UTF_8))
+            val header = "Nostr " + Base64.getEncoder().encodeToString(
+                NostrEvents.toJson(auth).toByteArray(Charsets.UTF_8),
+            )
             try {
+                when (val check = preflight(server, file, sha256Hex, header)) {
+                    is Preflight.Rejected -> return@withContext BlossomUpload.Rejected(check.reason)
+                    Preflight.Unavailable -> return@withContext BlossomUpload.Unavailable
+                    Preflight.Accepted, Preflight.Unsupported -> Unit
+                }
                 val request = Request.Builder()
                     .url("$server/upload")
                     .put(file.asRequestBody("application/octet-stream".toMediaType()))
                     .header("Authorization", header)
-                    .header("X-SHA-256", sha256Hex)
+                    .header("X-SHA-256", sha256Hex.lowercase())
                     .build()
-                http.newCall(request).await().use { resp -> classifyUpload(resp, sha256Hex, server) }
-            } catch (e: IOException) {
+                http.newCall(request).await().use { resp ->
+                    classifyUpload(resp, sha256Hex, file.length(), server)
+                }
+            } catch (_: IOException) {
                 BlossomUpload.Unavailable
-            } catch (e: IllegalArgumentException) {
+            } catch (_: IllegalArgumentException) {
                 BlossomUpload.Rejected("invalid server address")
             }
         }
 
-    private fun classifyUpload(resp: Response, sha256Hex: String, server: String): BlossomUpload {
-        val code = resp.code
-        if (code in 200..299) {
-            val text = resp.body?.string().orEmpty()
-            val reported = try { JSONObject(text).optString("sha256", "") } catch (e: JSONException) { "" }
-            if (!reported.matches(Regex("(?i)[0-9a-f]{64}"))) {
-                return BlossomUpload.Rejected("the server response did not contain a valid SHA-256")
+    private sealed interface Preflight {
+        data object Accepted : Preflight
+        data object Unsupported : Preflight
+        data object Unavailable : Preflight
+        class Rejected(val reason: String) : Preflight
+    }
+
+    /** BUD-06: HEAD /upload is a capability/requirements check, never an upload-resume endpoint. */
+    private suspend fun preflight(server: String, file: File, hash: String, auth: String): Preflight {
+        val request = try {
+            Request.Builder().url("$server/upload").head()
+                .header("Authorization", auth)
+                .header("X-Content-Length", file.length().toString())
+                .header("X-Content-Type", "application/octet-stream")
+                .header("X-SHA-256", hash.lowercase())
+                .build()
+        } catch (_: IllegalArgumentException) {
+            return Preflight.Rejected("invalid server address")
+        }
+        return try {
+            http.newCall(request).await().use { response ->
+                when {
+                    response.code in 200..299 -> Preflight.Accepted
+                    response.code == 404 || response.code == 405 || response.code == 501 -> Preflight.Unsupported
+                    response.code == 408 || response.code == 429 || response.code >= 500 -> Preflight.Unavailable
+                    else -> {
+                        val reason = response.header("X-Reason")?.take(120)
+                        Preflight.Rejected("BUD-06 preflight HTTP ${response.code}" +
+                            (if (reason != null) ": $reason" else ""))
+                    }
+                }
             }
-            if (!reported.equals(sha256Hex, ignoreCase = true)) {
-                return BlossomUpload.Rejected("the server reported a different hash")
+        } catch (_: IOException) {
+            Preflight.Unavailable
+        }
+    }
+
+    private fun classifyUpload(resp: Response, sha256Hex: String, expectedSize: Long, server: String): BlossomUpload {
+        val code = resp.code
+        if (code == 200 || code == 201) {
+            val descriptor = try { JSONObject(resp.body?.string().orEmpty()) } catch (_: JSONException) { null }
+                ?: return BlossomUpload.Rejected("the server response was not a Blossom blob descriptor")
+            val reported = descriptor.optString("sha256", "")
+            val size = descriptor.optLong("size", -1L)
+            val url = descriptor.optString("url", "")
+            val type = descriptor.optString("type", "")
+            val uploaded = descriptor.optLong("uploaded", -1L)
+            if (!reported.matches(Regex("(?i)[0-9a-f]{64}")) ||
+                !reported.equals(sha256Hex, ignoreCase = true)) {
+                return BlossomUpload.Rejected("the server reported a missing or different SHA-256")
+            }
+            if (size != expectedSize || url.isBlank() || type.isBlank() || uploaded < 0L) {
+                return BlossomUpload.Rejected("the server returned an incomplete or inconsistent blob descriptor")
+            }
+            val parsedUrl = try { okhttp3.HttpUrl.get(url) } catch (_: IllegalArgumentException) { null }
+            if (parsedUrl == null || parsedUrl.scheme != "https") {
+                return BlossomUpload.Rejected("the server returned an invalid blob URL")
             }
             return BlossomUpload.Ok(server)
         }
