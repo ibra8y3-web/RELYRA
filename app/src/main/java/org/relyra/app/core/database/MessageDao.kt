@@ -136,3 +136,15 @@ interface RatchetDao {
     @Query("DELETE FROM ratchet_sessions WHERE peerId = :peerId")
     suspend fun delete(peerId: String)
 }
+
+@Dao
+interface EncryptedPacketDao {
+    @Query("SELECT * FROM encrypted_packets WHERE messageId = :messageId")
+    suspend fun get(messageId: String): EncryptedPacketEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(entity: EncryptedPacketEntity)
+
+    @Query("DELETE FROM encrypted_packets WHERE messageId = :messageId")
+    suspend fun delete(messageId: String)
+}
