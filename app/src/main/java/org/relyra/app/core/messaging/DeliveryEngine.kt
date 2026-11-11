@@ -124,6 +124,7 @@ class DeliveryEngine(
                             wirePayload = null,
                         )
                     )
+                    protector.forget(m.messageId)
                     if (m.state == MessageState.QUEUED) abandonAttachment(m.messageId)
                     continue
                 }
@@ -185,8 +186,10 @@ class DeliveryEngine(
                         val attempts = current.attempts + 1
                         store.update(current.copy(attempts = attempts, nextAttemptAt = now + backoff(attempts)))
                     }
-                    is SendOutcome.Rejected ->
+                    is SendOutcome.Rejected -> {
                         store.update(current.copy(state = MessageState.FAILED, nextAttemptAt = Long.MAX_VALUE, wirePayload = null))
+                        protector.forget(m.messageId)
+                    }
                 }
             }
             return sent
@@ -289,7 +292,10 @@ class DeliveryEngine(
                 val m = store.get(env.messageId) ?: return
                 if (!m.outgoing || m.chatId != env.from) return
                 val target = if (env.kind == AckKind.READ) MessageState.READ else MessageState.DELIVERED
-                if (MessageState.canAdvance(m.state, target)) store.update(m.copy(state = target, nextAttemptAt = Long.MAX_VALUE, wirePayload = null))
+                if (MessageState.canAdvance(m.state, target)) {
+                    store.update(m.copy(state = target, nextAttemptAt = Long.MAX_VALUE, wirePayload = null))
+                    protector.forget(m.messageId)
+                }
             }
         }
     }
@@ -310,6 +316,7 @@ class DeliveryEngine(
             val m = store.get(messageId) ?: return
             if (m.outgoing && m.state == MessageState.QUEUED) {
                 store.update(m.copy(state = MessageState.CANCELLED, nextAttemptAt = Long.MAX_VALUE, wirePayload = null))
+                protector.forget(messageId)
                 abandonAttachment(messageId)
             }
         }
