@@ -28,4 +28,28 @@
     <string name="net_wifi_direct_refresh">Search again</string>
     <string name="net_wifi_direct_unknown_name">Unnamed Android device</string>
     <string name="net_wifi_direct_connect">Connect</string>
+ 
+    <string name="net_p2p_title">Direct Internet connection (WebRTC)</string>
+    <string name="net_p2p_desc">Creates a direct data channel using ICE and STUN, with optional TURN when you provide a server and credentials. Manually exchange the offer and answer privately with the contact; SDP can reveal network addresses. The contact must be known and its signal signature is verified.</string>
+    <string name="net_p2p_peer_id">RELYRA contact ID</string>
+    <string name="net_p2p_create_offer">Create connection offer</string>
+    <string name="net_p2p_remote_signal">Paste the received offer or answer</string>
+    <string name="net_p2p_accept_offer">Accept offer and create answer</string>
+    <string name="net_p2p_accept_answer">Accept answer</string>
+    <string name="net_p2p_generated">Signed signaling data — copy and send only to the intended peer</string>
+    <string name="net_p2p_state_new">New</string>
+    <string name="net_p2p_state_connecting">Connecting</string>
+    <string name="net_p2p_state_connected">Directly connected</string>
+    <string name="net_p2p_state_disconnected">Disconnected</string>
+    <string name="net_p2p_state_failed">Connection failed</string>
+    <string name="net_p2p_close">Close</string>
+    <string name="net_p2p_turn_optional">Optional TURN settings for networks that block direct connectivity</string>
+    <string name="net_p2p_turn_url">TURN URI (turn: or turns:)</string>
+    <string name="net_p2p_turn_username">TURN username</string>
+    <string name="net_p2p_turn_credential">TURN credential</string>
+    <string name="net_p2p_turn_apply">Apply TURN to new sessions</string>
+    <string name="net_p2p_turn_reset">Remove TURN</string>
+    <string name="net_p2p_turn_invalid">Invalid TURN details. Enter a TURN URI, username and credential.</string>
+    <string name="net_p2p_signal_failed">Could not create or verify signaling. Check the contact identity, signal expiry and network settings.</string>
+    <string name="net_p2p_answer_accepted">Answer accepted; ICE connectivity checks are running.</string>
 </resources>
