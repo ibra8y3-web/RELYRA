@@ -16,9 +16,25 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 35
     permissions:
+      actions: write
       contents: read
     steps:
       - uses: actions/checkout@v7
+
+      # Remove stale queued/running workflows from older commits across all branches.
+      # Compare creation timestamps so a newer run can never be cancelled by an older run.
+      - name: Cancel older RELYRA build runs
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          current_created="$(gh run view "$GITHUB_RUN_ID" --repo "$GITHUB_REPOSITORY" --json createdAt --jq '.createdAt')"
+          gh run list --repo "$GITHUB_REPOSITORY" --workflow build.yml --limit 100 --json databaseId,status,createdAt \
+            | jq -r --arg current "$GITHUB_RUN_ID" --arg created "$current_created" '.[] | select((.databaseId | tostring) != $current and (.status == "queued" or .status == "in_progress") and .createdAt < $created) | .databaseId' \
+            | while IFS= read -r run_id; do
+                [ -n "$run_id" ] || continue
+                gh run cancel "$run_id" --repo "$GITHUB_REPOSITORY" || true
+              done
 
       - name: Validate docs and Arabic/English resources
         run: python3 scripts/verify_project.py
