@@ -111,6 +111,7 @@ fun ContactsScreen(vm: MainViewModel, onAdd: () -> Unit) {
             text = { Text(stringResource(R.string.contacts_add)) },
             modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
         )
+        }
     }
 
     contacts.find { it.publicId == selectedId }?.let { ContactDialog(it, vm) { selectedId = null } }
