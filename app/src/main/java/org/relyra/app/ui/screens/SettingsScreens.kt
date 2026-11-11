@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -108,7 +109,7 @@ private fun SettingsHubTile(
     modifier: Modifier = Modifier,
 ) {
     androidx.compose.material3.Card(
-        modifier = modifier.fillMaxWidth().clickable(onClick = onClick),
+        modifier = modifier.fillMaxWidth().heightIn(min = 104.dp).clickable(onClick = onClick),
         colors = androidx.compose.material3.CardDefaults.cardColors(
             containerColor = MaterialTheme.colorScheme.surfaceContainerLow,
         ),
@@ -126,8 +127,10 @@ private fun SettingsHubTile(
                     modifier = Modifier.padding(9.dp), tint = MaterialTheme.colorScheme.onSecondaryContainer)
             }
             Column(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(3.dp)) {
-                Text(stringResource(title), style = MaterialTheme.typography.titleSmall, maxLines = 2)
+                Text(stringResource(title), style = MaterialTheme.typography.titleSmall, maxLines = 2,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis)
                 Text(stringResource(description), style = MaterialTheme.typography.bodySmall, maxLines = 3,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
                     color = MaterialTheme.colorScheme.onSurfaceVariant)
             }
             androidx.compose.material3.Icon(

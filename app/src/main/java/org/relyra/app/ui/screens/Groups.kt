@@ -21,6 +21,8 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExtendedFloatingActionButton
 import androidx.compose.material3.HorizontalDivider
@@ -141,46 +143,52 @@ fun GroupsList(vm: MainViewModel, query: String, onOpen: (String) -> Unit, onCre
                     val kind = stringResource(
                         if (GroupKind.valueOf(g.kind) == GroupKind.CHANNEL) R.string.groups_kind_channel_short else R.string.groups_kind_group_short
                     )
-                    ListItem(
-                        headlineContent = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(g.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                                if (pref?.pinned == true) {
-                                    Icon(Icons.Default.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary,
-                                        modifier = Modifier.padding(start = 6.dp))
+                    Card(
+                        modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)
+                            .clickable { onOpen(g.groupId) },
+                        shape = MaterialTheme.shapes.medium,
+                        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+                    ) {
+                        ListItem(
+                            headlineContent = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(g.name, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                                    if (pref?.pinned == true) {
+                                        Icon(Icons.Default.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.padding(start = 6.dp))
+                                    }
                                 }
-                            }
-                        },
-                        supportingContent = {
-                            Text(
-                                when {
-                                    state == GroupState.INVITED -> stringResource(R.string.groups_state_invited)
-                                    state == GroupState.LEFT -> stringResource(R.string.groups_state_left)
-                                    state == GroupState.REMOVED -> stringResource(R.string.groups_state_removed)
-                                    s != null && s.unread > 0 -> kind + " · " + stringResource(R.string.chat_unread_count, s.unread)
-                                    else -> kind
-                                }
-                            )
-                        },
-                        leadingContent = { Avatar(g.name) },
-                        trailingContent = {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Column(horizontalAlignment = Alignment.End) {
-                                    if (s != null) TimeLabel(s.lastAt)
-                                    if (s != null && s.unread > 0) UnreadBadge(s.unread)
-                                }
-                                ConversationMenu(
-                                    pref,
-                                    onPin = { vm.setPinned(g.groupId, it) },
-                                    onMute = { vm.setMuted(g.groupId, it) },
-                                    onArchive = { vm.setArchived(g.groupId, it) },
-                                    onClear = { clearTarget = g.groupId },
+                            },
+                            supportingContent = {
+                                Text(
+                                    when {
+                                        state == GroupState.INVITED -> stringResource(R.string.groups_state_invited)
+                                        state == GroupState.LEFT -> stringResource(R.string.groups_state_left)
+                                        state == GroupState.REMOVED -> stringResource(R.string.groups_state_removed)
+                                        s != null && s.unread > 0 -> kind + " · " + stringResource(R.string.chat_unread_count, s.unread)
+                                        else -> kind
+                                    },
+                                    maxLines = 1, overflow = TextOverflow.Ellipsis,
                                 )
-                            }
-                        },
-                        modifier = Modifier.clickable { onOpen(g.groupId) },
-                    )
-                    HorizontalDivider()
+                            },
+                            leadingContent = { Avatar(g.name) },
+                            trailingContent = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Column(horizontalAlignment = Alignment.End) {
+                                        if (s != null) TimeLabel(s.lastAt)
+                                        if (s != null && s.unread > 0) UnreadBadge(s.unread)
+                                    }
+                                    ConversationMenu(
+                                        pref,
+                                        onPin = { vm.setPinned(g.groupId, it) },
+                                        onMute = { vm.setMuted(g.groupId, it) },
+                                        onArchive = { vm.setArchived(g.groupId, it) },
+                                        onClear = { clearTarget = g.groupId },
+                                    )
+                                }
+                            },
+                        )
+                    }
                 }
             }
         }

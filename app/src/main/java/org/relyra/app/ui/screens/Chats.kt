@@ -25,6 +25,8 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.HorizontalDivider
@@ -215,46 +217,51 @@ private fun DirectChats(vm: MainViewModel, query: String, onOpen: (String) -> Un
         items(visible, key = { it.publicId }) { c ->
             val s = byChat[c.publicId]
             val pref = prefs[c.publicId]
-            ListItem(
-                headlineContent = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text(c.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
-                        if (pref?.pinned == true) {
-                            Icon(Icons.Default.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.padding(start = 6.dp).padding(0.dp))
+            Card(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 4.dp)
+                    .clickable { onOpen(c.publicId) },
+                shape = MaterialTheme.shapes.medium,
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
+            ) {
+                ListItem(
+                    headlineContent = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text(c.displayName, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.weight(1f, fill = false))
+                            if (pref?.pinned == true) {
+                                Icon(Icons.Default.Star, contentDescription = null, tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.padding(start = 6.dp))
+                            }
                         }
-                    }
-                },
-                supportingContent = {
-                    Text(
-                        when {
-                            s == null -> stringResource(R.string.chat_no_messages)
-                            listPreview -> s.lastBody
-                            s.unread > 0 -> stringResource(R.string.chat_unread_count, s.unread)
-                            else -> stringResource(R.string.chat_preview_hidden)
-                        },
-                        maxLines = 1, overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                leadingContent = { Avatar(c.displayName) },
-                trailingContent = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Column(horizontalAlignment = Alignment.End) {
-                            if (s != null) TimeLabel(s.lastAt)
-                            if (s != null && s.unread > 0) UnreadBadge(s.unread)
-                        }
-                        ConversationMenu(
-                            pref,
-                            onPin = { vm.setPinned(c.publicId, it) },
-                            onMute = { vm.setMuted(c.publicId, it) },
-                            onArchive = { vm.setArchived(c.publicId, it) },
-                            onClear = { clearTarget = c.publicId },
+                    },
+                    supportingContent = {
+                        Text(
+                            when {
+                                s == null -> stringResource(R.string.chat_no_messages)
+                                listPreview -> s.lastBody
+                                s.unread > 0 -> stringResource(R.string.chat_unread_count, s.unread)
+                                else -> stringResource(R.string.chat_preview_hidden)
+                            },
+                            maxLines = 1, overflow = TextOverflow.Ellipsis,
                         )
-                    }
-                },
-                modifier = Modifier.clickable { onOpen(c.publicId) },
-            )
-            HorizontalDivider()
+                    },
+                    leadingContent = { Avatar(c.displayName) },
+                    trailingContent = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Column(horizontalAlignment = Alignment.End) {
+                                if (s != null) TimeLabel(s.lastAt)
+                                if (s != null && s.unread > 0) UnreadBadge(s.unread)
+                            }
+                            ConversationMenu(
+                                pref,
+                                onPin = { vm.setPinned(c.publicId, it) },
+                                onMute = { vm.setMuted(c.publicId, it) },
+                                onArchive = { vm.setArchived(c.publicId, it) },
+                                onClear = { clearTarget = c.publicId },
+                            )
+                        }
+                    },
+                )
+            }
         }
     }
     clearTarget?.let { id ->
