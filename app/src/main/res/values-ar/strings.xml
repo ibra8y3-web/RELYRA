@@ -8,6 +8,7 @@
     <string name="groups_search_hint">البحث في المجموعات</string>
     <string name="channels_search_hint">البحث في القنوات</string>
     <string name="channels_new">إنشاء قناة</string>
+    <string name="channels_empty_title">لا توجد قنوات بعد</string>
     <string name="channels_empty_body">ستظهر هنا القنوات التي تنضم إليها أو تنشئها.</string>
     <string name="settings_overview">نظرة عامة على الأمان</string>
     <string name="settings_overview_desc">هوية الجهاز والحماية المحلية وحالة التطبيق.</string>

@@ -8,6 +8,7 @@
     <string name="groups_search_hint">Search groups</string>
     <string name="channels_search_hint">Search channels</string>
     <string name="channels_new">Create channel</string>
+    <string name="channels_empty_title">No channels yet</string>
     <string name="channels_empty_body">Channels you join or create will appear here.</string>
     <string name="settings_overview">Security overview</string>
     <string name="settings_overview_desc">Device identity, local protection and application status.</string>

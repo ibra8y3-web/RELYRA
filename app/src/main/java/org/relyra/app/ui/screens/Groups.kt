@@ -23,7 +23,6 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.ExtendedFloatingActionButton
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.ListItem
@@ -107,7 +106,7 @@ fun GroupsList(vm: MainViewModel, query: String, onOpen: (String) -> Unit, onCre
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center,
             ) {
-                Text(stringResource(R.string.groups_empty_title), style = MaterialTheme.typography.titleMedium)
+                Text(stringResource(if (kindFilter == GroupKind.CHANNEL) R.string.channels_empty_title else R.string.groups_empty_title), style = MaterialTheme.typography.titleMedium)
                 Text(stringResource(if (kindFilter == GroupKind.CHANNEL) R.string.channels_empty_body else R.string.groups_empty_body), color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 8.dp))
             }
@@ -211,7 +210,7 @@ fun CreateGroupScreen(vm: MainViewModel, onCreated: (String) -> Unit, onAddConta
     val contacts by vm.contacts.collectAsStateWithLifecycle()
     val candidates = contacts.filter { usable(it) }
     var name by remember { mutableStateOf("") }
-    var kind by remember { mutableStateOf(initialKind) }
+    val kind = initialKind
     var picked by remember { mutableStateOf(setOf<String>()) }
     Column(Modifier.fillMaxSize().padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         OutlinedTextField(
@@ -219,12 +218,6 @@ fun CreateGroupScreen(vm: MainViewModel, onCreated: (String) -> Unit, onAddConta
             label = { Text(stringResource(R.string.groups_field_name)) },
             singleLine = true, modifier = Modifier.fillMaxWidth(),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            FilterChip(selected = kind == GroupKind.GROUP, onClick = { kind = GroupKind.GROUP },
-                label = { Text(stringResource(R.string.groups_kind_group_short)) })
-            FilterChip(selected = kind == GroupKind.CHANNEL, onClick = { kind = GroupKind.CHANNEL },
-                label = { Text(stringResource(R.string.groups_kind_channel_short)) })
-        }
         Text(
             stringResource(if (kind == GroupKind.GROUP) R.string.groups_kind_group else R.string.groups_kind_channel),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
