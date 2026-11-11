@@ -89,7 +89,8 @@ Potential work items:
 - Matrix/XMPP bridges with explicit end-to-end trust boundaries.
 - Multi-device identity/session management and secure device revocation.
 - Voice/video call signalling and media transport.
-- Plugin SDK/runtime, local API, browser, PDF reader and Server Studio.
+- Plugin SDK/runtime, local API, Server Studio, desktop/node companion applications and Developer Studio.
+- The restricted WebView and read-only PDF reader exist; full browser and document editing remain separate scope.
 
 These are separate projects, not current capabilities. Each requires a threat model, API contract, permission model and tests before UI exposure.
 
