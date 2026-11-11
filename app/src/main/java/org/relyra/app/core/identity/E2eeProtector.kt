@@ -89,7 +89,8 @@ class E2eeProtector(private val db: AppDatabase, private val secure: SecureStore
         val seed = secure.loadSeed() ?: return@withLock null
         val ownIdentityDh = PayloadCrypto.deriveSecret(seed)
         val signedRow = db.preKeyDao().get("signed:$signedId") ?: return@withLock null
-        if (signedRow.kind != "SIGNED") return@withLock null
+        if (signedRow.kind != "SIGNED" ||
+            signedRow.expiresAt < System.currentTimeMillis() / 1000 - SIGNED_PREKEY_GRACE_SECONDS) return@withLock null
         val signedPrivate = secure.loadPreKeyPrivate(signedRow.keyId) ?: return@withLock null
 
         val accepted = db.withTransaction {
@@ -149,4 +150,5 @@ class E2eeProtector(private val db: AppDatabase, private val secure: SecureStore
             Opened(sender.publicId, result.plaintext)
         }
     }
+    private companion object { const val SIGNED_PREKEY_GRACE_SECONDS = 30L * 24 * 60 * 60 }
 }
