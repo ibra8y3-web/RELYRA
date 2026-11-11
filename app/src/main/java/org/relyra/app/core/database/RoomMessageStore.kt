@@ -52,6 +52,7 @@ class RoomMessageStore(private val db: AppDatabase) : MessageStore {
     suspend fun deleteMessage(id: String): String? {
         val path = db.attachmentDao().get(id)?.localPath
         db.withTransaction {
+            db.encryptedPacketDao().delete(id)
             db.attachmentDao().deleteOne(id)
             dao.deleteOne(id)
         }
