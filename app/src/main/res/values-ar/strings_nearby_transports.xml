@@ -30,7 +30,7 @@
     <string name="net_wifi_direct_connect">اتصال</string>
 
     <string name="net_p2p_title">اتصال مباشر عبر الإنترنت (WebRTC)</string>
-    <string name="net_p2p_desc">ينشئ قناة بيانات مباشرة باستخدام ICE وSTUN، ويدعم TURN عند توفير خادم وبيانات اعتماد. تبادل العرض والإجابة يدويًا مع جهة الاتصال عبر قناة خاصة؛ بيانات SDP قد تكشف عناوين الشبكة، واتصال WebRTC المباشر لا يمر عبر وكيل Tor SOCKS. يجب أن تكون جهة الاتصال معروفة وموقعة.</string>
+    <string name="net_p2p_desc">ينشئ قناة بيانات مباشرة باستخدام ICE وSTUN، مع TURN عند توفير خادم تديره أنت وبيانات اعتماده. يرسل RELYRA عروض الاتصال والإجابات الموقعة تلقائيًا داخل رسائل مشفرة طرفًا لطرف عبر Relay من Nostr عند توفره، مع الإبقاء على النسخ واللصق اليدوي عند غياب مسار إرسال. قد تكشف بيانات SDP عناوين الشبكة، واتصال WebRTC لا يمر عبر وكيل Tor SOCKS.</string>
     <string name="net_p2p_peer_id">معرّف جهة الاتصال RELYRA</string>
     <string name="net_p2p_create_offer">إنشاء عرض اتصال</string>
     <string name="net_p2p_remote_signal">الصق العرض أو الإجابة المستلمة</string>
@@ -52,4 +52,6 @@
     <string name="net_p2p_turn_invalid">بيانات TURN غير صالحة؛ يجب إدخال URI واسم المستخدم وكلمة المرور.</string>
     <string name="net_p2p_signal_failed">تعذر إنشاء/التحقق من إشارة الاتصال. تحقق من هوية جهة الاتصال وصلاحية العرض/الإجابة وإعدادات الشبكة.</string>
     <string name="net_p2p_answer_accepted">تم قبول إجابة الاتصال؛ جارٍ التفاوض على مسار ICE.</string>
+    <string name="net_p2p_signal_sent">تم إرسال إشارة الاتصال الموقعة عبر مسار RELYRA متاح.</string>
+    <string name="net_p2p_manual_fallback">لم يقبل أي مسار مفعّل إرسال الإشارة. انسخ بيانات الإشارة الموقعة وتبادلها بشكل خاص مع جهة الاتصال.</string>
 </resources>
