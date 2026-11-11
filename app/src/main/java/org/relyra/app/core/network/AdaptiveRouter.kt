@@ -35,8 +35,18 @@ class NostrConnector(
 
     init {
         scope.launch {
-            combine(network.relays, identitySecret) { relays, secret -> relays to secret }.collect { (relays, secret) ->
-                pool.configure(secret, relays.filter { it.enabled }.map { it.url }.toSet())
+            var previousTorSettings: TorSocksSettings? = null
+            combine(network.relays, identitySecret, network.torProxySettings) { relays, secret, tor ->
+                Triple(relays, secret, tor)
+            }.collect { (relays, secret, torSettings) ->
+                TorSocksProxySelector.configure(torSettings)
+                val proxyChanged = previousTorSettings != null && previousTorSettings != torSettings
+                pool.configure(
+                    secret,
+                    relays.filter { it.enabled }.map { it.url }.toSet(),
+                    forceReconnect = proxyChanged,
+                )
+                previousTorSettings = torSettings
             }
         }
     }
