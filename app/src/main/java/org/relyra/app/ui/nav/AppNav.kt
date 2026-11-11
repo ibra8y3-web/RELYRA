@@ -54,6 +54,10 @@ import org.relyra.app.ui.screens.LogScreen
 import org.relyra.app.ui.screens.NetworkScreen
 import org.relyra.app.ui.screens.RecoveryScreen
 import org.relyra.app.ui.screens.SettingsScreen
+import org.relyra.app.ui.screens.PrivacySecuritySettingsScreen
+import org.relyra.app.ui.screens.StorageSettingsScreen
+import org.relyra.app.ui.screens.NotificationsSettingsScreen
+import org.relyra.app.ui.screens.BrowserDocumentsSettingsScreen
 
 private object Routes {
     const val HOME = "home"
