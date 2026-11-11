@@ -227,7 +227,7 @@
     <string name="settings_hub_subtitle">Choose a category. Each area has its own focused screen.</string>
     <string name="settings_cat_connections">Connections &amp; networks</string>
     <string name="settings_cat_connections_desc">Nostr relays, Blossom servers, nearby links and Tor routing.</string>
-    <string name="settings_cat_identity">Identity & devices</string>
+    <string name="settings_cat_identity">Identity &amp; devices</string>
     <string name="settings_cat_identity_desc">Your identity, contact card, recovery and device identity.</string>
     <string name="settings_cat_privacy">Privacy &amp; security</string>
     <string name="settings_cat_privacy_desc">App lock, privacy controls, appearance and security history.</string>
@@ -237,8 +237,8 @@
     <string name="settings_cat_browser_desc">Web browsing and PDF reading tools.</string>
     <string name="settings_cat_tools">Tools &amp; extensions</string>
     <string name="settings_cat_tools_desc">Available utilities and developer tools.</string>
-    <string name="settings_cat_notifications">Notifications & activity</string>
+    <string name="settings_cat_notifications">Notifications &amp; activity</string>
     <string name="settings_cat_notifications_desc">Notification behavior and background connection preferences.</string>
-    <string name="settings_cat_diagnostics">Diagnostics & system</string>
+    <string name="settings_cat_diagnostics">Diagnostics &amp; system</string>
     <string name="settings_cat_diagnostics_desc">Connection diagnostics, app status and technical logs.</string>
 </resources>
