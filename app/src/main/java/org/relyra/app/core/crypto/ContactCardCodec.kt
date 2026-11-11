@@ -98,7 +98,8 @@ object ContactCardCodec {
             val signed = dec.decode(params["p"] ?: return CardDecode.Malformed)
             val expiry = params["pe"]?.toLongOrNull() ?: return CardDecode.Malformed
             val signedSig = dec.decode(params["ps"] ?: return CardDecode.Malformed)
-            val oneTimeId = params["oi"]?.takeIf { it.isNotEmpty() }?.toLongOrNull()
+            val oneTimeIdText = params["oi"].orEmpty()
+            val oneTimeId = if (oneTimeIdText.isEmpty()) null else oneTimeIdText.toLongOrNull() ?: return CardDecode.Malformed
             val oneTime = params["o"]?.takeIf { it.isNotEmpty() }?.let(dec::decode)
             if (signedId < 0 || signed.size != 32 || expiry <= 0 || signedSig.size != 64 ||
                 ((oneTimeId == null) != (oneTime == null)) || (oneTime != null && oneTime.size != 32)) return CardDecode.Malformed
@@ -108,8 +109,6 @@ object ContactCardCodec {
             if (!IdentityCrypto.verify(key, sig, messageV3(name, key, x, m, bundle))) CardDecode.BadSignature
             else CardDecode.Ok(ContactCard(name, key, x, m, bundle))
         } catch (_: IllegalArgumentException) {
-            CardDecode.Malformed
-        } catch (_: NumberFormatException) {
             CardDecode.Malformed
         }
     }
