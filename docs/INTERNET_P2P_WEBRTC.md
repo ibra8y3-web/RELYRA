@@ -24,7 +24,7 @@ This branch intentionally uses explicit, out-of-band signaling:
 4. Bob sends the answer privately to Alice.
 5. Alice pastes and accepts the answer. Both peers perform ICE checks and open the RELYRA DataChannel when a path is available.
 
-SDP contains ICE candidates and can expose local/public network addresses. The app warns users to share it only with the intended contact. The offer/answer is signed but not itself encrypted by this signaling envelope; use a private channel when exchanging it.
+SDP contains ICE candidates and can expose local/public network addresses. The app warns users to share it only with the intended contact. Direct WebRTC sockets do not use the app's Tor SOCKS proxy and can reveal the device's network address to the remote peer and network observers. The offer/answer is signed but not itself encrypted by this signaling envelope; use a private channel when exchanging it.
 
 ## TURN operations
 
