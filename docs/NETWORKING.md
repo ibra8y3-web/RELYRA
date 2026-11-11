@@ -74,6 +74,10 @@ AdaptiveRouter attempts ready connectors in their configured order. The successf
 - Bluetooth currently uses Android's bonded-device list and RFCOMM service UUID. It does not perform BLE scans and does not accept an unpaired device.
 - The durable local outbox retries messages when a configured transport becomes available, and Nostr relays can store events for later inbox retrieval. This is not an intermediary-device mesh: nearby peers do not yet hold and forward third-party messages.
 
+## libp2p integration decision
+
+The upstream Kotlin/JVM candidate has an Android sample, but it does not currently provide all pieces required for global discovery and dependable NAT traversal. RELYRA's version-by-version component review and release gate are in [LIBP2P_EVALUATION.md](LIBP2P_EVALUATION.md). No production dependency is added until the Android and cross-network proof of concept passes.
+
 ## Requirements for a future direct-P2P connector
 
 Before registering one, implement and test:
