@@ -23,6 +23,12 @@ data class ContactEntity(
     val addedAt: Long,
     val encKey: ByteArray? = null,
     val nostrKey: ByteArray? = null,
+    val signedPreKeyId: Long? = null,
+    val signedPreKey: ByteArray? = null,
+    val signedPreKeyExpiresAt: Long? = null,
+    val signedPreKeySignature: ByteArray? = null,
+    val oneTimePreKeyId: Long? = null,
+    val oneTimePreKey: ByteArray? = null,
 )
 
 @Entity(tableName = "security_events")
