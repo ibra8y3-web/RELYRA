@@ -164,7 +164,7 @@ object FileTools {
             }
         }
         is String -> JSONObject.quote(value)
-        value === JSONObject.NULL -> "null"
+        (value === JSONObject.NULL) -> "null"
         is Number, is Boolean -> value.toString()
         else -> JSONObject.quote(value.toString())
     }
