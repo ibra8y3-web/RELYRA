@@ -540,14 +540,14 @@ pub fn propose_remove_member(
     let mut group = MlsGroup::load(provider.storage(), &id)
         .map_err(|e| MlsError::Storage(e.to_string()))?
         .ok_or(MlsError::GroupNotFound)?;
-    let target_index = group.members()
+    let target_credential = group.members()
         .find(|member| member.credential.serialized_content() == member_identity)
-        .map(|member| member.index)
+        .map(|member| member.credential)
         .ok_or(MlsError::IdentityMismatch)?;
     // By-value Remove proposal keeps Commit processing independent from whether
     // every member received this standalone proposal before going offline.
     let (message, _proposal_ref) = group.propose(
-        &provider, &signer, Propose::Remove(target_index), ProposalOrRefType::Proposal,
+        &provider, &signer, Propose::RemoveCredential(target_credential), ProposalOrRefType::Proposal,
     ).map_err(|_| MlsError::Rejected)?;
     message.tls_serialize_detached().map_err(|_| MlsError::InvalidMessage)
 }
