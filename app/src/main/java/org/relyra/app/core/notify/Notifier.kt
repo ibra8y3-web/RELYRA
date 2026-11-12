@@ -91,7 +91,7 @@ class Notifier(context: Context, private val settings: AppSettings) {
 
 
     fun postCall(peerId: String, title: String) {
-        if (!settings.notifications.value || !systemAllows() || Foreground.visible) return
+        if (!settings.notifications.value || !systemAllows() || (Foreground.visible && Foreground.openChat == peerId)) return
         val text = ctx.getString(R.string.call_incoming_notification)
         val notification = NotificationCompat.Builder(ctx, CH_CALLS)
             .setSmallIcon(R.drawable.ic_stat_relyra)
