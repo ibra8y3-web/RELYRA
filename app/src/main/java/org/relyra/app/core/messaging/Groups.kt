@@ -758,7 +758,9 @@ class GroupEngine(
     /** The group owner commits the complete validated OpenMLS proposal queue as one RFC 9420 Commit. */
     suspend fun commitPendingMlsProposals(groupId: String): GroupResult = lock.withLock {
         val me = ownId() ?: return@withLock GroupResult.NO_IDENTITY
-        val group = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
+        var group = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
+        if (!recoverPendingMlsCommitLocked(group)) return@withLock GroupResult.INVALID
+        group = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
         if (group.state != GroupState.ACTIVE) return@withLock GroupResult.NOT_ACTIVE
         if (!group.mlsEnabled || group.owner != me) return@withLock GroupResult.NOT_ALLOWED
         val engine = mls ?: return@withLock GroupResult.MLS_UNAVAILABLE
