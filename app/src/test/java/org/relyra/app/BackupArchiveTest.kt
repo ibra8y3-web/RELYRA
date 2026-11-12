@@ -11,6 +11,7 @@ import java.io.File
 import java.io.FileOutputStream
 import java.util.zip.ZipEntry
 import java.util.zip.ZipOutputStream
+import java.util.zip.ZipInputStream
 
 class BackupArchiveTest {
     @Test fun archiveRoundTripIncludesAttachmentVaultAndPreferences() {
@@ -37,6 +38,38 @@ class BackupArchiveTest {
             assertArrayEquals(File(sourceFiles, "outbox/pending.enc").readBytes(), File(restoredFiles, "outbox/pending.enc").readBytes())
             assertEquals("i:2", prefs["relyra_settings"]?.get("theme_mode"))
             assertEquals("b:true", prefs["relyra_settings"]?.get("notifications_on"))
+        } finally {
+            root.deleteRecursively()
+        }
+    }
+
+
+    @Test fun archiveRejectsChangedFileAgainstManifest() {
+        val root = java.nio.file.Files.createTempDirectory("relyra-archive-hash").toFile()
+        try {
+            val db = File(root, "source.db").apply { writeBytes(byteArrayOf(1, 2, 3)) }
+            val vault = File(root, "vault/item.enc").apply { parentFile?.mkdirs(); writeBytes(byteArrayOf(4, 5, 6)) }
+            val original = File(root, "original.zip")
+            BackupArchive.pack(db, mapOf("vault" to File(root, "vault")), emptyMap(), original)
+            val tampered = File(root, "tampered.zip")
+            ZipInputStream(original.inputStream()).use { input ->
+                ZipOutputStream(tampered.outputStream()).use { output ->
+                    while (true) {
+                        val entry = input.nextEntry ?: break
+                        output.putNextEntry(ZipEntry(entry.name))
+                        val bytes = input.readBytes()
+                        output.write(if (entry.name == "files/vault/item.enc") bytes.map { (it.toInt() xor 1).toByte() }.toByteArray() else bytes)
+                        output.closeEntry()
+                        input.closeEntry()
+                    }
+                }
+            }
+            try {
+                BackupArchive.unpack(tampered, File(root, "restored.db"), File(root, "restored-files"), File(root, "prefs"))
+                fail("expected BackupException")
+            } catch (_: BackupException) {
+                assertTrue(vault.exists())
+            }
         } finally {
             root.deleteRecursively()
         }
