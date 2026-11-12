@@ -296,7 +296,7 @@ class GroupEngine(
                     for (removedId in v.removed) {
                         val target = epochMembers.firstOrNull { it.id == removedId && it.mlsJoined } ?: continue
                         val commit = engine.removeMember(groupId, target.id)
-                        val recipients = epochMembers.filter { it.mlsJoined && it.id != me && peers.status(it.id) == PeerStatus.Known }
+                        val recipients = epochMembers.filter { it.mlsJoined && it.id != me && it.id != target.id && peers.status(it.id) == PeerStatus.Known }
                         val now = clock().coerceAtLeast(1L)
                         store.enqueue(recipients.map { recipient ->
                             val id = newId()
@@ -531,7 +531,9 @@ class GroupEngine(
                 when (val app = GroupPayloadCodec.decode(result.application ?: return) ?: return) {
                     is GroupTextPayload -> {
                         val fresh = store.recordIncomingMessage(
-                            GroupMessage(app.messageId, env.groupId, env.from, false, app.body, app.sentAt, false)
+                            // The outer authenticated message ID is the sender's durable per-recipient
+                            // outbox copy ID. Receipts must reference this exact ID, not the shared app ID.
+                            GroupMessage(env.messageId, env.groupId, env.from, false, app.body, app.sentAt, false)
                         )
                         if (fresh) runCatching { incoming?.onMessage(env.groupId, true, env.from, app.body) }
                     }
@@ -540,13 +542,13 @@ class GroupEngine(
                             app.file.serverUrl, allowPrivate = false,
                         ) ?: return
                         val attachment = GroupAttachmentRecord(
-                            app.messageId, env.groupId, env.from, org.relyra.app.core.transfer.FileNames.sanitize(app.file.name),
+                            env.messageId, env.groupId, env.from, org.relyra.app.core.transfer.FileNames.sanitize(app.file.name),
                             app.file.mime, app.file.size, app.file.blobSize, app.file.plainSha256,
                             app.file.blobSha256, app.file.fileKey, safeUrl, null,
                             GroupAttachmentPhase.REMOTE, app.sentAt, false,
                         )
                         val fresh = store.recordIncomingGroupAttachment(
-                            GroupMessage(app.messageId, env.groupId, env.from, false, attachment.name, app.sentAt, false),
+                            GroupMessage(env.messageId, env.groupId, env.from, false, attachment.name, app.sentAt, false),
                             attachment,
                         )
                         if (fresh) runCatching { incoming?.onMessage(env.groupId, true, env.from, null) }
@@ -654,7 +656,7 @@ class GroupEngine(
                 val engine = mls ?: return
                 val commit = engine.removeMember(g.groupId, env.from)
                 val now = clock().coerceAtLeast(1L)
-                val recipients = members.filter { it.mlsJoined && it.id != me && peers.status(it.id) == PeerStatus.Known }
+                val recipients = members.filter { it.mlsJoined && it.id != me && it.id != env.from && peers.status(it.id) == PeerStatus.Known }
                 store.enqueue(recipients.map { recipient ->
                     val id = newId()
                     OutboxRow(
