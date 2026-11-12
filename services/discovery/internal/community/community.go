@@ -232,6 +232,16 @@ func VerifyModerationEvent(e ModerationEvent, m Manifest, now time.Time) error {
 	if !isOwner && (e.Action == "remove_member" || e.Action == "allow_post" || e.Action == "unban") {
 		return errors.New("only the community owner may remove members or change posting permissions")
 	}
+	if !isOwner {
+		if strings.EqualFold(e.SubjectPublicID, m.OwnerPublicID) {
+			return errors.New("moderators cannot target the community owner")
+		}
+		for _, moderator := range m.ModeratorPublicIDs {
+			if strings.EqualFold(e.SubjectPublicID, moderator) {
+				return errors.New("moderators cannot target another moderator")
+			}
+		}
+	}
 	payload, err := canonicalEvent(e)
 	if err != nil { return err }
 	publicKey, err := identityKey(e.ActorPublicID)
