@@ -482,8 +482,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun fetchDhtTurnCredentials() {
         viewModelScope.launch(Dispatchers.IO) {
-            val servers = runCatching { ctr().discovery.fetchTurnCredentials() }.getOrNull()
-            if (servers.isNullOrEmpty()) {
+            val credentials = runCatching { ctr().discovery.fetchTurnCredentials() }.getOrNull()
+            if (credentials == null || credentials.iceServers.isEmpty()) {
                 message.value = UiMessage(R.string.net_dht_turn_unavailable)
                 return@launch
             }
@@ -491,7 +491,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 listOf(
                     IceServerConfig("stun:stun.l.google.com:19302"),
                     IceServerConfig("stun:stun.cloudflare.com:3478"),
-                ) + servers
+                ) + credentials.iceServers
             )
             message.value = UiMessage(
                 if (configured) R.string.net_dht_turn_ready else R.string.net_dht_turn_unavailable
