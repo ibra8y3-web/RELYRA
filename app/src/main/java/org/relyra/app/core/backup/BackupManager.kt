@@ -196,6 +196,11 @@ object RestoreApplier {
         sidecarBackups.values.forEach { it.delete() }
 
         var installed = false
+        var keysUpdated = false
+        var restoredDirs: Map<String, File?>? = null
+        val previousSeed = secure.loadSeed()
+        val previousKey = secure.databaseKey()
+        val previousPreferences = preferenceStores.mapValues { it.value.all }
         try {
             FileInputStream(stagedDb).use { input ->
                 FileOutputStream(candidate).use { output ->
@@ -216,13 +221,18 @@ object RestoreApplier {
             installed = true
 
             secure.restoreKeys(if (seed.isEmpty()) null else seed, key)
-            applyRestoredFiles(stageDir, filesDir)
+            keysUpdated = true
+            restoredDirs = applyRestoredFiles(stageDir, filesDir)
             applyRestoredPreferences(stageDir, preferenceStores)
+            restoredDirs.values.filterNotNull().forEach { it.deleteRecursively() }
             previous.delete()
             sidecarBackups.values.forEach { it.delete() }
             clear(stageDir)
             return true
         } catch (t: Throwable) {
+            if (restoredDirs != null) rollbackRestoredFiles(filesDir, restoredDirs!!)
+            if (keysUpdated) runCatching { secure.restoreKeys(previousSeed, previousKey) }
+            runCatching { restorePreferenceSnapshot(preferenceStores, previousPreferences) }
             if (installed) dbFile.delete()
             if (previous.exists() && !previous.renameTo(dbFile)) {
                 throw java.io.IOException("restore failed and the previous database could not be recovered", t)
@@ -237,10 +247,10 @@ object RestoreApplier {
             throw t
         }
     }
-    private fun applyRestoredFiles(stageDir: File, filesDir: File) {
+    private fun applyRestoredFiles(stageDir: File, filesDir: File): Map<String, File?> {
         val stagedRoot = File(stageDir, "restored-files")
         val names = listOf("vault", "inbox", "outbox")
-        val old = linkedMapOf<String, File>()
+        val old = linkedMapOf<String, File?>()
         val installed = mutableListOf<String>()
         try {
             names.forEach { name ->
@@ -256,12 +266,13 @@ object RestoreApplier {
                     if (!source.renameTo(target)) throw java.io.IOException("could not install restored $name data")
                 } else if (!target.mkdirs() && !target.isDirectory) throw java.io.IOException("could not create restored $name directory")
                 installed += name
+                if (!old.containsKey(name)) old[name] = null
             }
-            old.values.forEach { it.deleteRecursively() }
+            return old
         } catch (t: Throwable) {
             installed.asReversed().forEach { File(filesDir, it).deleteRecursively() }
             old.forEach { (name, backup) ->
-                if (backup.exists() && !backup.renameTo(File(filesDir, name))) throw java.io.IOException("restore failed and $name files could not be recovered", t)
+                if (backup != null && backup.exists() && !backup.renameTo(File(filesDir, name))) throw java.io.IOException("restore failed and $name files could not be recovered", t)
             }
             throw t
         }
@@ -286,6 +297,35 @@ object RestoreApplier {
                 }
             }
             check(editor.commit()) { "could not restore $name preferences" }
+        }
+    }
+
+    private fun rollbackRestoredFiles(filesDir: File, previous: Map<String, File?>) {
+        previous.forEach { (name, backup) ->
+            File(filesDir, name).deleteRecursively()
+            if (backup != null && backup.exists() && !backup.renameTo(File(filesDir, name))) {
+                throw java.io.IOException("could not roll back restored $name files")
+            }
+        }
+    }
+
+    private fun restorePreferenceSnapshot(
+        stores: Map<String, SharedPreferences>,
+        snapshot: Map<String, Map<String, *>>,
+    ) {
+        stores.forEach { (name, prefs) ->
+            val editor = prefs.edit().clear()
+            snapshot[name].orEmpty().forEach { (key, value) ->
+                when (value) {
+                    is String -> editor.putString(key, value)
+                    is Boolean -> editor.putBoolean(key, value)
+                    is Int -> editor.putInt(key, value)
+                    is Long -> editor.putLong(key, value)
+                    is Float -> editor.putFloat(key, value)
+                    is Set<*> -> editor.putStringSet(key, value.filterIsInstance<String>().toSet())
+                }
+            }
+            check(editor.commit()) { "could not roll back $name preferences" }
         }
     }
 
