@@ -15,6 +15,7 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
     companion object {
         private const val REQUEST = "RELYRA-DEVICE-REQUEST-V1"
         private const val APPROVAL = "RELYRA-DEVICE-APPROVAL-V1"
+        private const val REVOCATION = "RELYRA-DEVICE-REVOCATION-V1"
         private const val TTL = 300_000L
         private const val MAX = 8192
     }
@@ -125,11 +126,30 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         require(row.encryptionPublicKey.contentEquals(PayloadCrypto.publicKey(localEncryption)))
         log(EventType.DEVICE_APPROVED,id)
     }
-    suspend fun revoke(deviceId: String) {
+    suspend fun revoke(deviceId: String): String {
         val account=checkNotNull(db.identityDao().get()).publicId
         require(deviceId!=secure.deviceId()) { "The active device cannot revoke itself" }
         check(db.trustedDeviceDao().revokeApproved(deviceId,account,System.currentTimeMillis())==1) { "Device is not approved" }
+        val identity = checkNotNull(db.identityDao().get())
+        val seed = checkNotNull(secure.loadSeed())
+        val body = transcript(REVOCATION, account, deviceId, System.currentTimeMillis().toString(), b64(identity.publicKey))
+        val signedCode = envelope(REVOCATION, body, IdentityCrypto.sign(seed, body))
         log(EventType.DEVICE_REVOKED,deviceId)
+        return signedCode
+    }
+    suspend fun acceptRevocation(encoded: String) {
+        val identity = checkNotNull(db.identityDao().get())
+        val (body, signature) = open(encoded, REVOCATION)
+        val values = DataInputStream(ByteArrayInputStream(body)).use { input ->
+            require(input.readUTF() == REVOCATION)
+            List(4) { input.readUTF() }.also { require(input.available() == 0) }
+        }
+        val (account, target, timestamp, signer) = values
+        require(account == identity.publicId && un64(signer).contentEquals(identity.publicKey))
+        require(timestamp.toLong() <= System.currentTimeMillis() + 60_000)
+        require(IdentityCrypto.verify(identity.publicKey, signature, body)) { "Invalid revocation signature" }
+        check(db.trustedDeviceDao().revokeApproved(target, account, System.currentTimeMillis()) == 1) { "Device is not currently approved" }
+        log(EventType.DEVICE_REVOKED,target)
     }
     fun observeTrustedDevices(accountId: String) = db.trustedDeviceDao().observeForAccount(accountId)
 
