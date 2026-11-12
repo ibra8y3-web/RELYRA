@@ -1,5 +1,6 @@
 package org.relyra.app.core.database
 
+import androidx.room.Index
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 
@@ -51,6 +52,11 @@ object EventType {
     const val CONTACT_DELETED = "CONTACT_DELETED"
     const val APP_LOCK_ON = "APP_LOCK_ON"
     const val APP_LOCK_OFF = "APP_LOCK_OFF"
+    const val DEVICE_ENROLLMENT_PENDING = "DEVICE_ENROLLMENT_PENDING"
+    const val DEVICE_APPROVED = "DEVICE_APPROVED"
+    const val DEVICE_REVOKED = "DEVICE_REVOKED"
+    const val DEVICE_KEY_ROTATED = "DEVICE_KEY_ROTATED"
+    const val DEVICE_SYNC_CONFLICT = "DEVICE_SYNC_CONFLICT"
 }
 
 
