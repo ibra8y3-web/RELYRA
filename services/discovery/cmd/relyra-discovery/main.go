@@ -283,7 +283,9 @@ func (s *server) guard(next http.Handler) http.Handler {
 			limit = turnRate
 		case strings.Contains(r.URL.Path, "/reports"):
 			limit = communityReportRate
-		case strings.Contains(r.URL.Path, "/events") || r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/communities"):
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/events"):
+			limit = communityWriteRate
+		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/communities"):
 			limit = communityWriteRate
 		case strings.HasPrefix(r.URL.Path, "/v1/communities"):
 			limit = communityReadRate
@@ -466,6 +468,18 @@ func (s *server) listCommunityEvents(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, map[string]any{"events": result})
+}
+
+func (s *server) communitySequence(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	sequence, err := s.communities.LastSequence(ctx, r.PathValue("communityID"), r.PathValue("actorPublicID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid community or moderator identity")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"lastSequence": sequence})
 }
 
 func (s *server) submitCommunityReport(w http.ResponseWriter, r *http.Request) {
