@@ -56,10 +56,10 @@ impl<'a> SqlCipherMlsProvider<'a> {
     }
 }
 
-impl OpenMlsProvider for SqlCipherMlsProvider<'_> {
+impl<'a> OpenMlsProvider for SqlCipherMlsProvider<'a> {
     type CryptoProvider = <OpenMlsRustCrypto as OpenMlsProvider>::CryptoProvider;
     type RandProvider = <OpenMlsRustCrypto as OpenMlsProvider>::RandProvider;
-    type StorageProvider = SqliteStorageProvider<'_, JsonCodec>;
+    type StorageProvider = SqliteStorageProvider<'a, JsonCodec>;
 
     fn storage(&self) -> &Self::StorageProvider {
         &self.storage
@@ -237,11 +237,11 @@ pub fn add_members(
     if key_packages.is_empty() || key_packages.len() > 200 {
         return Err(MlsError::InvalidKeyPackage);
     }
-    let provider = SqlCipherMlsProvider::new(&database.connection)?;
+    let (provider, _signer) = provider_with_signer(database)?;
     let signer = provider.signer()?;
     let id = GroupId::from_slice(group_id);
     let mut group = MlsGroup::load(provider.storage(), &id)
-        .map_err(MlsError::Storage)?
+        .map_err(|e| MlsError::Storage(e.to_string()))?
         .ok_or(MlsError::GroupNotFound)?;
     let packages = key_packages.iter().map(|bytes| {
         let input = KeyPackageIn::tls_deserialize_exact_bytes(bytes.as_slice())
