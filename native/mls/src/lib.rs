@@ -196,7 +196,10 @@ pub fn create_group(
         &signer,
         &config,
         id,
-        credential.into(),
+        CredentialWithKey {
+            credential: credential.into(),
+            signature_key: signer.public().into(),
+        },
     ).map_err(|_| MlsError::Rejected)?;
     Ok(0)
 }
