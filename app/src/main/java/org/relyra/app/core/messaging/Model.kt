@@ -107,6 +107,43 @@ object GroupChangeProposalCodec {
 }
 
 
+data class MlsProposalRelay(val authorId: String, val payload: ByteArray)
+
+/** Owner-authenticated relay wrapper that preserves the original MLS proposal signer identity. */
+object MlsProposalRelayCodec {
+    private const val MAGIC = "RELYRA-MLS-PROPOSAL-RELAY-V1"
+    private const val VERSION = 1
+    private const val MAX_BYTES = 1024 * 1024
+
+    fun encode(authorId: String, payload: ByteArray): ByteArray {
+        require(authorId.isNotBlank() && authorId.length <= 128)
+        require(payload.isNotEmpty() && payload.size <= MAX_BYTES - 256)
+        val bytes = ByteArrayOutputStream()
+        DataOutputStream(bytes).use { out ->
+            out.writeUTF(MAGIC)
+            out.writeInt(VERSION)
+            out.writeUTF(authorId.lowercase())
+            out.writeInt(payload.size)
+            out.write(payload)
+        }
+        return bytes.toByteArray().also { require(it.size <= MAX_BYTES) }
+    }
+
+    fun decode(raw: ByteArray): MlsProposalRelay? = runCatching {
+        require(raw.isNotEmpty() && raw.size <= MAX_BYTES)
+        DataInputStream(ByteArrayInputStream(raw)).use { input ->
+            require(input.readUTF() == MAGIC && input.readInt() == VERSION)
+            val author = input.readUTF()
+            val size = input.readInt()
+            require(author.isNotBlank() && author.length <= 128 && size in 1..MAX_BYTES)
+            val payload = ByteArray(size)
+            input.readFully(payload)
+            require(input.available() == 0)
+            MlsProposalRelay(author, payload)
+        }
+    }.getOrNull()
+}
+
 data class GroupMemberRef(
     val id: String,
     val role: GroupRole,
