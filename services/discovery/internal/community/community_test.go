@@ -168,6 +168,15 @@ func TestOptInReportContainsOnlyDeclaredRedactedFields(t *testing.T) {
 	raw := mustJSON(t, report)
 	if _, err := store.SubmitReport(context.Background(), raw); err != nil { t.Fatal(err) }
 
+	if _, err := store.Reports(context.Background(), manifest.CommunityID, reporter.id, 20); err == nil {
+		t.Fatal("ordinary community member was allowed to read private reports")
+	}
+	reports, err := store.Reports(context.Background(), manifest.CommunityID, owner.id, 20)
+	if err != nil { t.Fatal(err) }
+	if len(reports) != 1 || reports[0].ReportID != report.ReportID {
+		t.Fatalf("moderator report inbox returned unexpected data: %#v", reports)
+	}
+
 	// An unexpected private-message-content field is rejected, not silently retained.
 	withPrivateContent := strings.TrimSuffix(string(raw), "}") + `, "messageContent":"secret private conversation"}`
 	if _, err := store.SubmitReport(context.Background(), []byte(withPrivateContent)); err == nil {
