@@ -224,6 +224,7 @@ object RestoreApplier {
         listOf(DB_PART, DB_READY, KEYS, MARKER, "export.tmp", "export.bundle", "restore.bundle").forEach { File(stageDir, it).delete() }
         File(stageDir, "restored-files").deleteRecursively()
         File(stageDir, "pending-prefs").deleteRecursively()
+        File(stageDir, "export-prekeys").deleteRecursively()
     }
 
     /**
