@@ -52,3 +52,31 @@ object EventType {
     const val APP_LOCK_ON = "APP_LOCK_ON"
     const val APP_LOCK_OFF = "APP_LOCK_OFF"
 }
+
+
+/**
+ * A device known to an account. Public keys are device-scoped; private keys must remain
+ * in the Android Keystore and are never persisted in this row or synchronized as plaintext.
+ */
+@Entity(tableName = "trusted_devices", indices = [Index("accountId"), Index("status")])
+data class TrustedDeviceEntity(
+    @PrimaryKey val deviceId: String,
+    val accountId: String,
+    val displayName: String,
+    val platform: String,
+    val signingPublicKey: ByteArray,
+    val encryptionPublicKey: ByteArray,
+    val status: String,
+    val createdAt: Long,
+    val lastSeenAt: Long,
+    val approvedAt: Long?,
+    val revokedAt: Long?,
+    val keyVersion: Long,
+    val syncCursor: Long,
+)
+
+object TrustedDeviceStatus {
+    const val PENDING = "PENDING"
+    const val APPROVED = "APPROVED"
+    const val REVOKED = "REVOKED"
+}
