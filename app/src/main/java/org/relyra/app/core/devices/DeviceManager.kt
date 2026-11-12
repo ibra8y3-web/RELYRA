@@ -244,7 +244,8 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
             newVersion==oldVersion+1 && timestamp.toLong()<=System.currentTimeMillis()+60_000)
         require(device.signingPublicKey.contentEquals(oldSigning) &&
             device.encryptionPublicKey.contentEquals(oldEncryption) && oldSigning.size==32 &&
-            newSigning.size==32 && oldEncryption.size==32 && newEncryption.size==32)
+            newSigning.size==32 && oldEncryption.size==32 && newEncryption.size==32 &&
+            newEncryption.contentEquals(oldEncryption))
         require(IdentityCrypto.verify(oldSigning,signature,body)) { "Invalid device key rotation signature" }
         check(db.trustedDeviceDao().rotateDeviceKeys(deviceId,account,oldVersion,newVersion,
             newSigning,newEncryption)==1) { "Device key rotation is stale or already applied" }
