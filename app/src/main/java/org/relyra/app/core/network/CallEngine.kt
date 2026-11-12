@@ -2,6 +2,7 @@ package org.relyra.app.core.network
 
 import android.content.Context
 import android.media.AudioManager
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -50,7 +51,7 @@ class CallEngine(
     }
 
     private data class Session(
-        val id: String, val connection: PeerConnection, val video: Boolean,
+        val id: String, val connection: PeerConnection, val video: Boolean, val gathering: CompletableDeferred<Unit> = CompletableDeferred(),
         var audioSource: AudioSource? = null, var audioTrack: AudioTrack? = null,
         var videoSource: VideoSource? = null, var videoTrack: VideoTrack? = null,
         var capturer: CameraVideoCapturer? = null, var texture: SurfaceTextureHelper? = null,
@@ -68,6 +69,7 @@ class CallEngine(
             val session = createSession(peer, id, withVideo) ?: error("WebRTC initialization failed")
             val offer = createDescription(session.connection, true)
             setDescription(session.connection, true, offer)
+            withTimeout(25_000) { session.gathering.await() }
             val sdp = session.connection.localDescription?.description ?: error("Missing local SDP")
             sessions[peer] = session
             val signal = signed(peer, "call_offer", sdp, id) ?: error("Could not sign call offer")
@@ -101,6 +103,7 @@ class CallEngine(
             setDescription(session.connection, false, SessionDescription(SessionDescription.Type.OFFER, decoded.sdp))
             val answer = createDescription(session.connection, false)
             setDescription(session.connection, true, answer)
+            withTimeout(25_000) { session.gathering.await() }
             val sdp = session.connection.localDescription?.description ?: error("Missing answer SDP")
             sessions[peer] = session
             val signal = signed(peer, "call_answer", sdp, decoded.sessionId) ?: error("Could not sign call answer")
@@ -198,7 +201,7 @@ class CallEngine(
                 }
             }
             override fun onIceConnectionReceivingChange(b: Boolean) = Unit
-            override fun onIceGatheringChange(s: PeerConnection.IceGatheringState) = Unit
+            override fun onIceGatheringChange(s: PeerConnection.IceGatheringState) { if (s == PeerConnection.IceGatheringState.COMPLETE) session.gathering.complete(Unit) }
             override fun onIceCandidate(c: IceCandidate) = Unit
             override fun onIceCandidatesRemoved(c: Array<out IceCandidate>) = Unit
             override fun onAddStream(s: MediaStream) = Unit
