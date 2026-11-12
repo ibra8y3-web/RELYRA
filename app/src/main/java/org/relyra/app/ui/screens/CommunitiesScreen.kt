@@ -380,7 +380,12 @@ fun CommunitiesScreen(vm: MainViewModel) {
                     var expanded by remember { mutableStateOf(false) }
                     OutlinedButton(onClick = { expanded = true }) { Text(action) }
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        listOf("ban", "unban", "mute", "slow_mode", "remove_member", "allow_post").forEach { option ->
+                        val availableActions = if (isOwner) {
+                            listOf("ban", "unban", "remove_member")
+                        } else {
+                            listOf("ban")
+                        }
+                        availableActions.forEach { option ->
                             DropdownMenuItem(text = { Text(option) }, onClick = { action = option; expanded = false })
                         }
                     }
