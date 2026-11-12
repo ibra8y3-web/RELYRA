@@ -36,7 +36,7 @@
 2. Transfer the request code to the existing device.
 3. On the existing device, paste and approve the request, then send the approval code back.
 4. On the new device, paste and accept the signed approval.
-5. From the existing device, export an encrypted snapshot for the new device and import it there.
+5. From the existing device, export an encrypted snapshot file for the new device and import it with the document picker. A pasted code is also available for smaller snapshots.
 6. When revoking a device, distribute the signed revocation code to the remaining devices and apply it on each.
 
 ## Explicit limitations — Phase 5 is not fully complete
