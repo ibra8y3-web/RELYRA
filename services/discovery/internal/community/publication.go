@@ -175,6 +175,24 @@ func (s *Store) PublishPost(ctx context.Context, raw []byte) (Post, error) {
 	if manifest.Visibility == "private" && !s.CanReadPrivate(ctx, p.CommunityID, p.AuthorPublicID) {
 		return p, errors.New("only current private community members may publish")
 	}
+ 	key := postKey(p.CommunityID, p.PostID)
+	// An accepted post retry is idempotent even if moderation changed afterwards.
+	// Current membership is still required above for private communities.
+	key := postKey(p.CommunityID, p.PostID)
+	if existingRaw, getErr := s.ds.Get(ctx, key); getErr == nil {
+		var existing Post
+		if json.Unmarshal(existingRaw, &existing) != nil { return p, errors.New("stored post is corrupt") }
+		if existing.Signature != p.Signature { return p, errors.New("post ID is already used") }
+		last, seqErr := readUint(ctx, s.ds, postSequenceKey(p.CommunityID, p.AuthorPublicID))
+		if seqErr != nil { return p, seqErr }
+		if p.Sequence == last+1 {
+			if err := s.ds.Put(ctx, postSequenceKey(p.CommunityID, p.AuthorPublicID), []byte(strconv.FormatUint(p.Sequence, 10))); err != nil { return p, err }
+		} else if p.Sequence > last {
+			return p, errors.New("post sequence has a gap")
+		}
+		return existing, nil
+	} else if !errors.Is(getErr, datastore.ErrNotFound) { return p, getErr }
+
 	now := s.clock().UnixMilli()
 	if banned, err := s.IsBanned(ctx, p.CommunityID, p.AuthorPublicID); err != nil || banned {
 		return p, errors.New("identity is not allowed to publish in this community")
@@ -195,21 +213,6 @@ func (s *Store) PublishPost(ctx context.Context, raw []byte) (Post, error) {
 		policy.LastPostAt > 0 && now-policy.LastPostAt < slowModeInterval.Milliseconds() {
 		return p, errors.New("slow mode is active; wait before publishing again")
 	}
-
-	key := postKey(p.CommunityID, p.PostID)
-	if existingRaw, getErr := s.ds.Get(ctx, key); getErr == nil {
-		var existing Post
-		if json.Unmarshal(existingRaw, &existing) != nil { return p, errors.New("stored post is corrupt") }
-		if existing.Signature != p.Signature { return p, errors.New("post ID is already used") }
-		last, seqErr := readUint(ctx, s.ds, postSequenceKey(p.CommunityID, p.AuthorPublicID))
-		if seqErr != nil { return p, seqErr }
-		if p.Sequence == last+1 {
-			if err := s.ds.Put(ctx, postSequenceKey(p.CommunityID, p.AuthorPublicID), []byte(strconv.FormatUint(p.Sequence, 10))); err != nil { return p, err }
-		} else if p.Sequence > last {
-			return p, errors.New("post sequence has a gap")
-		}
-		return existing, nil
-	} else if !errors.Is(getErr, datastore.ErrNotFound) { return p, getErr }
 
 	last, err := readUint(ctx, s.ds, postSequenceKey(p.CommunityID, p.AuthorPublicID))
 	if err != nil { return p, err }
