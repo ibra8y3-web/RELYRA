@@ -96,6 +96,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val deviceCode = MutableStateFlow<String?>(null)
     val deviceSyncCode = MutableStateFlow<String?>(null)
     val deviceMessage = MutableStateFlow<String?>(null)
+    private var deviceObserverStarted = false
     val events = MutableStateFlow<List<SecurityEventEntity>>(emptyList())
     val eventCount = MutableStateFlow(0)
     val myCard = MutableStateFlow<String?>(null)
@@ -1082,6 +1083,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     }
 
     fun refreshTrustedDevices() {
+        if (deviceObserverStarted) return
+        deviceObserverStarted = true
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
                 val account = checkNotNull(ctr().database.identityDao().get()).publicId
