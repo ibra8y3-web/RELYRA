@@ -657,7 +657,7 @@ class GroupEngine(
                     addProposal, newId(), me, setOf(env.from), allowAdd = true, allowRemove = false,
                 )
                 val bundle = engine.commitPendingProposals(env.groupId)
-                val prepared = engine.commitPendingProposals(env.groupId)
+                val prepared = engine.commitPendingProposals(env.groupId, env.messageId)
                 if (prepared.welcome == null || env.from.lowercase() !in prepared.addedIds) return
                 persistPreparedMlsCommit(group, members, prepared, env.messageId, clock())
                 refreshPendingMlsProposalsLocked(env.groupId)
@@ -819,12 +819,13 @@ class GroupEngine(
                 now, 0, now, acked = false, failed = false,
             )
         }
+        val durableControlId = controlMessageId ?: prepared.controlMessageId
         store.applyMlsCommit(
             group.copy(epoch = group.epoch + 1, mlsEpoch = prepared.epoch),
             updated,
             rows,
-            controlMessageId,
-            receivedAt,
+            durableControlId,
+            receivedAt ?: if (durableControlId != null) clock() else null,
         )
         // The native pending Commit is merged only after the Room epoch and its
         // retryable network packets are durable. Startup recovery finishes this step.
