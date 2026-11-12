@@ -288,7 +288,7 @@ class DeliveryEngine(
                 if (fresh) runCatching { incoming?.onMessage(env.from, false, env.from, null) }
                 transmit(env.from, EnvelopeCodec.encode(Envelope.Ack(env.messageId, me, env.from, AckKind.DELIVERED)))
             }
-            is Envelope.GroupChat, is Envelope.GroupSync, is Envelope.GroupLeave -> groups?.onEnvelope(env)
+            is Envelope.GroupChat, is Envelope.GroupSync, is Envelope.GroupLeave, is Envelope.GroupReadReceipt -> groups?.onEnvelope(env)
             is Envelope.Ack -> lock.withLock {
                 if (groups?.onAck(env) == true) return
                 val m = store.get(env.messageId) ?: return
