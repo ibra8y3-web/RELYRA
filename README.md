@@ -12,7 +12,7 @@
 <p align="center"><strong>Private by design. Connected by choice.</strong></p>
 <p align="center">An Android communication project built around local identity, end-to-end encrypted messaging, and user-controlled network relays.</p>
 
-> **Current implementation:** Version 0.9.0. Opt-in nearby paths include Bluetooth Classic for already-paired devices, Wi-Fi Direct, and Nearby LAN for known contacts. Nostr over user-configured secure WebSocket relays (WSS) remains the Internet relay/fallback path. Internet-wide libp2p and NAT traversal are not implemented. The diagrams below separate working paths from planned capabilities.
+> **Current implementation:** The Android app supports Nostr WSS, WebRTC P2P DataChannel, and opt-in nearby Bluetooth Classic (already-paired devices), Wi-Fi Direct, and Nearby LAN for known contacts. The repository also contains a deployable Go/libp2p Kademlia DHT service, HTTPS gateway and coturn configuration; Android connects to the HTTPS gateway and is not itself a libp2p host. No public multi-operator DHT/TURN network is hosted by this repository. The diagrams below separate working code from operational infrastructure and planned capabilities.
 
 ## At a glance
 
@@ -81,7 +81,7 @@ Read the [Architecture guide](docs/ARCHITECTURE.md), [Networking guide](docs/NET
 
 1. Create a fresh message ID and persist the outgoing message in the encrypted outbox.
 2. Encrypt the payload for the recipient.
-3. Select a ready registered transport in this order: Wi-Fi Direct, Bluetooth Classic, Nearby LAN, then Nostr.
+3. The adaptive router tries the currently registered, ready connectors (WebRTC P2P, Wi-Fi Direct, Bluetooth Classic, Nearby LAN and Nostr) and records the successful path.
 4. A nearby connector authenticates the other device with a mutual Ed25519 challenge and transfers only the end-to-end encrypted payload; Nostr signs an event and publishes it to enabled WSS relays.
 5. The recipient verifies, decrypts and stores the message before acknowledging it.
 6. Automatic retries reuse the same message ID; a new user send gets a new ID.
