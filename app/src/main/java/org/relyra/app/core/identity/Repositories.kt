@@ -91,6 +91,7 @@ class IdentityRepository(
         db.clearAllTables()
         secure.clearSeed()
         secure.clearPreKeys()
+        secure.clearDeviceState()
         wipeFiles()
     }
 }
