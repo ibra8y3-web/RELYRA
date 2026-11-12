@@ -81,3 +81,34 @@ interface PreKeyDao {
     @Query("DELETE FROM prekeys WHERE keyId = :keyId")
     suspend fun delete(keyId: String)
 }
+
+
+/** Device inventory. State transitions are conditional so a revoked device cannot be re-approved
+ * by a stale update and a pending device cannot silently become trusted.
+ */
+@Dao
+interface TrustedDeviceDao {
+    @Query("SELECT * FROM trusted_devices WHERE accountId = :accountId ORDER BY createdAt DESC")
+    fun observeForAccount(accountId: String): Flow<List<TrustedDeviceEntity>>
+
+    @Query("SELECT * FROM trusted_devices WHERE deviceId = :deviceId LIMIT 1")
+    suspend fun get(deviceId: String): TrustedDeviceEntity?
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertPending(device: TrustedDeviceEntity)
+
+    @Query("UPDATE trusted_devices SET status = 'APPROVED', approvedAt = :approvedAt, lastSeenAt = :approvedAt WHERE deviceId = :deviceId AND accountId = :accountId AND status = 'PENDING'")
+    suspend fun approvePending(deviceId: String, accountId: String, approvedAt: Long): Int
+
+    @Query("UPDATE trusted_devices SET status = 'REVOKED', revokedAt = :revokedAt WHERE deviceId = :deviceId AND accountId = :accountId AND status = 'APPROVED'")
+    suspend fun revokeApproved(deviceId: String, accountId: String, revokedAt: Long): Int
+
+    @Query("UPDATE trusted_devices SET lastSeenAt = :seenAt WHERE deviceId = :deviceId AND accountId = :accountId AND status = 'APPROVED' AND :seenAt >= lastSeenAt")
+    suspend fun updateLastSeen(deviceId: String, accountId: String, seenAt: Long): Int
+
+    @Query("UPDATE trusted_devices SET syncCursor = :cursor WHERE deviceId = :deviceId AND accountId = :accountId AND status = 'APPROVED' AND :cursor > syncCursor")
+    suspend fun advanceSyncCursor(deviceId: String, accountId: String, cursor: Long): Int
+
+    @Query("UPDATE trusted_devices SET keyVersion = :newVersion WHERE deviceId = :deviceId AND accountId = :accountId AND status = 'APPROVED' AND keyVersion = :expectedVersion")
+    suspend fun rotateKeyVersion(deviceId: String, accountId: String, expectedVersion: Long, newVersion: Long): Int
+}
