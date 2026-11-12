@@ -90,6 +90,21 @@ interface GroupDao {
     @Query("DELETE FROM chat_groups WHERE groupId = :id")
     suspend fun deleteGroup(id: String)
 
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertGroupAttachment(entity: GroupAttachmentEntity)
+
+    @Update
+    suspend fun updateGroupAttachment(entity: GroupAttachmentEntity)
+
+    @Query("SELECT * FROM group_attachments WHERE messageId = :id")
+    suspend fun groupAttachment(id: String): GroupAttachmentEntity?
+
+    @Query("SELECT * FROM group_attachments WHERE groupId = :id ORDER BY createdAt ASC")
+    fun observeGroupAttachments(id: String): Flow<List<GroupAttachmentEntity>>
+
+    @Query("DELETE FROM group_attachments WHERE groupId = :id")
+    suspend fun deleteGroupAttachments(id: String)
+
     @Query("SELECT COUNT(*) FROM group_outbox WHERE acked = 0 AND failed = 0")
     fun observePending(): Flow<Int>
 }
