@@ -6,6 +6,7 @@ import org.relyra.app.background.CallForegroundService
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -68,9 +69,10 @@ class CallEngine(
         mutableState.value = CallUiState(peerId = peer, phase = CallPhase.OUTGOING, video = withVideo)
         return try {
             val id = UUID.randomUUID().toString()
+            CallForegroundService.start(app, withVideo)
+            delay(300)
             val session = createSession(peer, id, withVideo) ?: error("WebRTC initialization failed")
             sessions[peer] = session
-            CallForegroundService.start(app, withVideo)
             val offer = createDescription(session.connection, true)
             setDescription(session.connection, true, offer)
             withTimeout(25_000) { session.gathering.await() }
@@ -103,9 +105,10 @@ class CallEngine(
         val decoded = InternetSignalCodec.decode(offer, ownId() ?: return, peer) ?: return
         if (decoded.type != "call_offer") return
         try {
+            CallForegroundService.start(app, current.video)
+            delay(300)
             val session = createSession(peer, decoded.sessionId, current.video) ?: error("WebRTC initialization failed")
             sessions[peer] = session
-            CallForegroundService.start(app, current.video)
             setDescription(session.connection, false, SessionDescription(SessionDescription.Type.OFFER, decoded.sdp))
             val answer = createDescription(session.connection, false)
             setDescription(session.connection, true, answer)
