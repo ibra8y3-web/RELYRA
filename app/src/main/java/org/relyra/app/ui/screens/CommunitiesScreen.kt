@@ -31,15 +31,17 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.json.JSONObject
-import org.relyra.app.MainViewModel
 import org.relyra.app.IdentityState
+import org.relyra.app.MainViewModel
 import org.relyra.app.R
-import org.relyra.app.core.database.CommunityEntity
 import org.relyra.app.core.community.CommunityManifest
+import org.relyra.app.core.database.CommunityEntity
 
 @Composable
 fun CommunitiesScreen(vm: MainViewModel) {
@@ -48,11 +50,16 @@ fun CommunitiesScreen(vm: MainViewModel) {
     val communityEvents by vm.communityEvents.collectAsStateWithLifecycle()
     val busy by vm.communityBusy.collectAsStateWithLifecycle()
     val identity by vm.identity.collectAsStateWithLifecycle()
+    val clipboard = LocalClipboardManager.current
+
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     var showCreate by rememberSaveable { mutableStateOf(false) }
     var showManage by rememberSaveable { mutableStateOf(false) }
     var showReport by rememberSaveable { mutableStateOf(false) }
     var showModerate by rememberSaveable { mutableStateOf(false) }
+    var showInvite by rememberSaveable { mutableStateOf(false) }
+    var showInvitationCode by rememberSaveable { mutableStateOf(false) }
+    var showAcceptInvitation by rememberSaveable { mutableStateOf(false) }
     var name by rememberSaveable { mutableStateOf("") }
     var description by rememberSaveable { mutableStateOf("") }
     var visibility by rememberSaveable { mutableStateOf("public") }
@@ -62,17 +69,20 @@ fun CommunitiesScreen(vm: MainViewModel) {
     var reason by rememberSaveable { mutableStateOf("community_rules") }
     var reportCategory by rememberSaveable { mutableStateOf("spam") }
     var reportSummary by rememberSaveable { mutableStateOf("") }
+    var inviteMemberId by rememberSaveable { mutableStateOf("") }
+    var invitationCode by rememberSaveable { mutableStateOf("") }
+    var acceptedInvitationCode by rememberSaveable { mutableStateOf("") }
 
     val savedById = saved.associateBy { it.communityId }
     val selectedEntity = selectedId?.let(savedById::get)
-    val selectedPublic = selectedId?.let { id -> discovered.find { it.communityId == id } }
-    val selectedManifest = selectedEntity?.let(::manifestFromEntity) ?: selectedPublic
+    val selectedManifest = selectedEntity?.let { runCatching { manifestFromEntity(it) }.getOrNull() }
+        ?: selectedId?.let { id -> discovered.find { it.communityId == id } }
     val ownId = (identity as? IdentityState.Present)?.identity?.publicId
     val isOwner = selectedManifest != null && ownId?.equals(selectedManifest.ownerPublicId, true) == true
     val isModerator = selectedManifest != null && ownId != null && (
-        ownId.equals(selectedManifest.ownerPublicId, true) ||
-            selectedManifest.moderatorPublicIds.any { it.equals(ownId, true) }
+        isOwner || selectedManifest.moderatorPublicIds.any { it.equals(ownId, true) }
     )
+    val events = selectedId?.let { communityEvents[it] }.orEmpty()
 
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -91,37 +101,44 @@ fun CommunitiesScreen(vm: MainViewModel) {
                 Text(stringResource(R.string.communities_create))
             }
         }
+        OutlinedButton(
+            onClick = { showAcceptInvitation = true },
+            modifier = Modifier.fillMaxWidth(),
+            enabled = !busy,
+        ) { Text(stringResource(R.string.communities_accept_invitation)) }
         if (busy) Text(stringResource(R.string.communities_working), style = MaterialTheme.typography.labelSmall)
 
         Text(stringResource(R.string.communities_saved), style = MaterialTheme.typography.titleMedium)
-        if (saved.isEmpty()) {
+        if (saved.isEmpty() && discovered.isEmpty()) {
             Text(stringResource(R.string.communities_empty), color = MaterialTheme.colorScheme.onSurfaceVariant)
-        } else {
-            LazyColumn(
-                modifier = Modifier.weight(if (selectedManifest == null) 1f else 0.65f),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-            ) {
-                items(saved, key = { it.communityId }) { entity ->
-                    val manifest = runCatching { manifestFromEntity(entity) }.getOrNull()
+        }
+        LazyColumn(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            items(saved, key = { it.communityId }) { entity ->
+                val manifest = runCatching { manifestFromEntity(entity) }.getOrNull()
+                CommunityCard(
+                    name = manifest?.name ?: entity.communityId,
+                    detail = manifest?.description.orEmpty(),
+                    visibility = manifest?.visibility.orEmpty(),
+                    selected = entity.communityId == selectedId,
+                    onClick = {
+                        selectedId = entity.communityId
+                        vm.loadCommunityEvents(entity.communityId)
+                    },
+                )
+            }
+            if (discovered.isNotEmpty()) {
+                item { Text(stringResource(R.string.communities_public_results), style = MaterialTheme.typography.titleMedium) }
+                items(discovered.filter { it.communityId !in savedById }, key = { it.communityId }) { manifest ->
                     CommunityCard(
-                        name = manifest?.name ?: entity.communityId,
-                        detail = manifest?.description.orEmpty(),
-                        visibility = manifest?.visibility.orEmpty(),
-                        selected = entity.communityId == selectedId,
-                        onClick = { selectedId = entity.communityId; vm.loadCommunityEvents(entity.communityId) },
+                        name = manifest.name,
+                        detail = manifest.description,
+                        visibility = manifest.visibility,
+                        selected = manifest.communityId == selectedId,
+                        onClick = { selectedId = manifest.communityId },
                     )
-                }
-                if (discovered.isNotEmpty()) {
-                    item { Text(stringResource(R.string.communities_public_results), style = MaterialTheme.typography.titleMedium) }
-                    items(discovered.filter { it.communityId !in savedById }, key = { it.communityId }) { manifest ->
-                        CommunityCard(
-                            name = manifest.name,
-                            detail = manifest.description,
-                            visibility = manifest.visibility,
-                            selected = manifest.communityId == selectedId,
-                            onClick = { selectedId = manifest.communityId },
-                        )
-                    }
                 }
             }
         }
@@ -138,10 +155,12 @@ fun CommunitiesScreen(vm: MainViewModel) {
                 style = MaterialTheme.typography.labelSmall,
                 color = MaterialTheme.colorScheme.secondary,
             )
-            Text(stringResource(R.string.communities_owner, selectedManifest.ownerPublicId.take(14) + "…"),
-                style = MaterialTheme.typography.bodySmall)
+            Text(
+                stringResource(R.string.communities_owner, selectedManifest.ownerPublicId.take(14) + "…"),
+                style = MaterialTheme.typography.bodySmall,
+            )
             if (selectedEntity == null) {
-                Button(onClick = { vm.saveDiscoveredCommunity(selectedManifest); selectedId = selectedManifest.communityId }) {
+                Button(onClick = { vm.saveDiscoveredCommunity(selectedManifest) }) {
                     Text(stringResource(R.string.communities_save))
                 }
             }
@@ -151,6 +170,11 @@ fun CommunitiesScreen(vm: MainViewModel) {
                 }
                 OutlinedButton(onClick = { showReport = true }) {
                     Text(stringResource(R.string.communities_report))
+                }
+            }
+            if (isOwner && selectedManifest.visibility == "private") {
+                OutlinedButton(onClick = { showInvite = true }) {
+                    Text(stringResource(R.string.communities_invite_member))
                 }
             }
             if (isOwner) {
@@ -164,7 +188,6 @@ fun CommunitiesScreen(vm: MainViewModel) {
                     Text(stringResource(R.string.communities_moderate))
                 }
             }
-            val events = communityEvents[selectedManifest.communityId].orEmpty()
             if (events.isNotEmpty()) {
                 Text(stringResource(R.string.communities_recent_actions), style = MaterialTheme.typography.titleSmall)
                 events.takeLast(8).asReversed().forEach { event ->
@@ -207,6 +230,90 @@ fun CommunitiesScreen(vm: MainViewModel) {
                 }, enabled = name.isNotBlank()) { Text(stringResource(R.string.communities_create)) }
             },
             dismissButton = { TextButton(onClick = { showCreate = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+
+    if (showInvite && selectedId != null) {
+        AlertDialog(
+            onDismissRequest = { showInvite = false },
+            title = { Text(stringResource(R.string.communities_invite_member)) },
+            text = {
+                OutlinedTextField(
+                    inviteMemberId,
+                    { inviteMemberId = it.take(120) },
+                    label = { Text(stringResource(R.string.communities_invitee_id)) },
+                    supportingText = { Text(stringResource(R.string.communities_invitation_privacy)) },
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        vm.createPrivateCommunityInvitation(selectedId!!, inviteMemberId.trim()) { code ->
+                            invitationCode = code
+                            showInvite = false
+                            showInvitationCode = true
+                        }
+                    },
+                    enabled = inviteMemberId.isNotBlank(),
+                ) { Text(stringResource(R.string.communities_create_invitation)) }
+            },
+            dismissButton = { TextButton(onClick = { showInvite = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+
+    if (showInvitationCode) {
+        AlertDialog(
+            onDismissRequest = { showInvitationCode = false },
+            title = { Text(stringResource(R.string.communities_invitation_created)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.communities_invitation_share_warning))
+                    OutlinedTextField(
+                        invitationCode,
+                        onValueChange = {},
+                        readOnly = true,
+                        minLines = 4,
+                        maxLines = 8,
+                    )
+                    OutlinedButton(onClick = { clipboard.setText(AnnotatedString(invitationCode)) }) {
+                        Text(stringResource(R.string.communities_copy_invitation))
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showInvitationCode = false }) { Text(stringResource(R.string.close)) } },
+        )
+    }
+
+    if (showAcceptInvitation) {
+        AlertDialog(
+            onDismissRequest = { showAcceptInvitation = false },
+            title = { Text(stringResource(R.string.communities_accept_invitation)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(R.string.communities_accept_invitation_help))
+                    OutlinedTextField(
+                        acceptedInvitationCode,
+                        { acceptedInvitationCode = it.take(16_384) },
+                        label = { Text(stringResource(R.string.communities_invitation_code)) },
+                        minLines = 4,
+                        maxLines = 8,
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        vm.acceptPrivateCommunityInvitation(acceptedInvitationCode) { id ->
+                            selectedId = id
+                            showAcceptInvitation = false
+                            acceptedInvitationCode = ""
+                            vm.loadCommunityEvents(id)
+                        }
+                    },
+                    enabled = acceptedInvitationCode.isNotBlank(),
+                ) { Text(stringResource(R.string.communities_accept_invitation)) }
+            },
+            dismissButton = { TextButton(onClick = { showAcceptInvitation = false }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 
@@ -321,4 +428,3 @@ private fun manifestFromEntity(entity: CommunityEntity): CommunityManifest {
         json.getLong("updatedAt"), json.getString("signature"),
     )
 }
-
