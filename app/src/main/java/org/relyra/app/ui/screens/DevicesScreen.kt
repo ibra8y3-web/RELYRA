@@ -119,6 +119,6 @@ fun DevicesScreen(vm: MainViewModel) {
                 }
             }
         }
-        status?.let { Text(it,color=MaterialTheme.colorScheme.error,style=MaterialTheme.typography.bodySmall) }
+        status?.let { Text(it,color=MaterialTheme.colorScheme.onSurfaceVariant,style=MaterialTheme.typography.bodySmall) }
     }
 }
