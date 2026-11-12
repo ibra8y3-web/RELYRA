@@ -11,7 +11,6 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.MediaType.Companion.toMediaType
@@ -290,8 +289,9 @@ class DhtDiscoveryManager(
         return null
     }
 
-    suspend fun fetchTurnCredentials(forceRefresh: Boolean = false): ManagedTurnCredentials? =
-        turnRefreshMutex.withLock {
+    suspend fun fetchTurnCredentials(forceRefresh: Boolean = false): ManagedTurnCredentials? {
+        turnRefreshMutex.lock()
+        try {
             val id = try {
                 ownId()
             } catch (cancelled: CancellationException) {
@@ -302,7 +302,7 @@ class DhtDiscoveryManager(
             if (id == null || IdentityCrypto.parsePublicId(id) == null) {
                 cachedTurnCredentials = null
                 cachedTurnOwner = null
-                return@withLock null
+                return null
             }
             if (cachedTurnOwner != id) {
                 cachedTurnCredentials = null
@@ -310,7 +310,7 @@ class DhtDiscoveryManager(
             }
             val now = System.currentTimeMillis() / 1000
             cachedTurnCredentials?.let { cached ->
-                if (!forceRefresh && cached.expiresAtSeconds > now + 45) return@withLock cached
+                if (!forceRefresh && cached.expiresAtSeconds > now + 45) return cached
             }
             for (gateway in network.discoveryGateways.value.filter { it.enabled }) {
                 try {
@@ -318,7 +318,7 @@ class DhtDiscoveryManager(
                     if (credentials != null) {
                         cachedTurnCredentials = credentials
                         cachedTurnOwner = id
-                        return@withLock credentials
+                        return credentials
                     }
                 } catch (cancelled: CancellationException) {
                     throw cancelled
@@ -326,8 +326,11 @@ class DhtDiscoveryManager(
                     // Try the next gateway.
                 }
             }
-            cachedTurnCredentials?.takeIf { it.expiresAtSeconds > now + 10 }
+            return cachedTurnCredentials?.takeIf { it.expiresAtSeconds > now + 10 }
+        } finally {
+            turnRefreshMutex.unlock()
         }
+    }
 
     suspend fun testGateway(url: String): Boolean = try {
         withTimeout(8_000) { client.test(url) }
