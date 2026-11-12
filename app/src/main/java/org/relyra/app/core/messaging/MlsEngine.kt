@@ -73,6 +73,11 @@ class MlsEngine(
             .also { check(it.isNotEmpty()) { "OpenMLS returned an empty KeyPackage" } }
     }
 
+    suspend fun keyPackageIdentity(keyPackage: ByteArray): String = withContext(Dispatchers.IO) {
+        ensureInitialized()
+        MlsNative.nativeKeyPackageIdentity(keyPackage).toString(StandardCharsets.UTF_8)
+    }
+
     suspend fun addMembers(groupId: String, keyPackages: List<ByteArray>): MlsCommitBundle =
         withContext(Dispatchers.IO) {
             require(keyPackages.isNotEmpty() && keyPackages.size <= 200)
