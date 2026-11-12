@@ -18,16 +18,16 @@ interface GroupDao {
     @Query("SELECT * FROM chat_groups ORDER BY createdAt DESC")
     fun observeAll(): Flow<List<GroupEntity>>
 
-    @Query("SELECT * FROM chat_groups ORDER BY createdAt ASC")
+    @Query("SELECT * FROM chat_groups ORDER BY createdAt ASC LIMIT 100000")
     suspend fun allForDeviceSync(): List<GroupEntity>
 
-    @Query("SELECT * FROM group_members ORDER BY groupId, memberId")
+    @Query("SELECT * FROM group_members ORDER BY groupId, memberId LIMIT 100000")
     suspend fun allMembersForDeviceSync(): List<GroupMemberEntity>
 
-    @Query("SELECT * FROM group_messages ORDER BY createdAt ASC")
+    @Query("SELECT * FROM group_messages ORDER BY createdAt ASC LIMIT 100000")
     suspend fun allMessagesForDeviceSync(): List<GroupMessageEntity>
 
-    @Query("SELECT * FROM group_attachments ORDER BY createdAt ASC")
+    @Query("SELECT * FROM group_attachments ORDER BY createdAt ASC LIMIT 100000")
     suspend fun allAttachmentsForDeviceSync(): List<GroupAttachmentEntity>
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
