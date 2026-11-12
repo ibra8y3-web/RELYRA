@@ -73,7 +73,11 @@ class AppContainer(context: Context) {
     }
 
     val backup: BackupManager by lazy {
-        BackupManager(database, secure, appContext.getDatabasePath("relyra.db"), java.io.File(appContext.filesDir, "restore"), appContext.filesDir, mapOf("relyra_settings" to appContext.getSharedPreferences("relyra_settings", Context.MODE_PRIVATE), "relyra_blossom" to appContext.getSharedPreferences("relyra_blossom", Context.MODE_PRIVATE)))
+        BackupManager(database, secure, appContext.getDatabasePath("relyra.db"), java.io.File(appContext.filesDir, "restore"), appContext.filesDir, mapOf(
+                "relyra_settings" to appContext.getSharedPreferences("relyra_settings", Context.MODE_PRIVATE),
+                "relyra_blossom" to appContext.getSharedPreferences("relyra_blossom", Context.MODE_PRIVATE),
+                "relyra_network" to appContext.getSharedPreferences("relyra_network", Context.MODE_PRIVATE),
+            ))
     }
 
     /** Turns a NEW incoming message into a notification (never for a muted conversation, never with text unless allowed). */
