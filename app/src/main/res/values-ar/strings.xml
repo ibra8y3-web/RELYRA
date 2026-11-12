@@ -385,4 +385,5 @@
     <string name="ev_device_revoked">إلغاء الثقة بجهاز</string>
     <string name="ev_device_key_rotated">تدوير مفاتيح جهاز</string>
     <string name="ev_device_sync_conflict">تعارض مزامنة الأجهزة</string>
+    <string name="devices_register_primary">تسجيل هذا الجهاز كأول جهاز موثوق</string>
 </resources>
