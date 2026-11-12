@@ -208,11 +208,6 @@ func (s *Store) PublishPost(ctx context.Context, raw []byte) (Post, error) {
 		} else if p.Sequence > last {
 			return p, errors.New("post sequence has a gap")
 		}
-		if now > policy.LastPostAt {
-			policy.LastPostAt = now
-			encoded, _ := json.Marshal(policy)
-			if err := s.ds.Put(ctx, policyKey, encoded); err != nil { return p, err }
-		}
 		return existing, nil
 	} else if !errors.Is(getErr, datastore.ErrNotFound) { return p, getErr }
 
@@ -220,16 +215,18 @@ func (s *Store) PublishPost(ctx context.Context, raw []byte) (Post, error) {
 	if err != nil { return p, err }
 	if p.Sequence != last+1 { return p, errors.New("post sequence is stale, duplicated or has a gap") }
 
+	// Persist the cooldown before accepting the post/sequence. If a later write fails,
+	// retries remain conservative instead of allowing a slow-mode bypass.
+	policy.LastPostAt = maxInt64(policy.LastPostAt, now)
+	policyBytes, err := json.Marshal(policy)
+	if err != nil { return p, err }
+	if err := s.ds.Put(ctx, policyKey, policyBytes); err != nil { return p, err }
 	encoded, err := json.Marshal(p)
 	if err != nil { return p, err }
 	if err := s.ds.Put(ctx, key, encoded); err != nil { return p, err }
 	if err := s.ds.Put(ctx, postSequenceKey(p.CommunityID, p.AuthorPublicID), []byte(strconv.FormatUint(p.Sequence, 10))); err != nil {
 		return p, err
 	}
-	policy.LastPostAt = maxInt64(policy.LastPostAt, now)
-	policyBytes, err := json.Marshal(policy)
-	if err != nil { return p, err }
-	if err := s.ds.Put(ctx, policyKey, policyBytes); err != nil { return p, err }
 	return p, nil
 }
 
