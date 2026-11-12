@@ -104,8 +104,16 @@ class BackupManager(
         try {
             val restored = input.use { source -> BackupCrypto.open(source, passphrase).use { BackupPayload.read(it, bundle) } }
             restoredFiles.deleteRecursively()
-            val restoredPrefs = BackupArchive.unpack(bundle, part, restoredFiles, File(stageDir, "pending-prefs"))
-            writePendingPreferences(restoredPrefs)
+            val signature = ByteArray(2)
+            val isArchive = bundle.inputStream().use { it.read(signature) == 2 && signature[0] == 0x50.toByte() && signature[1] == 0x4B.toByte() }
+            if (isArchive) {
+                val restoredPrefs = BackupArchive.unpack(bundle, part, restoredFiles, File(stageDir, "pending-prefs"))
+                writePendingPreferences(restoredPrefs)
+            } else {
+                // Backward compatibility: older encrypted backups stored the database bytes directly.
+                if (!bundle.renameTo(part)) throw BackupException("could not stage legacy database backup")
+                writePendingPreferences(emptyMap())
+            }
             bundle.delete()
             if (restored.dbVersion < 1 || restored.dbVersion > db.openHelper.readableDatabase.version) {
                 throw BackupException("this backup was made by a newer version of RELYRA")
