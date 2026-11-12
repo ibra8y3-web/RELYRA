@@ -547,7 +547,7 @@ class GroupEngine(
                 }.map { it.id }.toSet()
                 if (allowedTargets.isEmpty()) return
                 val acceptedEpoch = runCatching {
-                    engine.processProposal(env.payload, env.from, allowedTargets, allowAdd = false, allowRemove = true)
+                    engine.processProposal(env.payload, env.messageId, env.from, allowedTargets, allowAdd = false, allowRemove = true)
                 }.getOrNull() ?: return
                 if (acceptedEpoch != group.mlsEpoch) return
                 if (!store.recordControlMessage(env.messageId, clock())) { ack(me, env.from, env.messageId); return }
