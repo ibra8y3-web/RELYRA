@@ -2,7 +2,7 @@
 <resources>
     <!-- backup and restore -->
     <string name="settings_backup">Backup and restore</string>
-    <string name="backup_desc">Saves your identity, contacts, messages, groups and settings into one file, locked with a passphrase you choose. Downloaded attachments and vault files are not included. There is no cloud: you decide where the file goes.</string>
+    <string name="backup_desc">Saves your identity, contacts, messages, groups, attachments, Vault files, private prekeys, Blossom server list and app settings into one passphrase-encrypted file. The backup stays local: you choose where to store it.</string>
     <string name="backup_create">Create encrypted backup</string>
     <string name="backup_restore">Restore from backup</string>
     <string name="backup_pass_title">Choose a passphrase</string>
