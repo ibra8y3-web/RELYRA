@@ -264,6 +264,8 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
                         groupDao.put(incoming)
                         replaceMemberGroups.add(id)
                         pUpdated++
+                    } else if(current.epoch==incoming.epoch && current.mlsEpoch==incoming.mlsEpoch) {
+                        replaceMemberGroups.add(id)
                     } else if(current!=incoming) conflicts++
                 }
                 for(i in 0 until gma.length()) {
