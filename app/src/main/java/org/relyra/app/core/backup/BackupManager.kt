@@ -232,7 +232,11 @@ object RestoreApplier {
      * succeeds. Sidecar WAL/journal files are moved aside as part of the same guarded operation.
      */
     fun applyIfPending(stageDir: File, dbFile: File, secure: SecureStore, filesDir: File, preferenceStores: Map<String, SharedPreferences>): Boolean {
-        if (!File(stageDir, MARKER).isFile) return false
+        if (!File(stageDir, MARKER).isFile) {
+            // Remove abandoned plaintext staging artifacts (including prekey material) after a crash.
+            clear(stageDir)
+            return false
+        }
         val stagedDb = File(stageDir, DB_READY)
         val keysFile = File(stageDir, KEYS)
         if (!stagedDb.isFile || stagedDb.length() <= 0L || !keysFile.isFile) {
