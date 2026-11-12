@@ -328,4 +328,6 @@
     <string name="groups_mls_pending_hint">يمكن لمالك المجموعة اعتماد مقترحات المشرفين التي تم التحقق منها معًا في حقبة MLS واحدة.</string>
     <string name="groups_mls_commit_pending">اعتماد التغييرات المعلقة</string>
 
+    <string name="groups_mls_pending_delivery_hint">بانتظار تأكيد استلام %1$d من الأعضاء. لن يُتاح الاعتماد حتى يخزن كل عضو المقترح.</string>
+
 </resources>
