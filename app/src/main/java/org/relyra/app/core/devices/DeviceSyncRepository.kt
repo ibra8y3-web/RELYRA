@@ -21,7 +21,8 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
         val identity=checkNotNull(db.identityDao().get())
         val contacts=db.contactDao().allForDeviceSync()
         val messages=db.messageDao().allForDeviceSync().filter { !it.outgoing || it.state !in setOf("QUEUED", "SENT", "RELAYED") }
-        val attachments=db.attachmentDao().allForDeviceSync()
+        val exportedMessageIds=messages.mapTo(HashSet()) { it.messageId }
+        val attachments=db.attachmentDao().allForDeviceSync().filter { it.messageId in exportedMessageIds }
         val prefs=db.chatPrefDao().allForDeviceSync()
         val trustedDevices=db.trustedDeviceDao().observeForAccount(identity.publicId).first()
         require(contacts.size+messages.size+attachments.size+prefs.size+trustedDevices.size<=LIMIT)
