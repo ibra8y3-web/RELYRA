@@ -672,4 +672,88 @@ mod tests {
             "a removed member must not recover the new epoch after reopening storage",
         );
     }
+    fn test_credential(public_id: &str, device_id: &str) -> Vec<u8> {
+        let mut value = b"RMLC".to_vec();
+        value.push(1);
+        value.extend_from_slice(&(public_id.len() as u16).to_be_bytes());
+        value.extend_from_slice(public_id.as_bytes());
+        value.extend_from_slice(&(device_id.len() as u16).to_be_bytes());
+        value.extend_from_slice(device_id.as_bytes());
+        value.extend_from_slice(&[0u8; 64]);
+        value
+    }
+
+    #[test]
+    fn native_add_proposal_is_stored_committed_and_joined_by_welcome() {
+        let temp = tempdir().unwrap();
+        let mut owner = database(temp.path().join("owner.db").to_str().unwrap(), &[0x51; 32]);
+        let mut invitee = database(temp.path().join("invitee.db").to_str().unwrap(), &[0x52; 32]);
+        let gid = b"rfc9420-add-proposal";
+        let owner_credential = test_credential("alice", "00000000-0000-4000-8000-000000000001");
+        let invitee_credential = test_credential("bob", "00000000-0000-4000-8000-000000000002");
+
+        create_group(&mut owner, gid, &owner_credential).unwrap();
+        let key_package = generate_key_package(&mut invitee, &invitee_credential).unwrap();
+        let proposal = propose_add_member(&mut owner, gid, &key_package).unwrap();
+        assert_eq!(process_proposal(&mut owner, &proposal, "alice").unwrap(), 0);
+        assert_eq!(pending_proposal_count(&mut owner, gid).unwrap(), 1);
+
+        let committed = commit_pending_proposals(&mut owner, gid).unwrap();
+        assert_eq!(committed.epoch, 1);
+        let welcome = BASE64.decode(committed.welcome.unwrap()).unwrap();
+        join_group(&mut invitee, gid, &welcome, &invitee_credential).unwrap();
+        assert_eq!(members(&mut owner, gid).unwrap().len(), 2);
+        assert_eq!(members(&mut invitee, gid).unwrap().len(), 2);
+        assert_eq!(pending_proposal_count(&mut owner, gid).unwrap(), 0);
+    }
+
+    #[test]
+    fn multiple_admin_remove_proposals_from_one_epoch_are_committed_together() {
+        let temp = tempdir().unwrap();
+        let mut owner = database(temp.path().join("owner.db").to_str().unwrap(), &[0x61; 32]);
+        let mut admin_b = database(temp.path().join("admin-b.db").to_str().unwrap(), &[0x62; 32]);
+        let mut admin_c = database(temp.path().join("admin-c.db").to_str().unwrap(), &[0x63; 32]);
+        let gid = b"rfc9420-multi-admin-proposals";
+        let owner_credential = test_credential("alice", "00000000-0000-4000-8000-000000000011");
+        let admin_b_credential = test_credential("bob", "00000000-0000-4000-8000-000000000012");
+        let admin_c_credential = test_credential("carol", "00000000-0000-4000-8000-000000000013");
+
+        create_group(&mut owner, gid, &owner_credential).unwrap();
+        let b_package = generate_key_package(&mut admin_b, &admin_b_credential).unwrap();
+        let b_join = add_members(&mut owner, gid, &[b_package]).unwrap();
+        join_group(
+            &mut admin_b, gid, &BASE64.decode(b_join.welcome.unwrap()).unwrap(), &admin_b_credential,
+        ).unwrap();
+
+        let c_package = generate_key_package(&mut admin_c, &admin_c_credential).unwrap();
+        let c_join = add_members(&mut owner, gid, &[c_package]).unwrap();
+        let c_commit = BASE64.decode(c_join.commit).unwrap();
+        assert_eq!(process_message(&mut admin_b, &c_commit).unwrap().kind, "commit");
+        join_group(
+            &mut admin_c, gid, &BASE64.decode(c_join.welcome.unwrap()).unwrap(), &admin_c_credential,
+        ).unwrap();
+
+        assert_eq!(epoch(&mut owner, gid).unwrap(), 2);
+        assert_eq!(epoch(&mut admin_b, gid).unwrap(), 2);
+        assert_eq!(epoch(&mut admin_c, gid).unwrap(), 2);
+
+        let remove_c = propose_remove_member(&mut admin_b, gid, &admin_c_credential).unwrap();
+        let remove_b = propose_remove_member(&mut admin_c, gid, &admin_b_credential).unwrap();
+        assert_eq!(process_proposal(&mut owner, &remove_c, "bob").unwrap(), 2);
+        assert_eq!(process_proposal(&mut owner, &remove_b, "carol").unwrap(), 2);
+        assert_eq!(pending_proposal_count(&mut owner, gid).unwrap(), 2);
+
+        let committed = commit_pending_proposals(&mut owner, gid).unwrap();
+        assert_eq!(committed.epoch, 3);
+        let commit = BASE64.decode(committed.commit).unwrap();
+        assert_eq!(process_message(&mut admin_b, &commit).unwrap().kind, "commit");
+        assert_eq!(process_message(&mut admin_c, &commit).unwrap().kind, "commit");
+        assert_eq!(members(&mut owner, gid).unwrap().len(), 1);
+        assert_eq!(pending_proposal_count(&mut owner, gid).unwrap(), 0);
+
+        let post_commit = encrypt(&mut owner, gid, b"only the owner remains").unwrap();
+        assert!(process_message(&mut admin_b, &post_commit).is_err());
+        assert!(process_message(&mut admin_c, &post_commit).is_err());
+    }
+
 }
