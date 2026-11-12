@@ -104,8 +104,8 @@ object InternetSignalCodec {
         if (canonicalSession != sessionId.lowercase() ||
             IdentityCrypto.parsePublicId(from) == null ||
             IdentityCrypto.parsePublicId(to) == null ||
-            from == to || type !in setOf("offer", "answer") ||
-            sdp.isBlank() || sdp.length > MAX_SDP_CHARS
+            from == to || type !in setOf("offer", "answer", "call_offer", "call_answer", "call_decline", "call_end") ||
+            (type !in setOf("call_decline", "call_end") && sdp.isBlank()) || sdp.length > MAX_SDP_CHARS
         ) return null
         val signature = sign(transcript(from, to, type, sdp, issuedAt, canonicalSession)) ?: return null
         if (signature.size != 64) return null
@@ -141,8 +141,8 @@ object InternetSignalCodec {
             val canonicalSession = runCatching { UUID.fromString(sessionId).toString() }.getOrNull() ?: return null
             if (canonicalSession != sessionId ||
                 to != ownId.lowercase() || from != expectedPeerId.lowercase() ||
-                type !in setOf("offer", "answer") || sdp.isBlank() ||
-                sdp.length > MAX_SDP_CHARS || issuedAt > nowSeconds + 60 ||
+                type !in setOf("offer", "answer", "call_offer", "call_answer", "call_decline", "call_end") ||
+                (type !in setOf("call_decline", "call_end") && sdp.isBlank()) || sdp.length > MAX_SDP_CHARS || issuedAt > nowSeconds + 60 ||
                 nowSeconds - issuedAt > MAX_AGE_SECONDS
             ) return null
             val publicKey = IdentityCrypto.parsePublicId(from) ?: return null
