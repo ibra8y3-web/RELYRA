@@ -7,7 +7,7 @@ use crate::{
 };
 use jni::{
     objects::{JByteArray, JClass, JObjectArray, JString},
-    sys::{jbyteArray, jlong, jstring},
+    sys::{jboolean, jbyteArray, jlong, jstring},
     JNIEnv,
 };
 use serde::Serialize;
@@ -348,6 +348,8 @@ pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeProces
     message: JByteArray,
     expected_public_id: JString,
     allowed_target_ids: JObjectArray,
+    allow_add: jboolean,
+    allow_remove: jboolean,
 ) -> jlong {
     let message = match input_bytes(&mut env, message) {
         Ok(value) => value,
@@ -373,7 +375,7 @@ pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeProces
         };
         allowed.push(target);
     }
-    catch_result(&mut env, || with_database(|db| process_proposal(db, &message, &expected_public_id, &allowed)))
+    catch_result(&mut env, || with_database(|db| process_proposal(db, &message, &expected_public_id, &allowed, allow_add != 0, allow_remove != 0)))
         .map(|epoch| epoch as jlong)
         .unwrap_or(-1)
 }
