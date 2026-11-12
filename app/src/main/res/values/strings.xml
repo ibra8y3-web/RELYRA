@@ -394,4 +394,25 @@
     <string name="devices_rotate_keys">Rotate this device's signing key</string>
     <string name="devices_rotation_code">Signed device key-rotation code</string>
     <string name="devices_apply_rotation">Apply signed key rotation</string>
+
+    <string name="mesh_title">Offline Bluetooth LE Mesh</string>
+    <string name="mesh_enable">Enable nearby BLE mesh</string>
+    <string name="mesh_description">Discover nearby RELYRA nodes over Bluetooth Low Energy. Messages remain end-to-end encrypted. Delivery is opportunistic and requires participating devices to run the mesh service.</string>
+    <string name="mesh_relay_consent">Allow this phone to relay other users' encrypted packets</string>
+    <string name="mesh_relay_explanation">When enabled, this phone may store and forward ciphertext for other users. Relaying is off by default. Relays can observe timing, packet size and nearby device metadata, but cannot read message contents.</string>
+    <string name="mesh_neighbors">Connected mesh neighbors</string>
+    <string name="mesh_queue">Packets waiting for forwarding</string>
+    <string name="mesh_storage">Encrypted transit storage</string>
+    <string name="mesh_expired">Expired packets removed</string>
+    <string name="mesh_quota_label">Storage quota (5–100 MB)</string>
+    <string name="mesh_quota_save">Save storage quota</string>
+    <string name="mesh_status_disabled">BLE mesh is disabled.</string>
+    <string name="mesh_status_permission">Bluetooth scan, connect and advertise permissions are required.</string>
+    <string name="mesh_status_unsupported">This device does not support BLE mesh advertising or scanning.</string>
+    <string name="mesh_status_bluetooth_off">Turn on Bluetooth to use offline mesh.</string>
+    <string name="mesh_status_starting">Starting the BLE mesh service…</string>
+    <string name="mesh_status_scanning">Advertising and discovering nearby mesh nodes.</string>
+    <string name="mesh_status_active">BLE mesh is active.</string>
+    <string name="mesh_status_failed">The BLE mesh service could not start. Check Bluetooth and permissions.</string>
+
 </resources>
