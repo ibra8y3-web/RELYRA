@@ -17,8 +17,8 @@ import java.util.Properties
  * Encrypted database backup. The database snapshot is checkpointed and copied while a Room transaction
  * prevents concurrent writers. Restoring is staged and applied before Room is opened on the next launch.
  *
- * Note: version 1 payloads contain the SQLCipher database and identity/database keys only. External
- * attachment and vault ciphertext is not silently represented as backed up by this format.
+ * The encrypted archive contains the SQLCipher database, private attachment/Vault ciphertext, wrapped
+ * identity/database/prekey secrets, and portable app/server preferences. Legacy database-only backups remain readable.
  */
 class BackupManager(
     private val db: AppDatabase,

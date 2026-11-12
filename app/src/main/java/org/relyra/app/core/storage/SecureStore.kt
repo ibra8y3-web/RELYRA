@@ -74,7 +74,10 @@ class SecureStore(context: Context) {
     fun restoreKeys(seed: ByteArray?, dbKey: ByteArray, preKeys: Map<String, ByteArray> = emptyMap()) {
         require(dbKey.size == 32) { "invalid database key" }
         require(seed == null || seed.isEmpty() || seed.size == 32) { "invalid identity seed" }
-        // Commit both root secrets and prekey invalidation in one SharedPreferences transaction.
+        require(preKeys.size <= 10_000 && preKeys.all { (id, value) ->
+            id.matches(Regex("[a-z-]+:[0-9]+")) && value.size == 32
+        }) { "invalid private prekey backup" }
+        // Commit root secrets and restored private prekeys in one SharedPreferences transaction.
         // This avoids a partially restored keyset if one individual write fails.
         val dbWrapped = Base64.getEncoder().encodeToString(
             KeystoreVault.wrap(dbKey, DB_KEY.toByteArray())
