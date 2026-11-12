@@ -41,6 +41,9 @@ import org.relyra.app.core.database.GroupEntity
 import org.relyra.app.core.database.GroupMemberEntity
 import org.relyra.app.core.database.GroupMessageEntity
 import org.relyra.app.core.database.GroupAttachmentEntity
+import org.relyra.app.core.database.CommunityEntity
+import org.relyra.app.core.community.CommunityManifest
+import org.relyra.app.core.community.CommunityEvent
 import org.relyra.app.core.database.GroupSummary
 import org.relyra.app.core.messaging.GroupKind
 import org.relyra.app.core.messaging.GroupOutcome
@@ -91,6 +94,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val summaries = MutableStateFlow<List<ChatSummary>>(emptyList())
     val pendingCount = MutableStateFlow(0)
     val groups = MutableStateFlow<List<GroupEntity>>(emptyList())
+    val savedCommunities = MutableStateFlow<List<CommunityEntity>>(emptyList())
+    val discoveredCommunities = MutableStateFlow<List<CommunityManifest>>(emptyList())
+    val communityEvents = MutableStateFlow<Map<String, List<CommunityEvent>>>(emptyMap())
+    val communityBusy = MutableStateFlow(false)
     val groupSummaries = MutableStateFlow<List<GroupSummary>>(emptyList())
     val nostrKey = MutableStateFlow<String?>(null)
     val chatPrefs = MutableStateFlow<Map<String, ChatPrefEntity>>(emptyMap())
@@ -197,6 +204,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             launch { container.messages.observeSummaries().collect { summaries.value = it } }
             launch { container.messages.observePending().collect { pendingCount.value = it } }
             launch { container.groupStore.observeGroups().collect { groups.value = it } }
+            launch { container.database.communityDao().observeAll().collect { savedCommunities.value = it } }
             launch { container.groupStore.observeSummaries().collect { groupSummaries.value = it } }
             launch { container.vault.observe().collect { vaultItems.value = it } }
             launch { container.data.observePrefs().collect { list -> chatPrefs.value = list.associateBy { it.chatId } } }
@@ -559,6 +567,116 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             message.value = UiMessage(
                 if (presence != null) R.string.net_dht_peer_found else R.string.net_dht_peer_not_found
             )
+        }
+    }
+
+    private suspend fun saveCommunity(manifest: CommunityManifest, localRole: String) {
+        ctr().database.communityDao().put(
+            CommunityEntity(
+                communityId = manifest.communityId,
+                manifestJson = ctr().communityClient.serializeManifest(manifest),
+                localRole = localRole,
+                updatedAt = manifest.updatedAt,
+                savedAt = System.currentTimeMillis(),
+            )
+        )
+    }
+
+    fun discoverCommunities() {
+        viewModelScope.launch(Dispatchers.IO) {
+            communityBusy.value = true
+            try {
+                val found = ctr().communityClient.discover()
+                discoveredCommunities.value = found
+                found.forEach { manifest ->
+                    if (savedCommunities.value.none { it.communityId == manifest.communityId }) {
+                        saveCommunity(manifest, "DISCOVERED")
+                    }
+                }
+                message.value = UiMessage(R.string.communities_discovery_complete)
+            } catch (t: Throwable) {
+                fail(t)
+            } finally {
+                communityBusy.value = false
+            }
+        }
+    }
+
+    fun createCommunity(name: String, description: String, visibility: String, onCreated: (String) -> Unit = {}) {
+        viewModelScope.launch(Dispatchers.IO) {
+            communityBusy.value = true
+            try {
+                val manifest = ctr().communityClient.createCommunity(name, description, visibility)
+                saveCommunity(manifest, "OWNER")
+                withContext(Dispatchers.Main) { onCreated(manifest.communityId) }
+            } catch (t: Throwable) {
+                fail(t)
+            } finally {
+                communityBusy.value = false
+            }
+        }
+    }
+
+    fun updateCommunityModerators(communityId: String, moderatorIds: List<String>) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val entity = ctr().database.communityDao().get(communityId) ?: return@launch
+                val manifest = ctr().communityClient.deserializeAndVerifyManifest(entity.manifestJson)
+                val updated = ctr().communityClient.updateModerators(manifest, moderatorIds)
+                saveCommunity(updated, entity.localRole)
+                message.value = UiMessage(R.string.communities_moderators_updated)
+            } catch (t: Throwable) {
+                fail(t)
+            }
+        }
+    }
+
+    fun loadCommunityEvents(communityId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val entity = ctr().database.communityDao().get(communityId) ?: return@launch
+                val manifest = ctr().communityClient.deserializeAndVerifyManifest(entity.manifestJson)
+                communityEvents.value = communityEvents.value + (communityId to ctr().communityClient.moderationEvents(manifest))
+            } catch (t: Throwable) {
+                fail(t)
+            }
+        }
+    }
+
+    fun moderateCommunity(
+        communityId: String,
+        action: String,
+        subjectPublicId: String,
+        reasonCode: String,
+        expiresAt: Long = 0,
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val entity = ctr().database.communityDao().get(communityId) ?: return@launch
+                val manifest = ctr().communityClient.deserializeAndVerifyManifest(entity.manifestJson)
+                ctr().communityClient.moderate(manifest, action, subjectPublicId, reasonCode, expiresAt)
+                loadCommunityEvents(communityId)
+                message.value = UiMessage(R.string.communities_moderation_saved)
+            } catch (t: Throwable) {
+                fail(t)
+            }
+        }
+    }
+
+    fun reportCommunity(communityId: String, category: String, redactedSummary: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                ctr().communityClient.submitReport(communityId, category, redactedSummary)
+                message.value = UiMessage(R.string.communities_report_submitted)
+            } catch (t: Throwable) {
+                fail(t)
+            }
+        }
+    }
+
+    fun removeSavedCommunity(communityId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { ctr().database.communityDao().delete(communityId) }
         }
     }
 
