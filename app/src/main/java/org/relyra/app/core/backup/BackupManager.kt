@@ -3,6 +3,9 @@ package org.relyra.app.core.backup
 import org.relyra.app.core.crypto.KeystoreVault
 import org.relyra.app.core.database.AppDatabase
 import org.relyra.app.core.storage.SecureStore
+import org.relyra.app.core.transfer.FileCrypto
+import java.security.MessageDigest
+import java.util.UUID
 import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.io.File
@@ -117,30 +120,52 @@ class BackupManager(
 
     /** Database rows and their app-private files must describe the same restorable snapshot. */
     private fun validateReferencedFiles(sdb: androidx.sqlite.db.SupportSQLiteDatabase) {
-        val inbox = File(filesDir, "inbox").canonicalFile.toPath()
-        val outbox = File(filesDir, "outbox").canonicalFile.toPath()
-        sdb.query("SELECT localPath FROM attachments WHERE localPath IS NOT NULL").use { cursor ->
-            while (cursor.moveToNext()) {
-                val file = File(cursor.getString(0)).canonicalFile
-                val path = file.toPath()
-                if (!file.isFile || (!path.startsWith(inbox) && !path.startsWith(outbox))) {
-                    throw java.io.IOException("an attachment referenced by the database is missing or outside private storage")
+        val inboxRoot = File(filesDir, "inbox").canonicalFile.toPath()
+        val outboxRoot = File(filesDir, "outbox").canonicalFile.toPath()
+        val vaultRoot = File(filesDir, "vault").canonicalFile.toPath()
+
+        fun verifyAttachment(pathValue: String, plainSize: Long, plainHash: ByteArray, blobSize: Long, blobHash: ByteArray) {
+            val file = File(pathValue).canonicalFile
+            val path = file.toPath()
+            if (!file.isFile) throw java.io.IOException("an attachment referenced by the database is missing")
+            when {
+                path.startsWith(inboxRoot) -> {
+                    if (file.length() != plainSize || !MessageDigest.isEqual(FileCrypto.sha256(file), plainHash)) {
+                        throw java.io.IOException("a downloaded attachment failed its size or SHA-256 check")
+                    }
                 }
+                path.startsWith(outboxRoot) -> {
+                    if (file.length() != blobSize || !MessageDigest.isEqual(FileCrypto.sha256(file), blobHash)) {
+                        throw java.io.IOException("an outgoing encrypted attachment failed its size or SHA-256 check")
+                    }
+                }
+                else -> throw java.io.IOException("an attachment path is outside RELYRA private storage")
             }
         }
-        sdb.query("SELECT localPath FROM group_attachments WHERE localPath IS NOT NULL").use { cursor ->
+
+        sdb.query("SELECT localPath, size, plainSha256, blobSize, blobSha256 FROM attachments WHERE localPath IS NOT NULL").use { cursor ->
             while (cursor.moveToNext()) {
-                val file = File(cursor.getString(0)).canonicalFile
-                if (!file.isFile || !file.toPath().startsWith(inbox)) {
-                    throw java.io.IOException("a group attachment referenced by the database is missing or outside private storage")
-                }
+                verifyAttachment(cursor.getString(0), cursor.getLong(1), cursor.getBlob(2), cursor.getLong(3), cursor.getBlob(4))
             }
         }
-        sdb.query("SELECT id FROM vault_items").use { cursor ->
+        sdb.query("SELECT localPath, size, plainSha256, blobSize, blobSha256 FROM group_attachments WHERE localPath IS NOT NULL").use { cursor ->
             while (cursor.moveToNext()) {
-                val file = File(File(filesDir, "vault"), cursor.getString(0) + ".enc").canonicalFile
-                if (!file.isFile || !file.toPath().startsWith(File(filesDir, "vault").canonicalFile.toPath())) {
+                verifyAttachment(cursor.getString(0), cursor.getLong(1), cursor.getBlob(2), cursor.getLong(3), cursor.getBlob(4))
+            }
+        }
+        sdb.query("SELECT id, size, plainSha256, fileKey FROM vault_items").use { cursor ->
+            while (cursor.moveToNext()) {
+                val blob = File(File(filesDir, "vault"), cursor.getString(0) + ".enc").canonicalFile
+                if (!blob.isFile || !blob.toPath().startsWith(vaultRoot)) {
                     throw java.io.IOException("a Vault item referenced by the database is missing")
+                }
+                val temp = File(stageDir, "verify-vault-${UUID.randomUUID()}.tmp")
+                try {
+                    if (!FileCrypto.decrypt(blob, temp, cursor.getBlob(3), cursor.getBlob(2), cursor.getLong(1))) {
+                        throw java.io.IOException("a Vault item failed its authentication or SHA-256 check")
+                    }
+                } finally {
+                    temp.delete()
                 }
             }
         }
