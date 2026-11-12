@@ -1,5 +1,6 @@
 package org.relyra.app.ui.screens
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -25,6 +26,7 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -49,6 +51,8 @@ fun CommunitiesScreen(vm: MainViewModel) {
     val discovered by vm.discoveredCommunities.collectAsStateWithLifecycle()
     val communityEvents by vm.communityEvents.collectAsStateWithLifecycle()
     val reportsByCommunity by vm.communityReports.collectAsStateWithLifecycle()
+    val postsByCommunity by vm.communityPosts.collectAsStateWithLifecycle()
+    val reportAudits by vm.communityReportAudits.collectAsStateWithLifecycle()
     val busy by vm.communityBusy.collectAsStateWithLifecycle()
     val identity by vm.identity.collectAsStateWithLifecycle()
     val clipboard = LocalClipboardManager.current
@@ -74,6 +78,9 @@ fun CommunitiesScreen(vm: MainViewModel) {
     var inviteMemberId by rememberSaveable { mutableStateOf("") }
     var invitationCode by rememberSaveable { mutableStateOf("") }
     var acceptedInvitationCode by rememberSaveable { mutableStateOf("") }
+    var postBody by rememberSaveable { mutableStateOf("") }
+    var reviewNote by rememberSaveable { mutableStateOf("") }
+    var auditReportId by rememberSaveable { mutableStateOf<String?>(null) }
 
     val savedById = saved.associateBy { it.communityId }
     val selectedEntity = selectedId?.let(savedById::get)
@@ -86,6 +93,10 @@ fun CommunitiesScreen(vm: MainViewModel) {
     )
     val events = selectedId?.let { communityEvents[it] }.orEmpty()
     val reports = selectedId?.let { reportsByCommunity[it] }.orEmpty()
+    val posts = selectedId?.let { postsByCommunity[it] }.orEmpty()
+    LaunchedEffect(selectedManifest?.communityId) {
+        selectedManifest?.let { vm.loadCommunityPosts(it) }
+    }
 
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -129,6 +140,7 @@ fun CommunitiesScreen(vm: MainViewModel) {
                     onClick = {
                         selectedId = entity.communityId
                         vm.loadCommunityEvents(entity.communityId)
+                        manifest?.let { vm.loadCommunityPosts(it) }
                     },
                 )
             }
@@ -140,7 +152,11 @@ fun CommunitiesScreen(vm: MainViewModel) {
                         detail = manifest.description,
                         visibility = manifest.visibility,
                         selected = manifest.communityId == selectedId,
-                        onClick = { selectedId = manifest.communityId },
+                        onClick = {
+                            selectedId = manifest.communityId
+                            vm.saveDiscoveredCommunity(manifest)
+                            vm.loadCommunityPosts(manifest)
+                        },
                     )
                 }
             }
@@ -193,14 +209,59 @@ fun CommunitiesScreen(vm: MainViewModel) {
             }
             if (isModerator) {
                 OutlinedButton(onClick = {
-                    vm.loadCommunityReports(selectedManifest.communityId)
+                    vm.loadCommunityReports(selectedManifest)
                     showReports = true
                 }) {
                     Text(stringResource(R.string.communities_view_reports))
                 }
             }
+            if (selectedManifest.visibility == "public" || isOwner || selectedEntity?.localRole == "MEMBER") {
+                Text(stringResource(R.string.communities_posts_title), style = MaterialTheme.typography.titleMedium)
+                if (selectedManifest.visibility == "private") {
+                    Text(
+                        stringResource(R.string.communities_private_feed_notice),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
+                OutlinedTextField(
+                    value = postBody,
+                    onValueChange = { postBody = it.take(4_000) },
+                    label = { Text(stringResource(R.string.communities_post_hint)) },
+                    modifier = Modifier.fillMaxWidth(),
+                    minLines = 2,
+                    maxLines = 5,
+                )
+                Button(
+                    onClick = {
+                        vm.publishCommunityPost(selectedManifest, postBody)
+                        postBody = ""
+                    },
+                    enabled = postBody.isNotBlank(),
+                ) { Text(stringResource(R.string.communities_post_publish)) }
+            }
+            if (posts.isEmpty()) {
+                Text(stringResource(R.string.communities_post_empty), style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+            } else {
+                posts.take(20).forEach { post ->
+                    Column(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                        Text(post.authorPublicId.take(14) + " · #" + post.sequence,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = MaterialTheme.colorScheme.secondary)
+                        Text(post.body, style = MaterialTheme.typography.bodyMedium)
+                        HorizontalDivider()
+                    }
+                }
+            }
             if (showReports && isModerator) {
                 Text(stringResource(R.string.communities_recent_reports), style = MaterialTheme.typography.titleSmall)
+                OutlinedTextField(
+                    value = reviewNote,
+                    onValueChange = { reviewNote = it.take(256) },
+                    label = { Text(stringResource(R.string.communities_review_note)) },
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 if (reports.isEmpty()) {
                     Text(
                         stringResource(R.string.communities_no_reports),
@@ -208,13 +269,57 @@ fun CommunitiesScreen(vm: MainViewModel) {
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 } else {
-                    reports.take(20).forEach { report ->
-                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    reports.take(20).forEach { row ->
+                        val report = row.report
+                        val auditKey = "${selectedManifest.communityId}/${report.reportId}"
+                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
-                                report.category + " · " + report.reporterPublicId.take(12),
+                                report.category + " · " + report.reporterPublicId.take(12) +
+                                    " · " + stringResource(communityReportStatusLabel(row.status)),
                                 style = MaterialTheme.typography.labelMedium,
                             )
                             Text(report.summary, style = MaterialTheme.typography.bodySmall)
+                            row.decisionNote?.let {
+                                Text(it, style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant)
+                            }
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                if (row.status == "open" || (row.status == "in_review" && row.reviewerPublicId.equals(ownId, true))) {
+                                    TextButton(onClick = {
+                                        vm.reviewCommunityReport(selectedManifest, report.reportId, "in_review", reviewNote)
+                                    }) { Text(stringResource(R.string.communities_review_take)) }
+                                }
+                                if (isOwner && row.status != "resolved" && row.status != "dismissed") {
+                                    TextButton(
+                                        onClick = {
+                                            vm.reviewCommunityReport(selectedManifest, report.reportId, "resolved", reviewNote)
+                                        },
+                                        enabled = reviewNote.isNotBlank(),
+                                    ) { Text(stringResource(R.string.communities_review_resolve)) }
+                                    TextButton(
+                                        onClick = {
+                                            vm.reviewCommunityReport(selectedManifest, report.reportId, "dismissed", reviewNote)
+                                        },
+                                        enabled = reviewNote.isNotBlank(),
+                                    ) { Text(stringResource(R.string.communities_review_dismiss)) }
+                                }
+                                TextButton(onClick = {
+                                    auditReportId = report.reportId
+                                    vm.loadCommunityReportAudit(selectedManifest, report.reportId)
+                                }) { Text(stringResource(R.string.communities_review_audit)) }
+                            }
+                            if (auditReportId == report.reportId) {
+                                reportAudits[auditKey].orEmpty().forEach { audit ->
+                                    Text(
+                                        "#${audit.order} · ${stringResource(communityReportStatusLabel(audit.review.status))} · ${audit.review.reviewerPublicId.take(10)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                    )
+                                    if (audit.review.note.isNotBlank()) {
+                                        Text(audit.review.note, style = MaterialTheme.typography.bodySmall)
+                                    }
+                                }
+                            }
+                            HorizontalDivider()
                         }
                     }
                 }
@@ -380,19 +485,27 @@ fun CommunitiesScreen(vm: MainViewModel) {
                     var expanded by remember { mutableStateOf(false) }
                     val actionLabel = when (action) {
                         "ban" -> stringResource(R.string.communities_action_ban)
+                        "mute" -> stringResource(R.string.communities_action_mute)
+                        "slow_mode" -> stringResource(R.string.communities_action_slow_mode)
+                        "allow_post" -> stringResource(R.string.communities_action_allow_post)
                         "unban" -> stringResource(R.string.communities_action_unban)
                         else -> stringResource(R.string.communities_action_remove_member)
                     }
                     OutlinedButton(onClick = { expanded = true }) { Text(actionLabel) }
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        val availableActions = if (isOwner) {
-                            listOf(
-                                "ban" to R.string.communities_action_ban,
+                        val commonActions = listOf(
+                            "ban" to R.string.communities_action_ban,
+                            "mute" to R.string.communities_action_mute,
+                            "slow_mode" to R.string.communities_action_slow_mode,
+                        )
+                        val availableActions = when {
+                            isOwner -> commonActions + listOf(
                                 "unban" to R.string.communities_action_unban,
-                                "remove_member" to R.string.communities_action_remove_member,
-                            )
-                        } else {
-                            listOf("ban" to R.string.communities_action_ban)
+                                "allow_post" to R.string.communities_action_allow_post,
+                            ) + if (selectedManifest.visibility == "private") {
+                                listOf("remove_member" to R.string.communities_action_remove_member)
+                            } else emptyList()
+                            else -> commonActions
                         }
                         availableActions.forEach { (value, label) ->
                             DropdownMenuItem(
@@ -463,6 +576,14 @@ private fun CommunityCard(
                 color = MaterialTheme.colorScheme.secondary)
         }
     }
+}
+
+@StringRes
+private fun communityReportStatusLabel(status: String): Int = when (status) {
+    "in_review" -> R.string.communities_report_status_in_review
+    "resolved" -> R.string.communities_report_status_resolved
+    "dismissed" -> R.string.communities_report_status_dismissed
+    else -> R.string.communities_report_status_open
 }
 
 private fun manifestFromEntity(entity: CommunityEntity): CommunityManifest {

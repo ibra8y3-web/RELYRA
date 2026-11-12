@@ -168,14 +168,21 @@ class MlsEngine(
         List(json.length()) { index -> json.getString(index) }
     }
 
-    override suspend fun close() = withContext(Dispatchers.IO) {
-        nativeLock.withLock {
-            initLock.withLock {
-                if (initialized) {
-                    MlsNative.nativeClose()
-                    initialized = false
-                }
+    /** Holds the native-operation mutex while a consistent on-disk MLS snapshot is copied. */
+    suspend fun <T> withBackupBarrier(block: suspend () -> T): T = withContext(Dispatchers.IO) {
+        nativeLock.lock()
+        try {
+            if (initialized) {
+                MlsNative.nativeClose()
+                initialized = false
             }
+            block()
+        } finally {
+            nativeLock.unlock()
         }
+    }
+
+    override suspend fun close() {
+        withBackupBarrier { Unit }
     }
 }

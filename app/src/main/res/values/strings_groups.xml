@@ -65,5 +65,6 @@
     <string name="err_group_contact">Every member must be one of your contacts with an encryption key.</string>
     <string name="err_group_invalid">This is not valid (empty name, nobody to add, or too many members).</string>
     <string name="err_group_state">This group is not active.</string>
+    <string name="group_membership_proposal_sent">Membership request sent to the group owner; it will apply after the owner processes it.</string>
     <string name="err_mls_unavailable">The OpenMLS native engine is not available in this build. MLS group operations are blocked rather than falling back to weaker encryption.</string>
 </resources>

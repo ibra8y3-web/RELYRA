@@ -247,6 +247,7 @@ fun AddContactScreen(vm: MainViewModel, onDone: () -> Unit) {
                         AddResult.IsSelf -> error = R.string.err_add_self
                         AddResult.AlreadyExists -> error = R.string.err_add_exists
                         AddResult.NameRequired -> error = R.string.err_add_name
+                        AddResult.FreshCardRequired -> error = R.string.err_add_fresh_card
                     }
                 }
             },

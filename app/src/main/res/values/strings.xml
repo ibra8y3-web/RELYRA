@@ -134,6 +134,7 @@
     <string name="err_add_self">This is your own identity.</string>
     <string name="err_add_exists">This contact is already in your list.</string>
     <string name="err_add_name">Enter a name for this contact.</string>
+    <string name="err_add_fresh_card">After backup restore, import a fresh signed v3 contact card with X3DH prekeys.</string>
     <string name="identity_qr_hint">Your signed contact card. Show it to someone in person so they can scan it.</string>
     <string name="identity_share">Share contact link</string>
     <string name="identity_rename">Change display name</string>
@@ -301,4 +302,25 @@
     <string name="settings_cat_notifications_desc">Notification behavior and background connection preferences.</string>
     <string name="settings_cat_diagnostics">Diagnostics &amp; system</string>
     <string name="settings_cat_diagnostics_desc">Connection diagnostics, app status and technical logs.</string>
+
+    <string name="communities_posts_title">Community feed</string>
+    <string name="communities_private_feed_notice">Private membership limits who can read this feed, but posts are not end-to-end encrypted and the discovery service can read them. Do not post sensitive information.</string>
+    <string name="communities_post_hint">Write a community post</string>
+    <string name="communities_post_publish">Publish signed post</string>
+    <string name="communities_post_published">Signed community post published.</string>
+    <string name="communities_post_empty">No verified posts have been published yet.</string>
+    <string name="communities_action_mute">Mute posting</string>
+    <string name="communities_action_slow_mode">Enable 30-second slow mode</string>
+    <string name="communities_action_allow_post">Allow posting</string>
+    <string name="communities_review_note">Moderator review note</string>
+    <string name="communities_review_take">Take review</string>
+    <string name="communities_review_resolve">Resolve</string>
+    <string name="communities_review_dismiss">Dismiss</string>
+    <string name="communities_review_audit">View audit</string>
+    <string name="communities_review_saved">Report review and audit entry saved.</string>
+    <string name="communities_report_status_open">Open</string>
+    <string name="communities_report_status_in_review">In review</string>
+    <string name="communities_report_status_resolved">Resolved</string>
+    <string name="communities_report_status_dismissed">Dismissed</string>
+
 </resources>

@@ -12,6 +12,8 @@ import org.relyra.app.core.backup.BackupPayload
 import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
+import java.io.OutputStream
+import java.io.IOException
 import java.util.Random
 
 class BackupCryptoTest {
@@ -127,6 +129,26 @@ class BackupCryptoTest {
             fail("expected IllegalArgumentException")
         } catch (e: IllegalArgumentException) {
             // expected
+        }
+    }
+
+
+    @Test fun outputStorageFailureIsPropagatedInsteadOfReturningAValidBackup() {
+        val failing = object : OutputStream() {
+            private var written = 0
+            override fun write(value: Int) {
+                if (written++ > 80) throw IOException("disk full")
+            }
+            override fun write(bytes: ByteArray, offset: Int, length: Int) {
+                if (written + length > 80) throw IOException("disk full")
+                written += length
+            }
+        }
+        try {
+            BackupCrypto.seal(failing, pass, fast).use { it.write(ByteArray(1000) { 7 }) }
+            fail("expected storage failure")
+        } catch (e: IOException) {
+            assertEquals("disk full", e.message)
         }
     }
 

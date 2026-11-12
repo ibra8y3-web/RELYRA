@@ -62,11 +62,37 @@ class SecureStore(context: Context) {
         check(edit.commit()) { "secure prekey cleanup failed" }
     }
 
-    /** Used only when a backup is applied: replaces both secrets, re-wrapped by this device's Keystore key. */
-    fun restoreKeys(seed: ByteArray?, dbKey: ByteArray) {
-        write(DB_KEY, dbKey)
-        clearPreKeys()
-        if (seed != null && seed.isNotEmpty()) saveSeed(seed) else clearSeed()
+    /** Exports private prekeys only into the already passphrase-encrypted backup stream. */
+    fun exportPreKeys(): Map<String, ByteArray> = prefs.all.keys
+        .filter { it.startsWith("prekey_") }
+        .mapNotNull { storedName ->
+            val keyId = storedName.removePrefix("prekey_").replaceFirst("_", ":")
+            read(storedName)?.let { keyId to it }
+        }.toMap()
+
+    /** Used only when a backup is applied: secrets are re-wrapped by this device's Keystore key. */
+    fun restoreKeys(seed: ByteArray?, dbKey: ByteArray, preKeys: Map<String, ByteArray> = emptyMap()) {
+        require(dbKey.size == 32) { "invalid database key" }
+        require(seed == null || seed.isEmpty() || seed.size == 32) { "invalid identity seed" }
+        require(preKeys.size <= 10_000 && preKeys.all { (id, value) ->
+            id.matches(Regex("[a-z-]+:[0-9]+")) && value.size == 32
+        }) { "invalid private prekey backup" }
+        // Commit root secrets and restored private prekeys in one SharedPreferences transaction.
+        // This avoids a partially restored keyset if one individual write fails.
+        val dbWrapped = Base64.getEncoder().encodeToString(
+            KeystoreVault.wrap(dbKey, DB_KEY.toByteArray())
+        )
+        val seedWrapped = seed?.takeIf { it.isNotEmpty() }?.let {
+            Base64.getEncoder().encodeToString(KeystoreVault.wrap(it, SEED.toByteArray()))
+        }
+        val editor = prefs.edit().putString(DB_KEY, dbWrapped)
+        if (seedWrapped == null) editor.remove(SEED) else editor.putString(SEED, seedWrapped)
+        prefs.all.keys.filter { it.startsWith("prekey_") }.forEach { editor.remove(it) }
+        preKeys.forEach { (id, value) ->
+            val name = "prekey_" + id.replace(':', '_')
+            editor.putString(name, Base64.getEncoder().encodeToString(KeystoreVault.wrap(value, name.toByteArray())))
+        }
+        check(editor.commit()) { "secure key restore failed" }
     }
 
     private companion object {

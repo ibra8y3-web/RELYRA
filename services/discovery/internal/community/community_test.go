@@ -156,6 +156,15 @@ func TestOptInReportContainsOnlyDeclaredRedactedFields(t *testing.T) {
 	reporter := makeIdentity(t)
 	manifest := signedManifest(t, owner, "a1b2c3d4-e5f6-4789-8abc-0123456789ab", "private", nil, now)
 	if _, err := store.PublishManifest(context.Background(), mustJSON(t, manifest)); err != nil { t.Fatal(err) }
+	membership := Membership{
+		CommunityID: manifest.CommunityID, MemberPublicID: reporter.id,
+		InviteID: "d1b2c3d4-e5f6-4789-8abc-0123456789ab", JoinedAt: now.UnixMilli(), PolicyVersion: manifest.PolicyVersion,
+	}
+	membershipBytes, err := json.Marshal(membership)
+	if err != nil { t.Fatal(err) }
+	if err := store.ds.Put(context.Background(), membershipKey(manifest.CommunityID, reporter.id), membershipBytes); err != nil {
+		t.Fatal(err)
+	}
 
 	report := Report{
 		Version: ManifestVersion, ReportID: "c1b2c3d4-e5f6-4789-8abc-0123456789ab",
@@ -189,4 +198,161 @@ func mustJSON(t *testing.T, value any) []byte {
 	raw, err := json.Marshal(value)
 	if err != nil { t.Fatal(err) }
 	return raw
+}
+
+
+func signedPost(t *testing.T, author testIdentity, communityID string, sequence uint64, body string, now time.Time) Post {
+	t.Helper()
+	post := Post{
+		Version: ManifestVersion,
+		PostID: "d1b2c3d4-e5f6-4789-8abc-0123456789ab",
+		CommunityID: communityID,
+		AuthorPublicID: author.id,
+		Sequence: sequence,
+		Body: body,
+		CreatedAt: now.UnixMilli(),
+	}
+	payload, err := CanonicalPost(post)
+	if err != nil { t.Fatal(err) }
+	post.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(author.private, payload))
+	return post
+}
+
+func signedReview(t *testing.T, reviewer testIdentity, communityID, reportID, status, note string, sequence uint64, now time.Time) ReportReview {
+	t.Helper()
+	review := ReportReview{
+		Version: ManifestVersion,
+		ReviewID: "e1b2c3d4-e5f6-4789-8abc-0123456789ab",
+		CommunityID: communityID,
+		ReportID: reportID,
+		ReviewerPublicID: reviewer.id,
+		Sequence: sequence,
+		Status: status,
+		Note: note,
+		CreatedAt: now.UnixMilli(),
+	}
+	payload, err := CanonicalReportReview(review)
+	if err != nil { t.Fatal(err) }
+	review.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(reviewer.private, payload))
+	return review
+}
+
+func TestSignedCommunityPostsAreSequencedIdempotentAndOrdered(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	store := testStore(now)
+	owner, author := makeIdentity(t), makeIdentity(t)
+	manifest := signedManifest(t, owner, "a1b2c3d4-e5f6-4789-8abc-0123456789ab", "public", nil, now)
+	if _, err := store.PublishManifest(context.Background(), mustJSON(t, manifest)); err != nil { t.Fatal(err) }
+
+	first := signedPost(t, author, manifest.CommunityID, 1, "first post", now)
+	raw := mustJSON(t, first)
+	accepted, err := store.PublishPost(context.Background(), raw)
+	if err != nil || accepted.PostID != first.PostID { t.Fatalf("first post rejected: %v", err) }
+	if _, err := store.PublishPost(context.Background(), raw); err != nil {
+		t.Fatalf("exact retry should be idempotent: %v", err)
+	}
+	replay := signedPost(t, author, manifest.CommunityID, 1, "different body", now)
+	replay.PostID = "d2b2c3d4-e5f6-4789-8abc-0123456789ab"
+	payload, _ := CanonicalPost(replay)
+	replay.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(author.private, payload))
+	if _, err := store.PublishPost(context.Background(), mustJSON(t, replay)); err == nil {
+		t.Fatal("reused post sequence was accepted")
+	}
+
+	second := signedPost(t, author, manifest.CommunityID, 2, "second post", now.Add(time.Second))
+	second.PostID = "d3b2c3d4-e5f6-4789-8abc-0123456789ab"
+	payload, _ = CanonicalPost(second)
+	second.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(author.private, payload))
+	if _, err := store.PublishPost(context.Background(), mustJSON(t, second)); err != nil { t.Fatal(err) }
+
+	feed, err := store.Posts(context.Background(), manifest.CommunityID, "", 20)
+	if err != nil { t.Fatal(err) }
+	if len(feed) != 2 || feed[0].Body != "second post" || feed[1].Body != "first post" {
+		t.Fatalf("feed order is wrong: %#v", feed)
+	}
+	last, err := store.LastPostSequence(context.Background(), manifest.CommunityID, author.id)
+	if err != nil || last != 2 { t.Fatalf("unexpected post sequence %d (%v)", last, err) }
+}
+
+func TestCommunityMuteSlowModeBanAndAllowPostAreEnforcedAtPublish(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	store := NewStoreWithClock(syncds.MutexWrap(datastore.NewMapDatastore()), func() time.Time { return now })
+	owner, author := makeIdentity(t), makeIdentity(t)
+	manifest := signedManifest(t, owner, "a1b2c3d4-e5f6-4789-8abc-0123456789ab", "public", nil, now)
+	if _, err := store.PublishManifest(context.Background(), mustJSON(t, manifest)); err != nil { t.Fatal(err) }
+
+	publish := func(sequence uint64, id string) error {
+		p := signedPost(t, author, manifest.CommunityID, sequence, "hello", now)
+		p.PostID = id
+		payload, err := CanonicalPost(p)
+		if err != nil { return err }
+		p.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(author.private, payload))
+		_, err = store.PublishPost(context.Background(), mustJSON(t, p))
+		return err
+	}
+	moderate := func(sequence uint64, action string) {
+		t.Helper()
+		event := signedEvent(t, owner, manifest, sequence, action, author.id, now)
+		if _, err := store.AppendModerationEvent(context.Background(), mustJSON(t, event)); err != nil { t.Fatalf("%s failed: %v", action, err) }
+	}
+
+	if err := publish(1, "d1b2c3d4-e5f6-4789-8abc-0123456789ab"); err != nil { t.Fatal(err) }
+	moderate(1, "mute")
+	if err := publish(2, "d2b2c3d4-e5f6-4789-8abc-0123456789ab"); err == nil { t.Fatal("muted identity published") }
+	moderate(2, "allow_post")
+	if err := publish(2, "d2b2c3d4-e5f6-4789-8abc-0123456789ab"); err != nil { t.Fatalf("allow_post did not restore publishing: %v", err) }
+	moderate(3, "ban")
+	if err := publish(3, "d3b2c3d4-e5f6-4789-8abc-0123456789ab"); err == nil { t.Fatal("banned identity published") }
+	moderate(4, "unban")
+	moderate(5, "slow_mode")
+	if err := publish(3, "d3b2c3d4-e5f6-4789-8abc-0123456789ab"); err == nil { t.Fatal("slow mode did not enforce the cooldown") }
+	now = now.Add(slowModeInterval + time.Second)
+	if err := publish(3, "d3b2c3d4-e5f6-4789-8abc-0123456789ab"); err != nil { t.Fatalf("slow mode did not release after cooldown: %v", err) }
+}
+
+func TestReportReviewLifecycleRequiresAuthorityAndKeepsAudit(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	store := testStore(now)
+	owner, moderator, reporter, stranger := makeIdentity(t), makeIdentity(t), makeIdentity(t), makeIdentity(t)
+	manifest := signedManifest(t, owner, "a1b2c3d4-e5f6-4789-8abc-0123456789ab", "public", []string{moderator.id}, now)
+	if _, err := store.PublishManifest(context.Background(), mustJSON(t, manifest)); err != nil { t.Fatal(err) }
+
+	report := Report{
+		Version: ManifestVersion, ReportID: "c1b2c3d4-e5f6-4789-8abc-0123456789ab",
+		CommunityID: manifest.CommunityID, ReporterPublicID: reporter.id,
+		Category: "spam", Summary: "Repeated spam posts", CreatedAt: now.UnixMilli(),
+	}
+	payload, err := canonicalReport(report)
+	if err != nil { t.Fatal(err) }
+	report.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(reporter.private, payload))
+	if _, err := store.SubmitReport(context.Background(), mustJSON(t, report)); err != nil { t.Fatal(err) }
+
+	unauthorized := signedReview(t, stranger, manifest.CommunityID, report.ReportID, "in_review", "", 1, now)
+	if _, err := store.ReviewReport(context.Background(), mustJSON(t, unauthorized)); err == nil {
+		t.Fatal("non-moderator reviewed a report")
+	}
+	assigned := signedReview(t, moderator, manifest.CommunityID, report.ReportID, "in_review", "Assigned for review", 1, now)
+	if _, err := store.ReviewReport(context.Background(), mustJSON(t, assigned)); err != nil { t.Fatal(err) }
+	resolved := signedReview(t, owner, manifest.CommunityID, report.ReportID, "resolved", "Removed the abusive content", 1, now)
+	resolved.ReviewID = "e2b2c3d4-e5f6-4789-8abc-0123456789ab"
+	payload, _ = CanonicalReportReview(resolved)
+	resolved.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(owner.private, payload))
+	if _, err := store.ReviewReport(context.Background(), mustJSON(t, resolved)); err != nil { t.Fatal(err) }
+
+	late := signedReview(t, moderator, manifest.CommunityID, report.ReportID, "in_review", "", 2, now)
+	late.ReviewID = "e3b2c3d4-e5f6-4789-8abc-0123456789ab"
+	payload, _ = CanonicalReportReview(late)
+	late.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(moderator.private, payload))
+	if _, err := store.ReviewReport(context.Background(), mustJSON(t, late)); err == nil {
+		t.Fatal("resolved report was reopened")
+	}
+
+	views, err := store.ReportViews(context.Background(), manifest.CommunityID, moderator.id, 20)
+	if err != nil || len(views) != 1 || views[0].Status != "resolved" {
+		t.Fatalf("report status was not persisted: %#v (%v)", views, err)
+	}
+	audit, err := store.ReportAudit(context.Background(), manifest.CommunityID, report.ReportID, moderator.id, 20)
+	if err != nil || len(audit) != 2 || audit[0].Review.Status != "in_review" || audit[1].Review.Status != "resolved" {
+		t.Fatalf("report audit is incomplete: %#v (%v)", audit, err)
+	}
 }

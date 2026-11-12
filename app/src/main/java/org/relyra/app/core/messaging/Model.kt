@@ -43,7 +43,69 @@ enum class P2pSignalKind { OFFER, ANSWER }
 enum class GroupKind { GROUP, CHANNEL }
 enum class GroupRole { MEMBER, ADMIN, OWNER }
 enum class GroupState { INVITED, JOINING, ACTIVE, LEFT, REMOVED }
-enum class GroupMlsKind { KEY_PACKAGE, COMMIT, WELCOME, APPLICATION, JOIN_ACK }
+enum class GroupMlsKind { KEY_PACKAGE, COMMIT, WELCOME, APPLICATION, JOIN_ACK, MEMBERSHIP_PROPOSAL }
+
+data class GroupChangeProposal(
+    val proposalId: String,
+    val groupId: String,
+    val baseGroupEpoch: Long,
+    val baseMlsEpoch: Long,
+    val action: String,
+    val targets: List<String>,
+)
+
+/** Bounded owner-routed control packet carried inside the proposer's authenticated 1:1 E2EE session. */
+object GroupChangeProposalCodec {
+    private const val MAGIC = "RELYRA-GROUP-CHANGE-PROPOSAL-V1"
+    private const val VERSION = 1
+    private const val MAX_BYTES = 40 * 1024
+
+    fun encode(proposal: GroupChangeProposal): ByteArray {
+        require(runCatching { UUID.fromString(proposal.proposalId) }.isSuccess)
+        require(runCatching { UUID.fromString(proposal.groupId) }.isSuccess)
+        require(proposal.baseGroupEpoch >= 1 && proposal.baseMlsEpoch >= 0)
+        require(proposal.action == "add" || proposal.action == "remove")
+        require(proposal.targets.size in 1..GroupLimits.MAX_MEMBERS)
+        require(proposal.targets.map { it.lowercase() }.distinct().size == proposal.targets.size)
+        require(proposal.targets.all { it.isNotBlank() && it.length <= 128 })
+        val bytes = ByteArrayOutputStream()
+        DataOutputStream(bytes).use { out ->
+            out.writeUTF(MAGIC)
+            out.writeInt(VERSION)
+            out.writeUTF(proposal.proposalId.lowercase())
+            out.writeUTF(proposal.groupId.lowercase())
+            out.writeLong(proposal.baseGroupEpoch)
+            out.writeLong(proposal.baseMlsEpoch)
+            out.writeUTF(proposal.action)
+            out.writeShort(proposal.targets.size)
+            proposal.targets.forEach { out.writeUTF(it.lowercase()) }
+        }
+        return bytes.toByteArray().also { require(it.size <= MAX_BYTES) }
+    }
+
+    fun decode(raw: ByteArray): GroupChangeProposal? = runCatching {
+        require(raw.isNotEmpty() && raw.size <= MAX_BYTES)
+        DataInputStream(ByteArrayInputStream(raw)).use { input ->
+            require(input.readUTF() == MAGIC && input.readInt() == VERSION)
+            val proposalId = input.readUTF()
+            val groupId = input.readUTF()
+            val groupEpoch = input.readLong()
+            val mlsEpoch = input.readLong()
+            val action = input.readUTF()
+            val count = input.readUnsignedShort()
+            require(runCatching { UUID.fromString(proposalId) }.isSuccess)
+            require(runCatching { UUID.fromString(groupId) }.isSuccess)
+            require(groupEpoch >= 1 && mlsEpoch >= 0)
+            require(action == "add" || action == "remove")
+            require(count in 1..GroupLimits.MAX_MEMBERS)
+            val targets = List(count) { input.readUTF() }
+            require(targets.distinct().size == targets.size && targets.all { it.isNotBlank() && it.length <= 128 })
+            require(input.available() == 0)
+            GroupChangeProposal(proposalId, groupId, groupEpoch, mlsEpoch, action, targets)
+        }
+    }.getOrNull()
+}
+
 
 data class GroupMemberRef(
     val id: String,

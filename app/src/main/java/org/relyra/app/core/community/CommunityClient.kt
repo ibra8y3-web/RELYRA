@@ -53,6 +53,21 @@ data class CommunityReport(
     val signature: String,
 )
 
+data class CommunityPost(
+    val postId: String, val communityId: String, val authorPublicId: String,
+    val sequence: Long, val body: String, val createdAt: Long, val signature: String,
+)
+data class CommunityReportReview(
+    val reviewId: String, val communityId: String, val reportId: String,
+    val reviewerPublicId: String, val sequence: Long, val status: String,
+    val note: String, val createdAt: Long, val signature: String,
+)
+data class CommunityReportView(
+    val report: CommunityReport, val status: String, val reviewerPublicId: String?,
+    val decisionNote: String?, val updatedAt: Long,
+)
+data class CommunityReportAuditEntry(val order: Long, val review: CommunityReportReview)
+
 data class PrivateCommunityInvitation(
     val inviteId: String,
     val communityId: String,
@@ -282,6 +297,39 @@ class CommunityClient(
         result
     }
 
+    suspend fun posts(manifest: CommunityManifest, limit: Int = 50): List<CommunityPost> =
+        withContext(Dispatchers.IO) {
+            require(limit in 1..100)
+            val response = request(
+                "GET", "/v1/communities/${manifest.communityId}/posts?limit=$limit",
+                privateAccess = manifest.visibility == "private",
+            )
+            val array = response.getJSONArray("posts")
+            buildList {
+                for (index in 0 until array.length()) {
+                    val post = parsePost(array.getJSONObject(index))
+                    if (verifyPost(post, manifest)) add(post)
+                }
+            }
+        }
+
+    suspend fun publishPost(manifest: CommunityManifest, body: String): CommunityPost =
+        withContext(Dispatchers.IO) {
+            val clean = body.trim()
+            require(clean.isNotEmpty() && clean.toByteArray(Charsets.UTF_8).size <= 4_000)
+            val author = ownPublicId() ?: error("RELYRA identity is unavailable")
+            val sequencePath = "/v1/communities/${manifest.communityId}/posts/sequence/$author"
+            val sequence = request("GET", sequencePath, privateAccess = true).getLong("lastSequence") + 1
+            val unsigned = CommunityPost(UUID.randomUUID().toString(), manifest.communityId, author,
+                sequence, clean, System.currentTimeMillis(), "")
+            val signed = unsigned.copy(signature = signBase64(canonicalPost(unsigned)))
+            val response = request("POST", "/v1/communities/${manifest.communityId}/posts",
+                postJson(signed), privateAccess = true)
+            parsePost(response.getJSONObject("post")).also {
+                check(verifyPost(it, manifest)) { "Community service returned an invalid signed post" }
+            }
+        }
+
     suspend fun submitReport(
         communityId: String,
         category: String,
@@ -293,23 +341,92 @@ class CommunityClient(
             category.trim().lowercase(), redactedSummary.trim(), System.currentTimeMillis(), "",
         )
         val signed = unsigned.copy(signature = signBase64(canonicalReport(unsigned)))
-        val path = "/v1/communities/" + communityId + "/reports"
-        request("POST", path, reportJson(signed)).getString("reportId")
+        request("POST", "/v1/communities/$communityId/reports", reportJson(signed), privateAccess = true)
+            .getString("reportId")
     }
 
-    suspend fun reports(manifest: CommunityManifest, limit: Int = 50): List<CommunityReport> =
+    suspend fun reports(manifest: CommunityManifest, limit: Int = 50): List<CommunityReportView> =
         withContext(Dispatchers.IO) {
             require(limit in 1..100)
-            val path = "/v1/communities/" + manifest.communityId + "/reports?limit=" + limit
-            // The report inbox always requires a signed RELYRA identity, including for public communities.
-            val array = request("GET", path, privateAccess = true).getJSONArray("reports")
+            val array = request("GET", "/v1/communities/${manifest.communityId}/reports?limit=$limit",
+                privateAccess = true).getJSONArray("reports")
             buildList {
                 for (index in 0 until array.length()) {
-                    val report = parseReport(array.getJSONObject(index))
-                    if (verifyReport(report, manifest)) add(report)
+                    val row = array.getJSONObject(index)
+                    val report = parseReport(row.getJSONObject("report"))
+                    if (!verifyReport(report, manifest)) continue
+                    val status = row.optString("status", "open")
+                    if (status !in setOf("open", "in_review", "resolved", "dismissed")) continue
+                    add(CommunityReportView(report, status,
+                        row.optString("reviewerPublicId").takeIf { it.isNotBlank() },
+                        row.optString("decisionNote").takeIf { it.isNotBlank() },
+                        row.optLong("updatedAt", report.createdAt)))
                 }
             }
         }
+
+    suspend fun reviewReport(manifest: CommunityManifest, reportId: String, status: String, note: String): CommunityReportReview =
+        withContext(Dispatchers.IO) {
+            require(status in setOf("in_review", "resolved", "dismissed"))
+            val reviewer = ownPublicId() ?: error("RELYRA identity is unavailable")
+            check(isModerator(manifest, reviewer)) { "Only a community moderator may review reports" }
+            if (status != "in_review") check(reviewer.equals(manifest.ownerPublicId, true)) {
+                "Only the owner may resolve or dismiss reports"
+            }
+            val sequencePath = "/v1/communities/${manifest.communityId}/sequence/$reviewer"
+            val sequence = request("GET", sequencePath, privateAccess = true).getLong("lastSequence") + 1
+            val unsigned = CommunityReportReview(UUID.randomUUID().toString(), manifest.communityId, reportId,
+                reviewer, sequence, status, note.trim(), System.currentTimeMillis(), "")
+            val signed = unsigned.copy(signature = signBase64(canonicalReview(unsigned)))
+            val response = request("POST",
+                "/v1/communities/${manifest.communityId}/reports/$reportId/reviews",
+                reviewJson(signed), privateAccess = true)
+            parseReview(response.getJSONObject("review")).also {
+                check(verifyReview(it, manifest)) { "Community service returned an invalid report review signature" }
+            }
+        }
+
+    suspend fun reportAudit(manifest: CommunityManifest, reportId: String, limit: Int = 100): List<CommunityReportAuditEntry> =
+        withContext(Dispatchers.IO) {
+            require(limit in 1..100)
+            val response = request("GET",
+                "/v1/communities/${manifest.communityId}/reports/$reportId/audit?limit=$limit",
+                privateAccess = true)
+            val array = response.getJSONArray("audit")
+            buildList {
+                for (index in 0 until array.length()) {
+                    val row = array.getJSONObject(index)
+                    val review = parseReview(row.getJSONObject("review"))
+                    if (verifyReview(review, manifest)) add(CommunityReportAuditEntry(row.getLong("order"), review))
+                }
+            }.sortedBy { it.order }
+        }
+
+    fun verifyPost(post: CommunityPost, manifest: CommunityManifest): Boolean {
+        if (!post.communityId.equals(manifest.communityId, true) || !validCommunityId(post.postId) ||
+            post.sequence < 1 || post.body.isBlank() || post.body.toByteArray(Charsets.UTF_8).size > 4_000 ||
+            post.body.contains('\u0000') || post.createdAt <= 0 ||
+            IdentityCrypto.parsePublicId(post.authorPublicId) == null) return false
+        val now = System.currentTimeMillis()
+        if (post.createdAt > now + 5 * 60 * 1000 || now - post.createdAt > 24 * 60 * 60 * 1000L) return false
+        val key = IdentityCrypto.parsePublicId(post.authorPublicId) ?: return false
+        val signature = decodeSignature(post.signature) ?: return false
+        return IdentityCrypto.verify(key, signature, canonicalPost(post))
+    }
+
+    fun verifyReview(review: CommunityReportReview, manifest: CommunityManifest): Boolean {
+        if (!review.communityId.equals(manifest.communityId, true) || !validCommunityId(review.reviewId) ||
+            !validCommunityId(review.reportId) || review.sequence < 1 ||
+            review.status !in setOf("in_review", "resolved", "dismissed") || review.note.length > 256 ||
+            review.note.contains('\u0000') || review.createdAt <= 0 || !isModerator(manifest, review.reviewerPublicId) ||
+            (review.status != "in_review" && !review.reviewerPublicId.equals(manifest.ownerPublicId, true))) return false
+        if (review.status != "in_review" && review.note.isBlank()) return false
+        val now = System.currentTimeMillis()
+        if (review.createdAt > now + 5 * 60 * 1000) return false
+        val key = IdentityCrypto.parsePublicId(review.reviewerPublicId) ?: return false
+        val signature = decodeSignature(review.signature) ?: return false
+        return IdentityCrypto.verify(key, signature, canonicalReview(review))
+    }
 
     fun verifyReport(report: CommunityReport, manifest: CommunityManifest): Boolean {
         if (!report.communityId.equals(manifest.communityId, true) ||
@@ -480,6 +597,20 @@ class CommunityClient(
         j.getLong("createdAt"), j.getLong("expiresAt"), j.getString("signature"),
     )
 
+    private fun canonicalPost(p: CommunityPost): ByteArray = listOf(
+        "RELYRA-COMMUNITY-POST-V1", p.postId.lowercase(), p.communityId.lowercase(),
+        p.authorPublicId.lowercase(), p.sequence.toString(),
+        Base64.getUrlEncoder().withoutPadding().encodeToString(p.body.toByteArray(Charsets.UTF_8)),
+        p.createdAt.toString(),
+    ).joinToString("\n").toByteArray(Charsets.UTF_8)
+
+    private fun canonicalReview(r: CommunityReportReview): ByteArray = listOf(
+        "RELYRA-COMMUNITY-REPORT-REVIEW-V1", r.reviewId.lowercase(), r.communityId.lowercase(),
+        r.reportId.lowercase(), r.reviewerPublicId.lowercase(), r.sequence.toString(), r.status,
+        Base64.getUrlEncoder().withoutPadding().encodeToString(r.note.toByteArray(Charsets.UTF_8)),
+        r.createdAt.toString(),
+    ).joinToString("\n").toByteArray(Charsets.UTF_8)
+
     private fun canonicalReport(r: CommunityReport): ByteArray = listOf(
         "RELYRA-COMMUNITY-REPORT-V1", r.reportId.lowercase(), r.communityId.lowercase(),
         r.reporterPublicId.lowercase(), r.category, r.summary, r.createdAt.toString(),
@@ -512,6 +643,30 @@ class CommunityClient(
         put("reporterPublicId", r.reporterPublicId); put("category", r.category)
         put("summary", r.summary); put("createdAt", r.createdAt); put("signature", r.signature)
     }
+
+    private fun postJson(p: CommunityPost) = JSONObject().apply {
+        put("version", 1); put("postId", p.postId); put("communityId", p.communityId)
+        put("authorPublicId", p.authorPublicId); put("sequence", p.sequence)
+        put("body", p.body); put("createdAt", p.createdAt); put("signature", p.signature)
+    }
+
+    private fun reviewJson(r: CommunityReportReview) = JSONObject().apply {
+        put("version", 1); put("reviewId", r.reviewId); put("communityId", r.communityId)
+        put("reportId", r.reportId); put("reviewerPublicId", r.reviewerPublicId)
+        put("sequence", r.sequence); put("status", r.status); put("note", r.note)
+        put("createdAt", r.createdAt); put("signature", r.signature)
+    }
+
+    private fun parsePost(j: JSONObject) = CommunityPost(
+        j.getString("postId"), j.getString("communityId"), j.getString("authorPublicId"),
+        j.getLong("sequence"), j.getString("body"), j.getLong("createdAt"), j.getString("signature"),
+    )
+
+    private fun parseReview(j: JSONObject) = CommunityReportReview(
+        j.getString("reviewId"), j.getString("communityId"), j.getString("reportId"),
+        j.getString("reviewerPublicId"), j.getLong("sequence"), j.getString("status"),
+        j.optString("note"), j.getLong("createdAt"), j.getString("signature"),
+    )
 
     private fun parseManifest(j: JSONObject) = CommunityManifest(
         j.getString("communityId"), j.getString("ownerPublicId"), j.getString("name"),

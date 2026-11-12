@@ -21,11 +21,18 @@ class RelyraApp : Application() {
         // A backup staged by the previous run is swapped in before anything opens the database.
         restoreApplied = try {
             org.relyra.app.core.backup.RestoreApplier.applyIfPending(
-                java.io.File(filesDir, "restore"), getDatabasePath("relyra.db"), container.secure,
+                this,
+                java.io.File(filesDir, "restore"), getDatabasePath("relyra.db"), container.secure, filesDir,
+                mapOf(
+                    "relyra_settings" to getSharedPreferences("relyra_settings", MODE_PRIVATE),
+                    "relyra_blossom" to getSharedPreferences("relyra_blossom", MODE_PRIVATE),
+                    "relyra_network" to getSharedPreferences("relyra_network", MODE_PRIVATE),
+                ),
             )
         } catch (t: Throwable) {
             false
         }
+        if (restoreApplied) container.settings.reload()
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "relyra-delivery",
             ExistingPeriodicWorkPolicy.KEEP,

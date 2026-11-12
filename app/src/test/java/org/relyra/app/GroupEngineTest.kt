@@ -381,4 +381,161 @@ class GroupEngineTest {
         for (cut in 1 until bytes.size) assertNull(EnvelopeCodec.decode(bytes.copyOf(cut)))
         assertNull(EnvelopeCodec.decode(bytes + byteArrayOf(0)))
     }
+    @Test fun mlsMembershipChangesHaveOneOwnerWriterAndAdminsCannotAdvanceEpoch() = runBlocking {
+        val gid = UUID.randomUUID().toString()
+        val store = FakeGroupStore()
+        val members = listOf(
+            GroupMemberRef("alice", GroupRole.OWNER, mlsJoined = true),
+            GroupMemberRef("bob", GroupRole.ADMIN, mlsJoined = true),
+            GroupMemberRef("carol", GroupRole.MEMBER, mlsJoined = true),
+        )
+        store.putGroup(
+            GroupRecord(gid, "MLS team", GroupKind.GROUP, "alice", 7, GroupState.ACTIVE,
+                now, "alice", mlsEnabled = true, mlsEpoch = 4),
+            members,
+        )
+        val admin = GroupEngine(
+            store = store,
+            peers = Peers(mapOf("alice" to PeerStatus.Known, "bob" to PeerStatus.Known,
+                "carol" to PeerStatus.Known, "dave" to PeerStatus.Known)),
+            ownId = { "bob" },
+            transmit = { _, _ -> SendOutcome.Unavailable },
+        )
+
+        assertEquals(GroupResult.PROPOSAL_QUEUED, admin.addMembers(gid, listOf("dave")))
+        assertEquals(GroupResult.PROPOSAL_QUEUED, admin.removeMember(gid, "carol"))
+        assertEquals(GroupResult.NOT_ALLOWED, admin.setAdmin(gid, "carol", true))
+        assertEquals(setOf("alice", "bob", "carol"), store.members(gid).map { it.id }.toSet())
+        assertEquals(7L, store.group(gid)!!.epoch)
+        assertEquals(4L, store.group(gid)!!.mlsEpoch)
+
+        // A metadata-only change is safe for an admin; it advances only the snapshot epoch,
+        // never the cryptographic MLS epoch.
+        assertEquals(GroupResult.OK, admin.rename(gid, "MLS team renamed"))
+        assertEquals(8L, store.group(gid)!!.epoch)
+        assertEquals(4L, store.group(gid)!!.mlsEpoch)
+    }
+
+    @Test fun concurrentMlsAdminMembershipProposalsAreSerializedByOwner() = runBlocking {
+        val gid = UUID.randomUUID().toString()
+        val members = listOf(
+            GroupMemberRef("alice", GroupRole.OWNER, mlsJoined = true),
+            GroupMemberRef("bob", GroupRole.ADMIN, mlsJoined = true),
+            GroupMemberRef("carol", GroupRole.ADMIN, mlsJoined = true),
+        )
+        val record = GroupRecord(gid, "MLS team", GroupKind.GROUP, "alice", 7, GroupState.ACTIVE,
+            now, "alice", mlsEnabled = true, mlsEpoch = 4)
+        listOf(alice, bob, carol).forEach { it.store.putGroup(record, members) }
+
+        // Both admins create proposals against the same group and MLS epochs while the owner is offline.
+        net.down += "alice"
+        assertEquals(GroupResult.PROPOSAL_QUEUED, bob.engine.addMembers(gid, listOf("dave")))
+        assertEquals(GroupResult.PROPOSAL_QUEUED, carol.engine.addMembers(gid, listOf("dave")))
+        net.down.clear()
+        pump()
+
+        val updated = alice.store.group(gid)!!
+        assertEquals(8L, updated.epoch)
+        assertEquals(4L, updated.mlsEpoch)
+        assertEquals(1, alice.store.members(gid).count { it.id == "dave" })
+        assertEquals(GroupRole.MEMBER, alice.store.members(gid).first { it.id == "dave" }.role)
+        assertEquals(GroupState.INVITED, dave.store.group(gid)?.state)
+
+        val acceptedProposal = bob.store.outbox.values.single { it.memberId == "alice" }
+        val acceptedEnvelope = EnvelopeCodec.decode(acceptedProposal.payload) as Envelope.GroupMls
+        alice.engine.onEnvelope(acceptedEnvelope) // duplicate delivery must not apply the proposal twice
+        val staleProposal = carol.store.outbox.values.single { it.memberId == "alice" }
+        assertTrue(alice.store.hasControlMessage(staleProposal.id)) // stale concurrent request was rejected and consumed
+        assertEquals(8L, alice.store.group(gid)!!.epoch)
+        assertEquals(1, alice.store.members(gid).count { it.id == "dave" })
+        assertTrue(bob.store.outbox.values.all { it.acked })
+        assertTrue(carol.store.outbox.values.all { it.acked })
+    }
+
+    @Test fun mlsAdminRemovalProposalIsAppliedOnlyByOwner() = runBlocking {
+        val gid = UUID.randomUUID().toString()
+        val members = listOf(
+            GroupMemberRef("alice", GroupRole.OWNER, mlsJoined = true),
+            GroupMemberRef("bob", GroupRole.ADMIN, mlsJoined = true),
+            GroupMemberRef("carol", GroupRole.MEMBER, mlsJoined = false),
+        )
+        val record = GroupRecord(gid, "MLS team", GroupKind.GROUP, "alice", 7, GroupState.ACTIVE,
+            now, "alice", mlsEnabled = true, mlsEpoch = 4)
+        listOf(alice, bob, carol).forEach { it.store.putGroup(record, members) }
+
+        assertEquals(GroupResult.PROPOSAL_QUEUED, bob.engine.removeMember(gid, "carol"))
+        pump()
+
+        assertEquals(8L, alice.store.group(gid)!!.epoch)
+        assertEquals(4L, alice.store.group(gid)!!.mlsEpoch)
+        assertFalse(alice.store.members(gid).any { it.id == "carol" })
+        assertEquals(GroupState.REMOVED, carol.store.group(gid)!!.state)
+    }
+
+    @Test fun membershipProposalCodecRejectsMalformedOrTrailingBytes() {
+        val proposal = GroupChangeProposal(
+            UUID.randomUUID().toString(), UUID.randomUUID().toString(), 3, 2, "add", listOf("alice", "bob")
+        )
+        val encoded = GroupChangeProposalCodec.encode(proposal)
+        assertEquals(proposal, GroupChangeProposalCodec.decode(encoded))
+        assertNull(GroupChangeProposalCodec.decode(encoded + byteArrayOf(0)))
+        assertNull(GroupChangeProposalCodec.decode(byteArrayOf(1, 2, 3)))
+    }
+
+    @Test fun removedMlsMemberAcceptsOwnerSnapshotWithoutTheNewEpochCommit() = runBlocking {
+        val gid = UUID.randomUUID().toString()
+        val store = FakeGroupStore()
+        store.putGroup(
+            GroupRecord(gid, "MLS team", GroupKind.GROUP, "alice", 3, GroupState.ACTIVE,
+                now, "alice", mlsEnabled = true, mlsEpoch = 9),
+            listOf(
+                GroupMemberRef("alice", GroupRole.OWNER, mlsJoined = true),
+                GroupMemberRef("bob", GroupRole.ADMIN, mlsJoined = true),
+                GroupMemberRef("carol", GroupRole.MEMBER, mlsJoined = true),
+            ),
+        )
+        val removed = GroupEngine(
+            store = store,
+            peers = Peers(mapOf("alice" to PeerStatus.Known, "bob" to PeerStatus.Known, "carol" to PeerStatus.Known)),
+            ownId = { "carol" },
+            transmit = { _, _ -> SendOutcome.Unavailable },
+        )
+        removed.onEnvelope(Envelope.GroupSync(
+            UUID.randomUUID().toString(), "alice", "carol", gid, "MLS team", GroupKind.GROUP,
+            4, "alice", listOf(
+                GroupMemberRef("alice", GroupRole.OWNER, mlsJoined = true),
+                GroupMemberRef("bob", GroupRole.ADMIN, mlsJoined = true),
+            ), mlsEnabled = true, mlsEpoch = 10,
+        ))
+        assertEquals(GroupState.REMOVED, store.group(gid)!!.state)
+        assertFalse(store.members(gid).any { it.id == "carol" })
+    }
+
+    @Test fun mlsCommitFromAdminIsIgnoredAtReceiver() = runBlocking {
+        val gid = UUID.randomUUID().toString()
+        val store = FakeGroupStore()
+        store.putGroup(
+            GroupRecord(gid, "MLS team", GroupKind.GROUP, "alice", 3, GroupState.ACTIVE,
+                now, "alice", mlsEnabled = true, mlsEpoch = 9),
+            listOf(
+                GroupMemberRef("alice", GroupRole.OWNER, mlsJoined = true),
+                GroupMemberRef("bob", GroupRole.ADMIN, mlsJoined = true),
+                GroupMemberRef("carol", GroupRole.MEMBER, mlsJoined = true),
+            ),
+        )
+        val receiver = GroupEngine(
+            store = store,
+            peers = Peers(mapOf("alice" to PeerStatus.Known, "bob" to PeerStatus.Known, "carol" to PeerStatus.Known)),
+            ownId = { "carol" },
+            transmit = { _, _ -> SendOutcome.Unavailable },
+        )
+        val adminCommitId = UUID.randomUUID().toString()
+        receiver.onEnvelope(
+            Envelope.GroupMls(adminCommitId, "bob", "carol", gid,
+                GroupMlsKind.COMMIT, byteArrayOf(1, 2, 3))
+        )
+        assertEquals(9L, store.group(gid)!!.mlsEpoch)
+        assertFalse(store.hasControlMessage(adminCommitId))
+    }
+
 }

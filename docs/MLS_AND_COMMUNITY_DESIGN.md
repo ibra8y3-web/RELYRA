@@ -5,6 +5,11 @@ Status: protocol design and partial implementation. Phase 3 is merged into `main
 ## 0. Implementation status
 
 The current branch contains:
+- Phase-2 community posts signed by the author, ordered by a per-author sequence, deduplicated on retry, and served through a verified feed.
+- Service-enforced ban, mute, slow mode and owner allow-post overrides; slow mode uses server receipt time rather than client timestamps.
+- Opt-in community reports with persisted review state, moderator assignment, owner-only resolution/dismissal and ordered signed audit history.
+- Android community feed, publishing, report review and audit screens with Arabic and English resources.
+- MLS membership-change proposals from admins are carried over authenticated one-to-one sessions to the owner, checked against the exact group/MLS base epochs, and serialized by the owner; stale concurrent proposals are rejected and the current snapshot is returned.
 - Group read receipts bound to the exact per-member message-copy ID.
 - OpenMLS 0.9.2 through Rust/JNI, with SQLCipher-backed group state.
 - RELYRA account/device credentials signed by the existing Ed25519 identity key and verified before KeyPackage acceptance.
@@ -12,7 +17,7 @@ The current branch contains:
 - MLS-encrypted group file descriptors, Blossom ciphertext upload/download, and digest verification tests.
 - Signed community manifests/events, private invitations and access proofs, private membership ban/unban, and a moderator-only report inbox.
 
-Not yet complete: distributed multi-admin MLS proposal coordination, public replication of the community index, a community post/feed pipeline for mute and slow-mode enforcement, Android device/ABI interoperability, and clean CI on the final PR head.
+Still open: native RFC 9420 proposal creation/merge across multiple admins (the implemented owner-routed control proposals are not native MLS Proposal messages), public replication of the community index beyond the local Pebble-backed service, service deployment/rate-limit tuning under hostile traffic, and independent Android-device/ABI interoperability.
 
 ## 1. Current group baseline
 
@@ -60,7 +65,7 @@ Lifecycle:
 2. An invited member verifies the creator credential, checks that the RELYRA contact is trusted, and explicitly accepts before installing Welcome state.
 3. The current app serializes MLS membership-changing operations through the group owner. The owner produces the Commit/Welcome update; admins cannot independently advance epochs.
 4. A removed member is excluded from the new epoch secret. Future application messages use only the committed epoch. History access is governed by the explicit history policy.
-5. Distributed multi-admin proposal creation, reconciliation of simultaneous proposals and fork resolution remain unimplemented; this is the main protocol feature still missing from phase 3.
+5. Membership-changing MLS commits are owner-only. An admin's add/remove request is sent as an authenticated owner-routed control proposal carrying the base group and MLS epochs. The owner accepts only the first proposal based on the current epochs, rejects stale concurrent proposals and returns the current snapshot. Admin-supplied MLS Commit packets are rejected and are not marked as processed. This prevents competing epoch writes; native RFC 9420 Proposal messages, distributed proposal merging and fork resolution remain separate work.
 6. OpenMLS state is stored in SQLCipher and has a Rust close/reopen regression test. Android process death, reinstall/recovery and independent-device restore still require validation.
 
 Default history policy: new members receive no earlier message history. Existing members retain only history already stored on their own devices. Removal cannot erase content already decrypted or copied by the removed member.
@@ -108,7 +113,7 @@ Moderation:
 
 ## 7. Non-goals and release gates
 
-The branch implements a signed community manifest service and a local Pebble-backed public index, not a globally replicated community DHT. Private invitations, signed moderation events, replay sequences, private membership ban/unban and a moderator-only report inbox are implemented. There is no community post/feed pipeline yet, so mute, slow-mode and allow-post events are not enforced by a content service and are not exposed in the current moderation UI.
+The branch implements signed community manifests, private invitations and access proofs, signed moderation events, replay sequences, private membership ban/unban, signed posts and feed retrieval, and an opt-in report lifecycle with persisted status and append-only signed audit entries. Private-community posts are access-controlled by membership but are stored as signed plaintext at the discovery service; the Android UI warns users not to publish sensitive material there until an MLS/E2EE community content layer exists. MLS membership changes from admins are owner-routed and epoch-checked; the owner alone creates cryptographic membership commits. The service enforces publication permissions for public and private communities; private publishing additionally requires current membership. Ban, mute and slow-mode are checked in the publish path, and only the owner may apply the allow-post override or close a report. Android exposes the feed, publishing, moderation, report review and audit actions in the community screen. The public directory is still a local Pebble-backed index, not a globally replicated community DHT.
 
 Phase 3 is not complete until:
 - MLS state is genuinely produced and consumed by the pinned OpenMLS integration on supported Android ABIs.

@@ -87,7 +87,7 @@ interface GroupInbound {
 }
 
 enum class GroupResult {
-    OK, NO_IDENTITY, NOT_FOUND, NOT_ALLOWED, NOT_ACTIVE, INVALID, EMPTY, TOO_LONG, NO_RECIPIENTS, UNKNOWN_CONTACT, MLS_UNAVAILABLE,
+    OK, NO_IDENTITY, NOT_FOUND, NOT_ALLOWED, NOT_ACTIVE, INVALID, EMPTY, TOO_LONG, NO_RECIPIENTS, UNKNOWN_CONTACT, MLS_UNAVAILABLE, PROPOSAL_QUEUED,
 }
 
 class GroupOutcome(val result: GroupResult, val groupId: String? = null)
@@ -103,9 +103,11 @@ class GroupOutcome(val result: GroupResult, val groupId: String? = null)
  * Authority is decided from each receiver's OWN copy of the group, never from what a packet claims:
  *  - an unknown group is only ever an invitation that the user must accept;
  *  - a snapshot is applied only if its sender is OWNER/ADMIN locally and its epoch is higher;
- *  - admins can add/remove plain members and rename, but cannot touch the owner/admin set;
+ *  - on MLS groups, admin membership changes are sent as authenticated proposals to the owner;
+ *    the owner serializes them against the exact group and MLS epochs and is the only commit writer;
+ *  - on legacy groups, admins can add/remove plain members and rename, but cannot touch the owner/admin set;
  *  - in a channel only OWNER/ADMIN may post.
- * Concurrent admin edits at the same epoch are resolved deterministically by the SHA-256 fingerprint of the canonical snapshot.
+ * Concurrent same-epoch metadata edits are resolved deterministically by the SHA-256 fingerprint of the canonical snapshot.
  */
 class GroupEngine(
     private val store: GroupStore,
@@ -235,7 +237,11 @@ class GroupEngine(
         if (fresh.isEmpty()) return@manage Verdict.Deny(GroupResult.INVALID)
         if (members.size + fresh.size > GroupLimits.MAX_MEMBERS) return@manage Verdict.Deny(GroupResult.INVALID)
         if (fresh.any { peers.status(it) != PeerStatus.Known }) return@manage Verdict.Deny(GroupResult.UNKNOWN_CONTACT)
-        Verdict.Apply(g.name, g.owner, members + fresh.map { GroupMemberRef(it, GroupRole.MEMBER) }, emptySet())
+        if (g.mlsEnabled && roleOf(members, me) == GroupRole.ADMIN) {
+            Verdict.Propose("add", fresh)
+        } else {
+            Verdict.Apply(g.name, g.owner, members + fresh.map { GroupMemberRef(it, GroupRole.MEMBER) }, emptySet())
+        }
     }
 
     suspend fun removeMember(groupId: String, memberId: String): GroupResult = manage(groupId) { g, members, me ->
@@ -244,7 +250,11 @@ class GroupEngine(
         val allowed = memberId != me && target != GroupRole.OWNER &&
             (mine == GroupRole.OWNER || (mine == GroupRole.ADMIN && target == GroupRole.MEMBER))
         if (!allowed) return@manage Verdict.Deny(GroupResult.NOT_ALLOWED)
-        Verdict.Apply(g.name, g.owner, members.filter { it.id != memberId }, setOf(memberId))
+        if (g.mlsEnabled && mine == GroupRole.ADMIN) {
+            Verdict.Propose("remove", listOf(memberId))
+        } else {
+            Verdict.Apply(g.name, g.owner, members.filter { it.id != memberId }, setOf(memberId))
+        }
     }
 
     suspend fun setAdmin(groupId: String, memberId: String, admin: Boolean): GroupResult = manage(groupId) { g, members, me ->
@@ -279,6 +289,7 @@ class GroupEngine(
     private sealed interface Verdict {
         class Deny(val result: GroupResult) : Verdict
         class Apply(val name: String, val owner: String, val members: List<GroupMemberRef>, val removed: Set<String>) : Verdict
+        class Propose(val action: String, val targets: List<String>) : Verdict
     }
 
     private suspend fun manage(
@@ -291,10 +302,28 @@ class GroupEngine(
         val previousMembers = store.members(groupId)
         when (val v = decide(g, previousMembers, me)) {
             is Verdict.Deny -> v.result
+            is Verdict.Propose -> {
+                if (!g.mlsEnabled || roleOf(previousMembers, me) != GroupRole.ADMIN || g.owner == me) {
+                    return@withLock GroupResult.NOT_ALLOWED
+                }
+                val proposalId = newId()
+                val payload = GroupChangeProposalCodec.encode(
+                    GroupChangeProposal(proposalId, groupId, g.epoch, g.mlsEpoch, v.action, v.targets)
+                )
+                val now = clock().coerceAtLeast(1L)
+                store.enqueue(listOf(OutboxRow(
+                    proposalId, groupId, g.owner, null,
+                    EnvelopeCodec.encode(Envelope.GroupMls(
+                        proposalId, me, g.owner, groupId, GroupMlsKind.MEMBERSHIP_PROPOSAL, payload
+                    )),
+                    now, 0, now, acked = false, failed = false,
+                )))
+                GroupResult.PROPOSAL_QUEUED
+            }
             is Verdict.Apply -> {
                 val changesMlsMembership = v.members != previousMembers
-                // Keep MLS membership and epoch changes single-writer until a distributed proposal
-                // coordinator can reconcile concurrent proposals and commits from multiple admins.
+                // MLS membership proposals are owner-routed and checked against both base epochs.
+                // Only the owner reaches this native membership-commit path.
                 if (g.mlsEnabled && changesMlsMembership && roleOf(previousMembers, me) != GroupRole.OWNER) {
                     return@withLock GroupResult.NOT_ALLOWED
                 }
@@ -472,6 +501,83 @@ class GroupEngine(
         val localRole = roleOf(members, me)
 
         when (env.kind) {
+            GroupMlsKind.MEMBERSHIP_PROPOSAL -> {
+                if (group.state != GroupState.ACTIVE || localRole != GroupRole.OWNER ||
+                    sender.role != GroupRole.ADMIN || !sender.mlsJoined) return
+                if (store.hasControlMessage(env.messageId)) { ack(me, env.from, env.messageId); return }
+                val proposal = GroupChangeProposalCodec.decode(env.payload) ?: return
+                if (proposal.proposalId != env.messageId || proposal.groupId != env.groupId) return
+                if (proposal.baseGroupEpoch != group.epoch || proposal.baseMlsEpoch != group.mlsEpoch) {
+                    store.recordControlMessage(env.messageId, clock())
+                    broadcastSnapshot(env.groupId, setOf(env.from))
+                    ack(me, env.from, env.messageId)
+                    return
+                }
+
+                val targetIds = proposal.targets.toSet()
+                val updatedMembers: List<GroupMemberRef>
+                var nextMlsEpoch = group.mlsEpoch
+                when (proposal.action) {
+                    "add" -> {
+                        if (members.size + targetIds.size > GroupLimits.MAX_MEMBERS ||
+                            proposal.targets.any { id ->
+                                members.any { it.id == id } || peers.status(id) != PeerStatus.Known
+                            }) {
+                            store.recordControlMessage(env.messageId, clock())
+                            broadcastSnapshot(env.groupId, setOf(env.from))
+                            ack(me, env.from, env.messageId)
+                            return
+                        }
+                        updatedMembers = members + proposal.targets.map { GroupMemberRef(it, GroupRole.MEMBER) }
+                    }
+                    "remove" -> {
+                        if (proposal.targets.any { id ->
+                                id == env.from || members.none { it.id == id && it.role == GroupRole.MEMBER }
+                            }) {
+                            store.recordControlMessage(env.messageId, clock())
+                            broadcastSnapshot(env.groupId, setOf(env.from))
+                            ack(me, env.from, env.messageId)
+                            return
+                        }
+                        var epochMembers = members
+                        for (targetId in proposal.targets) {
+                            val target = epochMembers.first { it.id == targetId }
+                            if (target.mlsJoined) {
+                                val engine = mls ?: return
+                                val commit = engine.removeMember(env.groupId, targetId)
+                                val now = clock().coerceAtLeast(1L)
+                                val recipients = epochMembers.filter {
+                                    it.mlsJoined && it.id != me && it.id != targetId &&
+                                        peers.status(it.id) == PeerStatus.Known
+                                }
+                                store.enqueue(recipients.map { recipient ->
+                                    val id = newId()
+                                    OutboxRow(
+                                        id, env.groupId, recipient.id, null,
+                                        EnvelopeCodec.encode(Envelope.GroupMls(
+                                            id, me, recipient.id, env.groupId, GroupMlsKind.COMMIT, commit.commit
+                                        )),
+                                        now, 0, now, acked = false, failed = false,
+                                    )
+                                })
+                                nextMlsEpoch = commit.epoch
+                                epochMembers = epochMembers.map {
+                                    if (it.id == targetId) it.copy(mlsJoined = false) else it
+                                }
+                            }
+                        }
+                        updatedMembers = epochMembers.filterNot { it.id in targetIds }
+                    }
+                    else -> return
+                }
+                store.putGroup(
+                    group.copy(epoch = group.epoch + 1, mlsEpoch = nextMlsEpoch),
+                    updatedMembers,
+                )
+                broadcastSnapshot(env.groupId, targetIds)
+                store.recordControlMessage(env.messageId, clock())
+                ack(me, env.from, env.messageId)
+            }
             GroupMlsKind.KEY_PACKAGE -> {
                 if (localRole != GroupRole.OWNER || sender.mlsJoined || env.from == group.owner) return
                 val engine = mls ?: return
@@ -645,7 +751,9 @@ class GroupEngine(
         }
         if (env.epoch < local.epoch || env.mlsEpoch < local.mlsEpoch) { ack(me, env.from, env.messageId); return }
         if (env.mlsEnabled != local.mlsEnabled) return
-        if (env.mlsEnabled && local.state == GroupState.ACTIVE) {
+        // A removed member intentionally does not receive the new MLS Commit.
+        // Validate native epoch/member state only for replicas that remain in the epoch.
+        if (env.mlsEnabled && local.state == GroupState.ACTIVE && iAmIn) {
             val nativeEpoch = runCatching { mls?.epoch(env.groupId) }.getOrNull() ?: return
             if (nativeEpoch != env.mlsEpoch) return
             val nativeMembers = mlsCredentialIds(env.groupId) ?: return

@@ -2,7 +2,7 @@
 <resources>
     <!-- backup and restore -->
     <string name="settings_backup">Backup and restore</string>
-    <string name="backup_desc">Saves your identity, contacts, messages, groups and settings into one file, locked with a passphrase you choose. Downloaded attachments and vault files are not included. There is no cloud: you decide where the file goes.</string>
+    <string name="backup_desc">Saves your identity, contacts, messages, groups, attachments, Vault and MLS files, Blossom servers, Nostr relays, discovery gateways, network and app settings into one passphrase-encrypted file. Restore resets old secure sessions and requires fresh signed contact cards. The backup stays local.</string>
     <string name="backup_create">Create encrypted backup</string>
     <string name="backup_restore">Restore from backup</string>
     <string name="backup_pass_title">Choose a passphrase</string>
@@ -17,7 +17,7 @@
     <string name="backup_close_app">Close RELYRA</string>
     <string name="backup_cancel_restore">Cancel restore</string>
     <string name="backup_saved">Backup saved</string>
-    <string name="backup_applied">Backup restored</string>
+    <string name="backup_applied">Backup restored. Re-import fresh signed contact cards on both devices to establish new secure sessions.</string>
     <string name="err_backup">The backup could not be created: %1$s</string>
     <string name="err_restore">The backup could not be restored: %1$s</string>
 

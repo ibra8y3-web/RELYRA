@@ -44,7 +44,9 @@ import org.relyra.app.core.database.GroupAttachmentEntity
 import org.relyra.app.core.database.CommunityEntity
 import org.relyra.app.core.community.CommunityManifest
 import org.relyra.app.core.community.CommunityEvent
-import org.relyra.app.core.community.CommunityReport
+import org.relyra.app.core.community.CommunityPost
+import org.relyra.app.core.community.CommunityReportView
+import org.relyra.app.core.community.CommunityReportAuditEntry
 import org.relyra.app.core.database.GroupSummary
 import org.relyra.app.core.messaging.GroupKind
 import org.relyra.app.core.messaging.GroupOutcome
@@ -99,7 +101,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val savedCommunities = MutableStateFlow<List<CommunityEntity>>(emptyList())
     val discoveredCommunities = MutableStateFlow<List<CommunityManifest>>(emptyList())
     val communityEvents = MutableStateFlow<Map<String, List<CommunityEvent>>>(emptyMap())
-    val communityReports = MutableStateFlow<Map<String, List<CommunityReport>>>(emptyMap())
+    val communityReports = MutableStateFlow<Map<String, List<CommunityReportView>>>(emptyMap())
+    val communityPosts = MutableStateFlow<Map<String, List<CommunityPost>>>(emptyMap())
+    val communityReportAudits = MutableStateFlow<Map<String, List<CommunityReportAuditEntry>>>(emptyMap())
     val communityBusy = MutableStateFlow(false)
     val groupSummaries = MutableStateFlow<List<GroupSummary>>(emptyList())
     val nostrKey = MutableStateFlow<String?>(null)
@@ -400,6 +404,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun groupError(r: GroupResult) {
         message.value = when (r) {
             GroupResult.OK -> return
+            GroupResult.PROPOSAL_QUEUED -> UiMessage(R.string.group_membership_proposal_sent)
             GroupResult.NOT_ALLOWED -> UiMessage(R.string.err_group_not_allowed)
             GroupResult.NO_RECIPIENTS -> UiMessage(R.string.err_group_no_recipients)
             GroupResult.UNKNOWN_CONTACT -> UiMessage(R.string.err_group_contact)
@@ -679,6 +684,30 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun loadCommunityPosts(manifest: CommunityManifest) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val posts = ctr().communityClient.posts(manifest)
+                communityPosts.value = communityPosts.value + (manifest.communityId to posts)
+            } catch (t: Throwable) {
+                fail(t)
+            }
+        }
+    }
+
+    fun publishCommunityPost(manifest: CommunityManifest, body: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                ctr().communityClient.publishPost(manifest, body)
+                val posts = ctr().communityClient.posts(manifest)
+                communityPosts.value = communityPosts.value + (manifest.communityId to posts)
+                message.value = UiMessage(R.string.communities_post_published)
+            } catch (t: Throwable) {
+                fail(t)
+            }
+        }
+    }
+
     fun loadCommunityReports(communityId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
@@ -686,6 +715,45 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val manifest = ctr().communityClient.deserializeAndVerifyManifest(entity.manifestJson)
                 val reports = ctr().communityClient.reports(manifest)
                 communityReports.value = communityReports.value + (communityId to reports)
+            } catch (t: Throwable) {
+                fail(t)
+            }
+        }
+    }
+
+    fun loadCommunityReports(manifest: CommunityManifest) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val reports = ctr().communityClient.reports(manifest)
+                communityReports.value = communityReports.value + (manifest.communityId to reports)
+            } catch (t: Throwable) {
+                fail(t)
+            }
+        }
+    }
+
+    fun reviewCommunityReport(manifest: CommunityManifest, reportId: String, status: String, note: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                ctr().communityClient.reviewReport(manifest, reportId, status, note)
+                val reports = ctr().communityClient.reports(manifest)
+                val audit = ctr().communityClient.reportAudit(manifest, reportId)
+                val events = ctr().communityClient.moderationEvents(manifest)
+                communityReports.value = communityReports.value + (manifest.communityId to reports)
+                communityReportAudits.value = communityReportAudits.value + ("${manifest.communityId}/$reportId" to audit)
+                communityEvents.value = communityEvents.value + (manifest.communityId to events)
+                message.value = UiMessage(R.string.communities_review_saved)
+            } catch (t: Throwable) {
+                fail(t)
+            }
+        }
+    }
+
+    fun loadCommunityReportAudit(manifest: CommunityManifest, reportId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val audit = ctr().communityClient.reportAudit(manifest, reportId)
+                communityReportAudits.value = communityReportAudits.value + ("${manifest.communityId}/$reportId" to audit)
             } catch (t: Throwable) {
                 fail(t)
             }
@@ -924,7 +992,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val out = getApplication<Application>().contentResolver.openOutputStream(dest, "w")
                     ?: throw java.io.IOException("cannot write to the chosen location")
-                ctr().backup.export(out, passphrase)
+                ctr().mls.withBackupBarrier {
+                    out.use { ctr().backup.export(it, passphrase) }
+                }
                 message.value = UiMessage(R.string.backup_saved)
             } catch (t: Throwable) {
                 message.value = UiMessage(R.string.err_backup, listOf(t.message ?: t.javaClass.simpleName))

@@ -81,6 +81,31 @@ class BlossomClientTest {
         assertTrue(event.tags.any { it[0] == "expiration" && it[1].toLong() > 1_700_000_000 })
     }
 
+
+    @Test fun interruptedUploadCanBeSafelyRetriedFromThePersistedCiphertext() = runBlocking {
+        val data = Random(17).nextBytes(24_000)
+        val file = tmp().also { it.writeBytes(data) }
+        val hash = Hex.encode(sha(data))
+        val secret = NostrCrypto.randomSecret()
+
+        enqueuePreflightUnsupported()
+        server.enqueue(MockResponse().setResponseCode(503))
+        assertTrue(client.upload(base(), file, hash, secret, 1) is BlossomUpload.Unavailable)
+        assertTrue("encrypted outbox blob must remain available for retry", file.isFile)
+
+        enqueuePreflightUnsupported()
+        server.enqueue(MockResponse().setResponseCode(201).setBody(descriptor(hash, data.size)))
+        assertTrue(client.upload(base(), file, hash, secret, 2) is BlossomUpload.Ok)
+        val retryPreflight = server.takeRequest()
+        assertEquals("HEAD", retryPreflight.method)
+        assertEquals("/upload", retryPreflight.path)
+        val retried = server.takeRequest()
+        assertEquals("PUT", retried.method)
+        assertEquals(hash, retried.getHeader("X-SHA-256"))
+        assertArrayEquals(data, retried.body.readByteArray())
+        assertTrue(file.isFile)
+    }
+
     @Test fun uploadErrorsAreClassified() = runBlocking {
         val file = tmp().also { it.writeBytes(ByteArray(10) { 1 }) }
         val hex = Hex.encode(sha(ByteArray(10) { 1 }))

@@ -42,6 +42,17 @@ class AppSettings(context: Context) {
     fun setWifiOnlyDownloads(v: Boolean) { prefs.edit { putBoolean(K_WIFI, v) }; _wifiOnly.value = v }
     fun setTheme(m: ThemeMode) { prefs.edit { putInt(K_THEME, m.ordinal) }; _theme.value = m }
 
+    /** Reloads in-memory flows after a verified backup restores SharedPreferences at process startup. */
+    fun reload() {
+        _notifications.value = prefs.getBoolean(K_NOTIF, true)
+        _notifPreview.value = prefs.getBoolean(K_NOTIF_PREVIEW, false)
+        _listPreview.value = prefs.getBoolean(K_LIST_PREVIEW, true)
+        _keepConnected.value = prefs.getBoolean(K_KEEP, false)
+        _blockShots.value = prefs.getBoolean(K_SHOTS, false)
+        _wifiOnly.value = prefs.getBoolean(K_WIFI, false)
+        _theme.value = readTheme()
+    }
+
     private companion object {
         const val K_NOTIF = "notifications_on"
         const val K_NOTIF_PREVIEW = "notif_preview"

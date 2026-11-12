@@ -103,6 +103,7 @@ sealed interface AddResult {
     data object IsSelf : AddResult
     data object AlreadyExists : AddResult
     data object NameRequired : AddResult
+    data object FreshCardRequired : AddResult
 }
 
 class ContactRepository(
@@ -154,10 +155,19 @@ class ContactRepository(
         val id = IdentityCrypto.publicId(key)
         val existing = db.contactDao().get(id)
         if (existing != null) {
+            // A restored contact must be refreshed with a v3 signed card carrying a fresh X3DH prekey bundle.
+            if (signed && existing.encKey == null && preKeyBundle == null) return AddResult.FreshCardRequired
             // A newer signed card can add the encryption keys an older contact is missing.
             if (signed && enc != null && nostr != null &&
                 (existing.encKey == null || existing.nostrKey == null || preKeyBundle != null)) {
+                val sessionKeysChanged = existing.encKey == null ||
+                    !existing.encKey.contentEquals(enc) ||
+                    (preKeyBundle != null && existing.signedPreKeyId != preKeyBundle.signedPreKeyId)
                 db.contactDao().setKeys(id, enc, nostr)
+                if (sessionKeysChanged) {
+                    db.ratchetDao().delete(id)
+                    db.encryptedPacketDao().deleteForChat(id)
+                }
                 preKeyBundle?.takeIf {
                     it.signedPreKeyExpiresAt > (existing.signedPreKeyExpiresAt ?: 0L) ||
                         (it.signedPreKeyExpiresAt == existing.signedPreKeyExpiresAt &&
