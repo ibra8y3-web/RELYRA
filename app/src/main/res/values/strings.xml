@@ -387,4 +387,6 @@
     <string name="ev_device_sync_conflict">Device sync conflict</string>
     <string name="devices_register_primary">Register this as the first trusted device</string>
     <string name="devices_register_primary_hint">Use this only on the first device for this account. On a new device, create a pairing request instead.</string>
+    <string name="devices_import_file">Import encrypted snapshot file</string>
+    <string name="devices_import_code">Import pasted sync code</string>
 </resources>
