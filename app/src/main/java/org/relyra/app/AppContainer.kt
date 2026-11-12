@@ -13,6 +13,7 @@ import org.relyra.app.core.messaging.DeliveryEngine
 import org.relyra.app.core.messaging.Envelope
 import org.relyra.app.core.messaging.EnvelopeCodec
 import org.relyra.app.core.messaging.P2pSignalKind
+import org.relyra.app.core.messaging.SendOutcome
 import org.relyra.app.core.messaging.GroupEngine
 import org.relyra.app.core.messaging.IncomingListener
 import org.relyra.app.core.notify.Notifier
@@ -125,6 +126,17 @@ class AppContainer(context: Context) {
             knownPeer = { id -> contacts.peers.status(id) == PeerStatus.Known },
             onWire = { delivery.acceptWire(it) },
             scope = netScope,
+            sendSignal = { peerId, kind, signedSignal ->
+                val own = database.identityDao().get()?.publicId
+                if (own == null) {
+                    SendOutcome.Rejected("local RELYRA identity is unavailable")
+                } else {
+                    val envelope = Envelope.P2pSignal(
+                        UUID.randomUUID().toString(), own, peerId, kind, signedSignal,
+                    )
+                    delivery.transmit(peerId, EnvelopeCodec.encode(envelope))
+                }
+            },
         )
     }
     val wifiDirect by lazy {
