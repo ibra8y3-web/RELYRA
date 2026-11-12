@@ -90,6 +90,14 @@ class SecureStore(context: Context) {
     fun clearDevicePairingChallenge(deviceId: String) {
         check(prefs.edit().remove("device_challenge_" + deviceId).commit())
     }
+    fun clearDeviceState() {
+        val editor = prefs.edit()
+        prefs.all.keys.filter { it.startsWith("device_sign_") || it.startsWith("device_enc_") || it.startsWith("device_challenge_") }
+            .forEach { editor.remove(it) }
+        editor.remove(DEVICE_ID)
+        check(editor.commit()) { "device state cleanup failed" }
+    }
+
     fun saveSeed(seed: ByteArray) = write(SEED, seed)
     fun loadSeed(): ByteArray? = read(SEED)
     fun clearSeed() { prefs.edit().remove(SEED).commit() }
