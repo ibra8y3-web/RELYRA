@@ -12,7 +12,7 @@ This document describes implemented source. Planned features are not represented
 | Messaging | X3DH, Double Ratchet, durable queue, ACK/retry/deduplication, group engine |
 | MLS | OpenMLS 0.9.2 Rust/JNI engine, separate SQLCipher database, KeyPackage/Welcome/Commit/ApplicationData |
 | Persistence | Room + SQLCipher, encrypted local Vault and app-private attachment directories |
-| Transport | Nostr WSS, WebRTC P2P DataChannel, Bluetooth Classic RFCOMM, Wi-Fi Direct and Nearby LAN |
+| Transport | Nostr WSS, WebRTC P2P DataChannel, Bluetooth Classic RFCOMM, Wi-Fi Direct, Nearby LAN and opt-in BLE GATT Mesh (Phase 6; runtime verification pending) |
 | Discovery service | Separate Go/libp2p Kademlia DHT + Pebble datastore + HTTPS gateway and presence API |
 | TURN | coturn deployment configuration and signed short-lived REST credentials; actual public service deployment is operator-owned |
 | File transfer | Locally encrypted attachment payloads and Blossom-compatible storage; downloads support HTTP Range resume |
