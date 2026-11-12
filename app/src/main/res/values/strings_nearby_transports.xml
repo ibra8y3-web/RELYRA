@@ -80,4 +80,8 @@
     <string name="net_dht_turn_fetch">Get short-lived TURN credentials from discovery service</string>
     <string name="net_dht_turn_ready">Temporary TURN credentials accepted for new sessions.</string>
     <string name="net_dht_turn_unavailable">Could not obtain valid TURN credentials. Check the gateway, server identity and TURN deployment.</string>
+
+    <string name="net_dht_gateway_untested">Not tested yet</string>
+    <string name="net_dht_gateway_invalid">Enter a valid HTTPS discovery gateway URL.</string>
+    <string name="net_dht_gateway_duplicate">This discovery gateway is already configured.</string>
 </resources>
