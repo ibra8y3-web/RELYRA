@@ -51,6 +51,8 @@ internal class FakeGroupStore : GroupStore {
         outbox[copyId] = row.copy(acked = true, readAt = row.readAt ?: readAt)
         return true
     }
+    override suspend fun recordControlMessage(id: String, receivedAt: Long): Boolean = processed.add(id)
+
     override suspend fun deleteGroup(groupId: String) {
         groups.remove(groupId); memberMap.remove(groupId)
         messages.values.removeAll { it.groupId == groupId }
@@ -311,6 +313,38 @@ class GroupEngineTest {
         assertEquals(receipt.originalMessageId, decoded.originalMessageId)
         assertEquals(1234L, decoded.readAt)
         assertNull(EnvelopeCodec.decode(encoded.copyOf(encoded.size - 1)))
+    }
+
+    @Test fun groupMlsEnvelopeAndV2MembershipSnapshotRoundTrip() {
+        val gid = UUID.randomUUID().toString()
+        val id = UUID.randomUUID().toString()
+        val memberId = UUID.randomUUID().toString()
+        val sync = Envelope.GroupSync(
+            id, "owner", "member", gid, "MLS team", GroupKind.GROUP, 3, "owner",
+            listOf(GroupMemberRef("owner", GroupRole.OWNER, true), GroupMemberRef("member", GroupRole.MEMBER, false)),
+            mlsEnabled = true, mlsEpoch = 2,
+        )
+        val back = EnvelopeCodec.decode(EnvelopeCodec.encode(sync)) as Envelope.GroupSync
+        assertTrue(back.mlsEnabled)
+        assertEquals(2L, back.mlsEpoch)
+        assertTrue(back.members.first().mlsJoined)
+        assertFalse(back.members.last().mlsJoined)
+
+        val packet = Envelope.GroupMls(id, "owner", "member", gid, GroupMlsKind.WELCOME, byteArrayOf(1, 2, 3))
+        val decoded = EnvelopeCodec.decode(EnvelopeCodec.encode(packet)) as Envelope.GroupMls
+        assertEquals(GroupMlsKind.WELCOME, decoded.kind)
+        assertTrue(decoded.payload.contentEquals(byteArrayOf(1, 2, 3)))
+        assertNull(EnvelopeCodec.decode(EnvelopeCodec.encode(packet).copyOf(EnvelopeCodec.encode(packet).size - 1)))
+    }
+
+    @Test fun mlsGroupTextPayloadCodecRejectsMalformedFrames() {
+        val id = UUID.randomUUID().toString()
+        val encoded = GroupPayloadCodec.encodeText(id, 1234L, "مرحبا MLS")
+        val decoded = GroupPayloadCodec.decodeText(encoded)!!
+        assertEquals(id, decoded.messageId)
+        assertEquals(1234L, decoded.sentAt)
+        assertEquals("مرحبا MLS", decoded.body)
+        assertNull(GroupPayloadCodec.decodeText(encoded.copyOf(encoded.size - 1)))
     }
 
     @Test fun codecRoundTripAndMalformedInput() {
