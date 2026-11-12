@@ -18,6 +18,18 @@ interface GroupDao {
     @Query("SELECT * FROM chat_groups ORDER BY createdAt DESC")
     fun observeAll(): Flow<List<GroupEntity>>
 
+    @Query("SELECT * FROM chat_groups ORDER BY createdAt ASC")
+    suspend fun allForDeviceSync(): List<GroupEntity>
+
+    @Query("SELECT * FROM group_members ORDER BY groupId, memberId")
+    suspend fun allMembersForDeviceSync(): List<GroupMemberEntity>
+
+    @Query("SELECT * FROM group_messages ORDER BY createdAt ASC")
+    suspend fun allMessagesForDeviceSync(): List<GroupMessageEntity>
+
+    @Query("SELECT * FROM group_attachments ORDER BY createdAt ASC")
+    suspend fun allAttachmentsForDeviceSync(): List<GroupAttachmentEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun put(e: GroupEntity)
 
@@ -41,6 +53,12 @@ interface GroupDao {
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertMessage(e: GroupMessageEntity)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertMessageIfAbsent(e: GroupMessageEntity): Long
+
+    @Query("SELECT * FROM group_messages WHERE messageId = :id")
+    suspend fun groupMessage(id: String): GroupMessageEntity?
 
     @Query("SELECT groupId, MAX(createdAt) AS lastAt, SUM(CASE WHEN outgoing = 0 AND readLocally = 0 THEN 1 ELSE 0 END) AS unread FROM group_messages GROUP BY groupId")
     fun observeSummaries(): Flow<List<GroupSummary>>
@@ -98,6 +116,9 @@ interface GroupDao {
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertGroupAttachment(entity: GroupAttachmentEntity)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertGroupAttachmentIfAbsent(entity: GroupAttachmentEntity): Long
 
     @Update
     suspend fun updateGroupAttachment(entity: GroupAttachmentEntity)
