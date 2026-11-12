@@ -91,6 +91,9 @@ func TestDHTKeyAndValidatorBindIdentity(t *testing.T) {
 	if err := (Validator{}).Validate(key, raw); err != nil {
 		t.Fatal(err)
 	}
+	if err := (Validator{}).Validate("peer/v1/"+record.PublicID, raw); err != nil {
+		t.Fatalf("namespace-stripped DHT key was rejected: %v", err)
+	}
 	if err := (Validator{}).Validate(RecordKey("rly1wrong"), raw); err == nil {
 		t.Fatal("wrong DHT key accepted")
 	}
