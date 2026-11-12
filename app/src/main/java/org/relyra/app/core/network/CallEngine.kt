@@ -220,7 +220,17 @@ class CallEngine(
         if (sessions[peer] !== session) return
         session.recoveryJob = scope.launch(Dispatchers.IO) {
             val localId = ownId() ?: return@launch
-            if (localId >= peer) return@launch
+            if (localId >= peer) {
+                delay(30_000)
+                val currentIce = session.connection.iceConnectionState()
+                if (sessions[peer] === session && currentIce != PeerConnection.IceConnectionState.CONNECTED &&
+                    currentIce != PeerConnection.IceConnectionState.COMPLETED
+                ) {
+                    close(peer)
+                    mutableState.value = CallUiState(peerId = peer, phase = CallPhase.FAILED, detail = "connection_failed")
+                }
+                return@launch
+            }
             while (sessions[peer] === session && session.recoveryAttempts < 3) {
                 val attempt = session.recoveryAttempts++
                 delay(1_500L * (attempt + 1))
