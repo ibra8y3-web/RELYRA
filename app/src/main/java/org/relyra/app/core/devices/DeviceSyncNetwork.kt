@@ -81,18 +81,19 @@ class DeviceSyncNetwork(
         }
     }
 
-    suspend fun syncNow() {
-        val identity = database.identityDao().get() ?: return
-        val secret = identities.nostrSecret() ?: return
-        val publicKey = identities.nostrPublicKeyHex() ?: return
+    suspend fun syncNow(): Int {
+        val identity = database.identityDao().get() ?: return 0
+        val secret = identities.nostrSecret() ?: return 0
+        val publicKey = identities.nostrPublicKeyHex() ?: return 0
         val urls = network.relays.value.filter { it.enabled }.map { it.url }.toSet()
-        if (urls.isEmpty()) return
+        if (urls.isEmpty()) return 0
         pool.configure(secret, urls)
         pool.waitForBacklog(20_000)
 
         val local = devices.ensureLocalDevice()
         val trusted = database.trustedDeviceDao().observeForAccount(identity.publicId).first()
             .filter { it.status == TrustedDeviceStatus.APPROVED && it.deviceId != local.deviceId }
+        var sentDevices=0
         for (target in trusted) {
             val wire = sync.exportEncrypted(target.deviceId)
             require(wire.size <= CHUNK_BYTES * MAX_CHUNKS) { "Device sync payload exceeds the relay transfer limit" }
@@ -112,7 +113,9 @@ class DeviceSyncNetwork(
                 val event = NostrEvents.create(secret, KIND, tags, content, System.currentTimeMillis() / 1000)
                 check(pool.publish(event)) { "No configured relay accepted device-sync chunk $index" }
             }
+            sentDevices++
         }
+        return sentDevices
     }
 
     private suspend fun receive(event: NostrEvent) = receiveLock.withLock {
