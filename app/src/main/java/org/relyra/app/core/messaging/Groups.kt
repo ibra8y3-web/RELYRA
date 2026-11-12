@@ -637,10 +637,14 @@ class GroupEngine(
                 val credential = engine.keyPackageIdentity(env.payload)
                 if (!MlsCredentialCodec.verify(credential, env.from)) return
                 if (store.hasControlMessage(env.messageId)) { ack(me, env.from, env.messageId); return }
-                // Add is committed directly by the owner. Do not let a new-member
-                // handshake silently approve pending admin Remove proposals.
+                // The owner turns the validated KeyPackage into a native RFC 9420
+                // Add Proposal. Pending admin proposals are never auto-approved by this path.
                 if (engine.pendingProposalCount(env.groupId) > 0) return
-                val bundle = engine.addMembers(env.groupId, listOf(env.payload))
+                val addProposal = engine.proposeAddMember(env.groupId, env.payload)
+                engine.processProposal(
+                    addProposal, newId(), me, setOf(env.from), allowAdd = true, allowRemove = false,
+                )
+                val bundle = engine.commitPendingProposals(env.groupId)
                 val welcome = bundle.welcome ?: return
                 val activeCredentials = mlsCredentialIds(env.groupId) ?: return
                 val updatedMembers = members
