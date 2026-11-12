@@ -520,8 +520,11 @@ pub fn propose_add_member(
         .map_err(|_| MlsError::InvalidKeyPackage)?
         .validate(provider.crypto(), ProtocolVersion::Mls10)
         .map_err(|_| MlsError::InvalidKeyPackage)?;
-    let (message, _proposal_ref) = group.propose_add_member(&provider, &signer, &key_package)
-        .map_err(|_| MlsError::Rejected)?;
+    // Use a by-value proposal so recipients can process the Commit even if they
+    // were offline when the standalone proposal was first delivered to the owner.
+    let (message, _proposal_ref) = group.propose(
+        &provider, &signer, Propose::Add(key_package), ProposalOrRefType::Proposal,
+    ).map_err(|_| MlsError::Rejected)?;
     message.tls_serialize_detached().map_err(|_| MlsError::InvalidMessage)
 }
 
@@ -541,8 +544,11 @@ pub fn propose_remove_member(
         .find(|member| member.credential.serialized_content() == member_identity)
         .map(|member| member.index)
         .ok_or(MlsError::IdentityMismatch)?;
-    let (message, _proposal_ref) = group.propose_remove_member(&provider, &signer, target_index)
-        .map_err(|_| MlsError::Rejected)?;
+    // By-value Remove proposal keeps Commit processing independent from whether
+    // every member received this standalone proposal before going offline.
+    let (message, _proposal_ref) = group.propose(
+        &provider, &signer, Propose::Remove(target_index), ProposalOrRefType::Proposal,
+    ).map_err(|_| MlsError::Rejected)?;
     message.tls_serialize_detached().map_err(|_| MlsError::InvalidMessage)
 }
 
