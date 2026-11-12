@@ -434,12 +434,13 @@ class GroupEngineTest {
             ownId = { "carol" },
             transmit = { _, _ -> SendOutcome.Unavailable },
         )
+        val adminCommitId = UUID.randomUUID().toString()
         receiver.onEnvelope(
-            Envelope.GroupMls(UUID.randomUUID().toString(), "bob", "carol", gid,
+            Envelope.GroupMls(adminCommitId, "bob", "carol", gid,
                 GroupMlsKind.COMMIT, byteArrayOf(1, 2, 3))
         )
         assertEquals(9L, store.group(gid)!!.mlsEpoch)
-        assertFalse(store.hasControlMessage("an-admin-commit"))
+        assertFalse(store.hasControlMessage(adminCommitId))
     }
 
 }
