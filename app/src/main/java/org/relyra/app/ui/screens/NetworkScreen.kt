@@ -80,6 +80,8 @@ fun NetworkScreen(vm: MainViewModel) {
     val discoveryStatus by vm.discoveryStatus.collectAsStateWithLifecycle()
     val discoveredPeer by vm.discoveredPeer.collectAsStateWithLifecycle()
     val discoveryGatewayTests by vm.discoveryGatewayTests.collectAsStateWithLifecycle()
+    val storeForwardEnabled by vm.storeForwardEnabled.collectAsStateWithLifecycle()
+    val storeForwardGateways by vm.storeForwardGateways.collectAsStateWithLifecycle()
     val torSettings by vm.torProxySettings.collectAsStateWithLifecycle()
     val torStatus by vm.torProxyStatus.collectAsStateWithLifecycle()
     val fileServers by vm.fileServers.collectAsStateWithLifecycle()
@@ -98,6 +100,8 @@ fun NetworkScreen(vm: MainViewModel) {
     var turnError by rememberSaveable { mutableStateOf(false) }
     var discoveryGatewayInput by rememberSaveable { mutableStateOf("") }
     var discoveryGatewayError by rememberSaveable { mutableStateOf<Int?>(null) }
+    var storeForwardGatewayInput by rememberSaveable { mutableStateOf("") }
+    var storeForwardGatewayError by rememberSaveable { mutableStateOf<Int?>(null) }
 
     val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -308,6 +312,70 @@ fun NetworkScreen(vm: MainViewModel) {
                 enabled = discoveryGatewayInput.isNotBlank(),
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(stringResource(R.string.net_dht_gateway_add)) }
+        }
+
+        SectionCard(stringResource(R.string.net_store_forward_title)) {
+            Text(
+                stringResource(R.string.net_store_forward_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.net_store_forward_enable), Modifier.weight(1f))
+                Switch(
+                    checked = storeForwardEnabled,
+                    onCheckedChange = vm::setStoreForwardEnabled,
+                )
+            }
+            Text(
+                stringResource(R.string.net_store_forward_privacy),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.error,
+            )
+            storeForwardGateways.forEach { gateway ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(gateway.url, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(
+                            stringResource(if (gateway.enabled) R.string.net_store_forward_gateway_enabled else R.string.net_store_forward_gateway_disabled),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        TextButton(onClick = { vm.removeStoreForwardGateway(gateway.url) }) {
+                            Text(stringResource(R.string.net_dht_gateway_remove), color = MaterialTheme.colorScheme.error)
+                        }
+                        Switch(
+                            checked = gateway.enabled,
+                            onCheckedChange = { vm.setStoreForwardGatewayEnabled(gateway.url, it) },
+                        )
+                    }
+                }
+            }
+            OutlinedTextField(
+                value = storeForwardGatewayInput,
+                onValueChange = { storeForwardGatewayInput = it; storeForwardGatewayError = null },
+                label = { Text(stringResource(R.string.net_store_forward_gateway_label)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            storeForwardGatewayError?.let { errorId ->
+                Text(stringResource(errorId), color = MaterialTheme.colorScheme.error)
+            }
+            Button(
+                onClick = {
+                    when (vm.addStoreForwardGateway(storeForwardGatewayInput)) {
+                        AddRelayResult.Added -> {
+                            storeForwardGatewayInput = ""
+                            storeForwardGatewayError = null
+                        }
+                        AddRelayResult.Invalid -> storeForwardGatewayError = R.string.net_store_forward_gateway_invalid
+                        AddRelayResult.Duplicate -> storeForwardGatewayError = R.string.net_store_forward_gateway_duplicate
+                    }
+                },
+                enabled = storeForwardGatewayInput.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(stringResource(R.string.net_store_forward_gateway_add)) }
         }
 
         SectionCard(stringResource(R.string.net_p2p_title)) {

@@ -94,4 +94,14 @@
     <string name="net_route_unavailable">غير متاح، تمت تجربة المسار البديل</string>
     <string name="net_route_rejected">تم الرفض</string>
     <string name="net_route_error">خطأ في الناقل، تمت تجربة المسار البديل</string>
+    <string name="net_store_forward_title">ترحيل الرسائل وتخزينها مؤقتًا</string>
+    <string name="net_store_forward_desc">عند تعذر الاتصال المباشر ومسارات الترحيل الحية، يمكن لـ RELYRA وضع حزمة النقل المشفرة طرفًا لطرف على خادم يديره مشغّله واستلامها لاحقًا. الميزة متوقفة افتراضيًا، ويجب على مشغّل الخادم أيضًا تفعيل RELYRA_STORE_FORWARD_ENABLED=true.</string>
+    <string name="net_store_forward_enable">السماح بالتخزين والترحيل من هذا الجهاز</string>
+    <string name="net_store_forward_privacy">الخصوصية: لا يستطيع الخادم قراءة محتوى الرسالة، لكنه يرى المعرّف العام للمرسل والمستلم وحجم الحزمة وتوقيتها. استخدم خوادم مشغّلين تثق بهم فقط.</string>
+    <string name="net_store_forward_gateway_label">بوابة تخزين وترحيل عبر HTTPS</string>
+    <string name="net_store_forward_gateway_add">إضافة بوابة</string>
+    <string name="net_store_forward_gateway_invalid">أدخل عنوان بوابة HTTPS صالحًا.</string>
+    <string name="net_store_forward_gateway_duplicate">بوابة التخزين والترحيل هذه مضافة بالفعل.</string>
+    <string name="net_store_forward_gateway_enabled">مفعّلة للمسار الاحتياطي</string>
+    <string name="net_store_forward_gateway_disabled">متوقفة</string>
 </resources>

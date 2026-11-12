@@ -94,4 +94,14 @@
     <string name="net_route_unavailable">unavailable, tried fallback</string>
     <string name="net_route_rejected">rejected</string>
     <string name="net_route_error">transport error, tried fallback</string>
+    <string name="net_store_forward_title">Store-and-Forward relay</string>
+    <string name="net_store_forward_desc">When direct and live relay paths are unavailable, RELYRA can queue an already end-to-end encrypted wire packet on an operator-managed relay and fetch it later. This feature is disabled by default. The server operator must also set RELYRA_STORE_FORWARD_ENABLED=true.</string>
+    <string name="net_store_forward_enable">Allow Store-and-Forward on this device</string>
+    <string name="net_store_forward_privacy">Privacy: the relay cannot read message contents, but it can see sender and recipient public IDs, packet size and timing. Use only relay operators you trust.</string>
+    <string name="net_store_forward_gateway_label">HTTPS Store-and-Forward gateway</string>
+    <string name="net_store_forward_gateway_add">Add gateway</string>
+    <string name="net_store_forward_gateway_invalid">Enter a valid HTTPS gateway URL.</string>
+    <string name="net_store_forward_gateway_duplicate">This Store-and-Forward gateway is already configured.</string>
+    <string name="net_store_forward_gateway_enabled">Enabled for fallback</string>
+    <string name="net_store_forward_gateway_disabled">Disabled</string>
 </resources>
