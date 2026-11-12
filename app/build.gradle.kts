@@ -22,6 +22,7 @@ android {
         applicationId = "org.relyra.app"
         minSdk = 29
         targetSdk = 35
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
         versionCode = 10
         versionName = "0.9.0"
     }
@@ -117,6 +118,8 @@ dependencies {
     implementation(libs.zxing.embedded)
 
     testImplementation(libs.junit)
+    androidTestImplementation("androidx.test:runner:1.6.2")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
     testImplementation(libs.secp256k1.jvm)
     testImplementation(libs.orgjson)
     testImplementation(libs.okhttp.mockwebserver)
