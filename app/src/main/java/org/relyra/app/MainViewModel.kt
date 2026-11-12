@@ -404,6 +404,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     private fun groupError(r: GroupResult) {
         message.value = when (r) {
             GroupResult.OK -> return
+            GroupResult.PROPOSAL_QUEUED -> UiMessage(R.string.group_membership_proposal_sent)
             GroupResult.NOT_ALLOWED -> UiMessage(R.string.err_group_not_allowed)
             GroupResult.NO_RECIPIENTS -> UiMessage(R.string.err_group_no_recipients)
             GroupResult.UNKNOWN_CONTACT -> UiMessage(R.string.err_group_contact)
