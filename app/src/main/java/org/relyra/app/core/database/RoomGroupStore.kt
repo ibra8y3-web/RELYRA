@@ -72,6 +72,19 @@ class RoomGroupStore(private val db: AppDatabase) : GroupStore {
         }
     }
 
+    override suspend fun applyMlsCommit(
+        group: GroupRecord,
+        members: List<GroupMemberRef>,
+        outbox: List<OutboxRow>,
+    ) {
+        db.withTransaction {
+            dao.put(group.toEntity())
+            dao.clearMembers(group.groupId)
+            dao.putMembers(members.map { GroupMemberEntity(group.groupId, it.id, it.role.name, it.mlsJoined) })
+            if (outbox.isNotEmpty()) dao.insertOutbox(outbox.map { it.toEntity() })
+        }
+    }
+
     override suspend fun enqueue(rows: List<OutboxRow>) = dao.insertOutbox(rows.map { it.toEntity() })
     override suspend fun dueOutbox(now: Long, limit: Int): List<OutboxRow> = dao.due(now, limit).map { it.toModel() }
     override suspend fun updateOutbox(row: OutboxRow) = dao.updateOutbox(row.toEntity())
