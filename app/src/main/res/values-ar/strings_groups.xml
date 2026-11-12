@@ -13,6 +13,8 @@
     <string name="groups_create_action">إنشاء</string>
     <string name="groups_no_contacts">لا توجد لديك جهة اتصال بمفتاح تشفير بعد. أضف واحدة من جهات الاتصال أولًا. يمكنك إنشاء مجموعة فارغة وإضافة الأعضاء لاحقًا.</string>
     <string name="groups_state_invited">دعوة</string>
+    <string name="groups_state_joining">جارٍ الانضمام إلى مجموعة MLS</string>
+    <string name="groups_state_joining_detail">أرسل جهازك حزمة مفاتيح MLS. يجب أن يضيفها مالك المجموعة ويرسل Welcome قبل أن يتمكن هذا الجهاز من إرسال رسائل المجموعة أو استقبالها.</string>
     <string name="groups_state_left">غادرتها</string>
     <string name="groups_state_removed">تمت إزالتك</string>
     <string name="groups_kind_group_short">مجموعة</string>
@@ -54,4 +56,5 @@
     <string name="err_group_contact">يجب أن يكون كل عضو من جهات اتصالك ولديه مفتاح تشفير.</string>
     <string name="err_group_invalid">غير صالح (اسم فارغ، أو لا أحد للإضافة، أو أعضاء أكثر من الحد).</string>
     <string name="err_group_state">هذه المجموعة غير نشطة.</string>
+    <string name="err_mls_unavailable">محرك OpenMLS الأصلي غير متاح في هذا الإصدار. تم إيقاف عمليات MLS بدلًا من الرجوع إلى تشفير أضعف.</string>
 </resources>
