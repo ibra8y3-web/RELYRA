@@ -24,12 +24,12 @@ import (
 	"github.com/libp2p/go-libp2p/core/crypto"
 	"github.com/libp2p/go-libp2p/core/host"
 	"github.com/libp2p/go-libp2p/core/peer"
-	"github.com/libp2p/go-libp2p/core/protocol"
+	libp2pprotocol "github.com/libp2p/go-libp2p/core/protocol"
 	dht "github.com/libp2p/go-libp2p-kad-dht"
 	"github.com/libp2p/go-libp2p/core/routing"
 	ma "github.com/multiformats/go-multiaddr"
 
-	"github.com/ibra8y3-web/RELYRA/services/discovery/internal/protocol"
+	presence "github.com/ibra8y3-web/RELYRA/services/discovery/internal/protocol"
 )
 
 const (
@@ -74,6 +74,7 @@ func (l *limiter) allow(key string, limit int, window time.Duration) bool {
 type server struct {
 	dht          *dht.IpfsDHT
 	host         host.Host
+	datastore    *pebbleds.Datastore
 	turnSecret   string
 	turnRealm    string
 	turnURLs     []string
@@ -169,8 +170,8 @@ func newServer(ctx context.Context) (*server, error) {
 	router, err := dht.New(
 		p2pHost,
 		dht.Mode(dht.ModeServer),
-		dht.ProtocolPrefix(protocol.ID("/relyra")),
-		dht.NamespacedValidator("rlyra", protocol.Validator{}),
+		dht.ProtocolPrefix(libp2pprotocol.ID("/relyra")),
+		dht.NamespacedValidator("rlyra", presence.Validator{}),
 		dht.Datastore(datastore),
 		dht.MaxRecordAge(5*time.Minute),
 		dht.ValueGCInterval(time.Minute),
@@ -215,7 +216,7 @@ func newServer(ctx context.Context) (*server, error) {
 	}
 
 	return &server{
-		dht: router, host: p2pHost,
+		dht: router, host: p2pHost, datastore: datastore,
 		turnSecret: os.Getenv("RELYRA_TURN_SHARED_SECRET"),
 		turnRealm: env("RELYRA_TURN_REALM", "turn.relyra.invalid"),
 		turnURLs: turnURLs, turnTTL: turnTTL,
@@ -225,9 +226,10 @@ func newServer(ctx context.Context) (*server, error) {
 }
 
 func (s *server) close() {
-	// Close the host before its datastore (the DHT may still service in-flight requests).
-	_ = s.host.Close()
+	// Stop DHT handlers before closing the host and persistent datastore.
 	_ = s.dht.Close()
+	_ = s.host.Close()
+	_ = s.datastore.Close()
 }
 
 func (s *server) routes() http.Handler {
@@ -282,12 +284,12 @@ func (s *server) publishRecord(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, "invalid or oversized record")
 		return
 	}
-	record, err := protocol.ParsePeerRecord(raw, time.Now())
+	record, err := presence.ParsePeerRecord(raw, time.Now())
 	if err != nil {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
-	key, err := protocol.KeyForPublicID(record.PublicID)
+	key, err := presence.KeyForPublicID(record.PublicID)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid RELYRA identity")
 		return
@@ -340,12 +342,12 @@ func (s *server) turnCredentials(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	r.Body = http.MaxBytesReader(w, r.Body, 2048)
-	var challenge protocol.TurnChallenge
+	var challenge presence.TurnChallenge
 	if err := json.NewDecoder(r.Body).Decode(&challenge); err != nil {
 		writeError(w, http.StatusBadRequest, "invalid TURN challenge")
 		return
 	}
-	if err := protocol.VerifyTurnChallenge(challenge, time.Now()); err != nil {
+	if err := presence.VerifyTurnChallenge(challenge, time.Now()); err != nil {
 		writeError(w, http.StatusUnauthorized, "invalid identity challenge")
 		return
 	}
@@ -354,7 +356,7 @@ func (s *server) turnCredentials(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusConflict, "TURN challenge already used")
 		return
 	}
-	credentials, err := protocol.IssueTurnCredentials(
+	credentials, err := presence.IssueTurnCredentials(
 		s.turnSecret, s.turnRealm, s.turnURLs, challenge.PublicID, time.Now(), s.turnTTL,
 	)
 	if err != nil {
