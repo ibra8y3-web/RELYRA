@@ -82,7 +82,7 @@ dependencies {
 tasks.withType<Test>().configureEach {
     // Emit each test boundary into Actions logs so a stalled test is identifiable.
     testLogging {
-        events("started", "failed", "skipped")
+        events("started", "passed", "failed", "skipped")
         showStandardStreams = true
     }
     maxParallelForks = 2
