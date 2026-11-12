@@ -44,6 +44,7 @@ import org.relyra.app.core.database.GroupAttachmentEntity
 import org.relyra.app.core.database.CommunityEntity
 import org.relyra.app.core.community.CommunityManifest
 import org.relyra.app.core.community.CommunityEvent
+import org.relyra.app.core.community.CommunityReport
 import org.relyra.app.core.database.GroupSummary
 import org.relyra.app.core.messaging.GroupKind
 import org.relyra.app.core.messaging.GroupOutcome
@@ -97,6 +98,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val savedCommunities = MutableStateFlow<List<CommunityEntity>>(emptyList())
     val discoveredCommunities = MutableStateFlow<List<CommunityManifest>>(emptyList())
     val communityEvents = MutableStateFlow<Map<String, List<CommunityEvent>>>(emptyMap())
+    val communityReports = MutableStateFlow<Map<String, List<CommunityReport>>>(emptyMap())
     val communityBusy = MutableStateFlow(false)
     val groupSummaries = MutableStateFlow<List<GroupSummary>>(emptyList())
     val nostrKey = MutableStateFlow<String?>(null)
@@ -670,6 +672,19 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val entity = ctr().database.communityDao().get(communityId) ?: return@launch
                 val manifest = ctr().communityClient.deserializeAndVerifyManifest(entity.manifestJson)
                 communityEvents.value = communityEvents.value + (communityId to ctr().communityClient.moderationEvents(manifest))
+            } catch (t: Throwable) {
+                fail(t)
+            }
+        }
+    }
+
+    fun loadCommunityReports(communityId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val entity = ctr().database.communityDao().get(communityId) ?: return@launch
+                val manifest = ctr().communityClient.deserializeAndVerifyManifest(entity.manifestJson)
+                val reports = ctr().communityClient.reports(manifest)
+                communityReports.value = communityReports.value + (communityId to reports)
             } catch (t: Throwable) {
                 fail(t)
             }
