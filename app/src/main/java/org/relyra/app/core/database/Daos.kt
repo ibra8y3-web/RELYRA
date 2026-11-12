@@ -103,6 +103,9 @@ interface TrustedDeviceDao {
     @Query("SELECT * FROM trusted_devices WHERE deviceId = :deviceId LIMIT 1")
     suspend fun get(deviceId: String): TrustedDeviceEntity?
 
+    @Query("SELECT COUNT(*) FROM trusted_devices WHERE accountId = :accountId")
+    suspend fun countForAccount(accountId: String): Int
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertPending(device: TrustedDeviceEntity)
 
