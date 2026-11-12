@@ -492,7 +492,7 @@ class WebRtcP2pConnector(
         reconnectJobs.clear()
         reconnecting.clear()
         approvedPeers.clear()
-        peers.keys.toList().forEach(::retirePeer)
+        peers.keys.toList().forEach { retirePeer(it) }
         peers.clear()
         pendingAcks.values.forEach { it.complete(false) }
         pendingAcks.clear()
