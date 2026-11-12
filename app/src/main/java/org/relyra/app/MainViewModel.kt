@@ -922,9 +922,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             if (!ctr().calls.start(peerId, video)) message.value = UiMessage(R.string.call_start_failed)
         }
     }
-    fun acceptCall() { viewModelScope.launch(Dispatchers.IO) { ctr().calls.acceptIncoming() } }
-    fun declineCall() { viewModelScope.launch(Dispatchers.IO) { ctr().calls.decline() } }
-    fun endCall() { viewModelScope.launch(Dispatchers.IO) { ctr().calls.hangUp() } }
+    fun acceptCall() { viewModelScope.launch(Dispatchers.IO) { ctr().calls.state.value.peerId?.let { ctr().notifier.cancelCall(it) }; ctr().calls.acceptIncoming() } }
+    fun declineCall() { viewModelScope.launch(Dispatchers.IO) { ctr().calls.state.value.peerId?.let { ctr().notifier.cancelCall(it) }; ctr().calls.decline() } }
+    fun endCall() { viewModelScope.launch(Dispatchers.IO) { ctr().calls.state.value.peerId?.let { ctr().notifier.cancelCall(it) }; ctr().calls.hangUp() } }
     fun setCallMuted(value: Boolean) = ctr().calls.setMuted(value)
     fun setCallCamera(value: Boolean) = ctr().calls.setCameraEnabled(value)
     fun setCallSpeaker(value: Boolean) = ctr().calls.setSpeakerEnabled(value)
