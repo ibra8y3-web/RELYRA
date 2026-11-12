@@ -206,8 +206,7 @@ pub fn generate_key_package(
     if credential_identity.is_empty() || credential_identity.len() > 2048 {
         return Err(MlsError::IdentityMismatch);
     }
-    let (provider, _signer) = provider_with_signer(database)?;
-    let signer = provider.signer()?;
+    let (provider, signer) = provider_with_signer(database)?;
     let credential = BasicCredential::new(credential_identity.to_vec());
     let bundle = KeyPackage::builder()
         .build(
