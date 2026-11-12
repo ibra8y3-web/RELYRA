@@ -1,6 +1,7 @@
 package community
 
 import (
+	"context"
 	"encoding/base64"
 	"crypto/ed25519"
 	"encoding/json"
@@ -320,7 +321,7 @@ func VerifyReportReview(r ReportReview, now time.Time) error {
 	publicKey, err := identity.DecodePublicID(r.ReviewerPublicID)
 	if err != nil { return err }
 	signature, err := base64.RawURLEncoding.DecodeString(r.Signature)
-	if err != nil || len(signature) != 64 || !identity.VerifyPublicKey(publicKey, payload, signature) {
+	if err != nil || len(signature) != 64 || !ed25519.Verify(publicKey, payload, signature) {
 		return errors.New("invalid report review signature")
 	}
 	if (r.Status == "resolved" || r.Status == "dismissed") && strings.TrimSpace(r.Note) == "" {
