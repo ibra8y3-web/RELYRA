@@ -65,6 +65,11 @@ interface GroupStore {
     /** Atomically remembers the copy's ID and stores the message. False if that ID was already processed. */
     suspend fun recordIncomingMessage(m: GroupMessage): Boolean
     suspend fun enqueue(rows: List<OutboxRow>)
+    /** Atomically advances the Room MLS epoch/member snapshot and persists its retryable Commit outbox. */
+    suspend fun applyMlsCommit(group: GroupRecord, members: List<GroupMemberRef>, outbox: List<OutboxRow>) {
+        putGroup(group, members)
+        enqueue(outbox)
+    }
     suspend fun dueOutbox(now: Long, limit: Int): List<OutboxRow>
     suspend fun updateOutbox(row: OutboxRow)
     suspend fun outbox(id: String): OutboxRow?
@@ -743,6 +748,68 @@ class GroupEngine(
     }
 
     /** Reads and validates the RELYRA-signed account/device credentials in the local MLS tree. */
+    private suspend fun refreshPendingMlsProposalsLocked(groupId: String): Int {
+        val count = runCatching { mls?.pendingProposalCount(groupId) ?: 0 }.getOrDefault(0)
+        pendingMlsProposals.value = pendingMlsProposals.value.toMutableMap().apply {
+            if (count == 0) remove(groupId) else put(groupId, count)
+        }
+        return count
+    }
+
+    suspend fun refreshPendingMlsProposals(groupId: String): Int = lock.withLock {
+        refreshPendingMlsProposalsLocked(groupId)
+    }
+
+    /** The group owner commits the complete validated OpenMLS proposal queue as one RFC 9420 Commit. */
+    suspend fun commitPendingMlsProposals(groupId: String): GroupResult = lock.withLock {
+        val me = ownId() ?: return@withLock GroupResult.NO_IDENTITY
+        val group = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
+        if (group.state != GroupState.ACTIVE) return@withLock GroupResult.NOT_ACTIVE
+        if (!group.mlsEnabled || group.owner != me) return@withLock GroupResult.NOT_ALLOWED
+        val engine = mls ?: return@withLock GroupResult.MLS_UNAVAILABLE
+        if (engine.epoch(groupId) != group.mlsEpoch) return@withLock GroupResult.INVALID
+        val pending = engine.pendingProposalCount(groupId)
+        if (pending == 0) {
+            refreshPendingMlsProposalsLocked(groupId)
+            return@withLock GroupResult.OK
+        }
+        val before = store.members(groupId)
+        val bundle = engine.commitPendingProposals(groupId)
+        val activeIds = mlsCredentialIds(groupId) ?: return@withLock GroupResult.MLS_UNAVAILABLE
+        val removed = before.filter { it.mlsJoined && it.id.lowercase() !in activeIds }.map { it.id }.toSet()
+        val added = activeIds - before.map { it.id.lowercase() }.toSet()
+        val updated = before
+            .filter { !it.mlsJoined || it.id.lowercase() in activeIds }
+            .map { it.copy(mlsJoined = it.id.lowercase() in activeIds) } +
+            added.map { GroupMemberRef(it, GroupRole.MEMBER, mlsJoined = true) }
+        if (added.isNotEmpty() && bundle.welcome == null) return@withLock GroupResult.MLS_UNAVAILABLE
+        val now = clock().coerceAtLeast(1L)
+        val recipients = before.filter { it.mlsJoined && it.id != me && peers.status(it.id) == PeerStatus.Known }
+        val rows = recipients.map { recipient ->
+            val id = newId()
+            OutboxRow(
+                id, groupId, recipient.id, null,
+                EnvelopeCodec.encode(Envelope.GroupMls(id, me, recipient.id, groupId, GroupMlsKind.COMMIT, bundle.commit)),
+                now, 0, now, acked = false, failed = false,
+            )
+        } + added.map { target ->
+            val id = newId()
+            OutboxRow(
+                id, groupId, target, null,
+                EnvelopeCodec.encode(Envelope.GroupMls(id, me, target, groupId, GroupMlsKind.WELCOME, bundle.welcome!!)),
+                now, 0, now, acked = false, failed = false,
+            )
+        }
+        store.applyMlsCommit(
+            group.copy(epoch = group.epoch + 1, mlsEpoch = bundle.epoch),
+            updated,
+            rows,
+        )
+        broadcastSnapshot(groupId, removed)
+        refreshPendingMlsProposalsLocked(groupId)
+        GroupResult.OK
+    }
+
     private suspend fun mlsCredentialIds(groupId: String): Set<String>? {
         val engine = mls ?: return null
         val encoded = runCatching { engine.members(groupId) }.getOrNull() ?: return null
