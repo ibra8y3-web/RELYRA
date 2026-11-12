@@ -38,6 +38,16 @@
     <string name="communities_report_submit">إرسال البلاغ</string>
     <string name="communities_report_submitted">تم إرسال البلاغ الموقّع.</string>
     <string name="communities_discovery_complete">اكتمل اكتشاف المجتمعات العامة.</string>
+    <string name="communities_accept_invitation">قبول دعوة خاصة</string>
+    <string name="communities_invite_member">دعوة عضو خاص</string>
+    <string name="communities_invitee_id">المعرّف العام لـ RELYRA للمدعو</string>
+    <string name="communities_invitation_privacy">الدعوة مرتبطة بهذه الهوية وتنتهي بعد سبعة أيام. شاركها فقط عبر دردشة RELYRA المشفّرة.</string>
+    <string name="communities_create_invitation">إنشاء دعوة موقّعة</string>
+    <string name="communities_invitation_created">تم إنشاء الدعوة</string>
+    <string name="communities_invitation_share_warning">انسخ هذه الدعوة وأرسلها إلى العضو المقصود عبر دردشة RELYRA مشفّرة طرفًا لطرف. يستطيع أي شخص يحمل الرمز محاولة استخدامه، لكن الهوية المحددة فقط يمكنها قبول الدعوة.</string>
+    <string name="communities_copy_invitation">نسخ الدعوة</string>
+    <string name="communities_accept_invitation_help">الصق رمز الدعوة الكامل الذي أرسله مالك المجتمع. سيتحقق جهازك من توقيع المالك ويوقّع القبول بهوية RELYRA الخاصة بك.</string>
+    <string name="communities_invitation_code">رمز الدعوة الخاصة</string>
     <string name="groups_search_hint">البحث في المجموعات</string>
     <string name="channels_search_hint">البحث في القنوات</string>
     <string name="channels_new">إنشاء قناة</string>
