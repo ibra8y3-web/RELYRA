@@ -48,6 +48,7 @@ fun CommunitiesScreen(vm: MainViewModel) {
     val saved by vm.savedCommunities.collectAsStateWithLifecycle()
     val discovered by vm.discoveredCommunities.collectAsStateWithLifecycle()
     val communityEvents by vm.communityEvents.collectAsStateWithLifecycle()
+    val reportsByCommunity by vm.communityReports.collectAsStateWithLifecycle()
     val busy by vm.communityBusy.collectAsStateWithLifecycle()
     val identity by vm.identity.collectAsStateWithLifecycle()
     val clipboard = LocalClipboardManager.current
@@ -57,6 +58,7 @@ fun CommunitiesScreen(vm: MainViewModel) {
     var showManage by rememberSaveable { mutableStateOf(false) }
     var showReport by rememberSaveable { mutableStateOf(false) }
     var showModerate by rememberSaveable { mutableStateOf(false) }
+    var showReports by rememberSaveable { mutableStateOf(false) }
     var showInvite by rememberSaveable { mutableStateOf(false) }
     var showInvitationCode by rememberSaveable { mutableStateOf(false) }
     var showAcceptInvitation by rememberSaveable { mutableStateOf(false) }
@@ -83,6 +85,7 @@ fun CommunitiesScreen(vm: MainViewModel) {
         isOwner || selectedManifest.moderatorPublicIds.any { it.equals(ownId, true) }
     )
     val events = selectedId?.let { communityEvents[it] }.orEmpty()
+    val reports = selectedId?.let { reportsByCommunity[it] }.orEmpty()
 
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -186,6 +189,34 @@ fun CommunitiesScreen(vm: MainViewModel) {
             if (isModerator) {
                 OutlinedButton(onClick = { showModerate = true }) {
                     Text(stringResource(R.string.communities_moderate))
+                }
+            }
+            if (isModerator) {
+                OutlinedButton(onClick = {
+                    vm.loadCommunityReports(selectedManifest.communityId)
+                    showReports = true
+                }) {
+                    Text(stringResource(R.string.communities_view_reports))
+                }
+            }
+            if (showReports && isModerator) {
+                Text(stringResource(R.string.communities_recent_reports), style = MaterialTheme.typography.titleSmall)
+                if (reports.isEmpty()) {
+                    Text(
+                        stringResource(R.string.communities_no_reports),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    reports.take(20).forEach { report ->
+                        Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            Text(
+                                report.category + " · " + report.reporterPublicId.take(12),
+                                style = MaterialTheme.typography.labelMedium,
+                            )
+                            Text(report.summary, style = MaterialTheme.typography.bodySmall)
+                        }
+                    }
                 }
             }
             if (events.isNotEmpty()) {
