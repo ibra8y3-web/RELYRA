@@ -35,6 +35,12 @@ interface GroupMlsProvider {
     suspend fun encrypt(groupId: String, plaintext: ByteArray): ByteArray
     suspend fun processMessage(message: ByteArray): MlsProcessedMessage
     suspend fun removeMember(groupId: String, relyraPublicId: String): MlsCommitBundle
+    suspend fun proposeAddMember(groupId: String, keyPackage: ByteArray): ByteArray
+    suspend fun proposeRemoveMember(groupId: String, relyraPublicId: String): ByteArray
+    /** Stores a native RFC 9420 proposal only when its MLS credential matches the authenticated envelope sender. */
+    suspend fun processProposal(message: ByteArray, expectedSenderPublicId: String): Long
+    suspend fun commitPendingProposals(groupId: String): MlsCommitBundle
+    suspend fun pendingProposalCount(groupId: String): Int
     suspend fun epoch(groupId: String): Long
     suspend fun members(groupId: String): List<String>
     suspend fun close()
@@ -155,6 +161,45 @@ class MlsEngine(
                 ?.let(Base64.getDecoder()::decode),
             epoch = json.getLong("epoch"),
         )
+    }
+
+    override suspend fun proposeAddMember(groupId: String, keyPackage: ByteArray): ByteArray = runNative {
+        require(keyPackage.isNotEmpty() && keyPackage.size <= 64 * 1024)
+        MlsNative.nativeProposeAddMember(groupIdBytes(groupId), keyPackage)
+            .also { check(it.isNotEmpty()) { "OpenMLS returned an empty Add Proposal" } }
+    }
+
+    override suspend fun proposeRemoveMember(groupId: String, relyraPublicId: String): ByteArray = runNative {
+        val encodedMembers = JSONArray(MlsNative.nativeMembers(groupIdBytes(groupId)))
+        val targetCredential = (0 until encodedMembers.length())
+            .mapNotNull { index ->
+                runCatching { Base64.getDecoder().decode(encodedMembers.getString(index)) }.getOrNull()
+            }
+            .firstOrNull { MlsCredentialCodec.verify(it, relyraPublicId) }
+            ?: throw IllegalArgumentException("The requested RELYRA member is not present in the MLS group")
+        MlsNative.nativeProposeRemoveMember(groupIdBytes(groupId), targetCredential)
+            .also { check(it.isNotEmpty()) { "OpenMLS returned an empty Remove Proposal" } }
+    }
+
+    override suspend fun processProposal(message: ByteArray, expectedSenderPublicId: String): Long = runNative {
+        MlsNative.nativeProcessProposal(message, expectedSenderPublicId)
+            .also { check(it >= 0) { "OpenMLS rejected the proposal or its sender identity" } }
+    }
+
+    override suspend fun commitPendingProposals(groupId: String): MlsCommitBundle = runNative {
+        val json = JSONObject(MlsNative.nativeCommitPendingProposals(groupIdBytes(groupId)))
+        MlsCommitBundle(
+            commit = Base64.getDecoder().decode(json.getString("commit")),
+            welcome = json.optString("welcome").takeIf { it.isNotBlank() && it != "null" }
+                ?.let(Base64.getDecoder()::decode),
+            epoch = json.getLong("epoch"),
+        )
+    }
+
+    override suspend fun pendingProposalCount(groupId: String): Int = runNative {
+        MlsNative.nativePendingProposalCount(groupIdBytes(groupId)).also {
+            check(it >= 0) { "OpenMLS could not read pending proposals" }
+        }.toInt()
     }
 
     override suspend fun epoch(groupId: String): Long = runNative {
