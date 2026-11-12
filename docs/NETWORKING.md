@@ -9,6 +9,7 @@ This document describes transports and services present on `main`. It distinguis
 - **Bluetooth Classic RFCOMM:** already-bonded devices only; mutual Ed25519 challenge against known contacts.
 - **Wi-Fi Direct:** local P2P group/socket transport with signed identity verification.
 - **Nearby LAN:** NSD/mDNS discovery on the same local network and signed identity verification.
+- **Bluetooth LE Mesh (Phase 6):** opt-in GATT advertising/scanning, signed origin and relay-hop envelopes, bounded TTL/hop count, encrypted local transit queue, relay consent and storage quota. Source implementation is present; physical-device interoperability and background behaviour are not verified.
 - **Blossom:** encrypted file blob storage, separate from message transport. HTTP Range download resume exists; byte-resumable upload does not.
 
 The router selects among currently registered, ready connectors and records the successful path. It does not yet retain a complete per-attempt history with latency and failure reasons.
@@ -31,13 +32,9 @@ The source includes coturn deployment configuration and a signed challenge flow 
 
 ## Nearby vs offline mesh
 
-Bluetooth Classic, Wi-Fi Direct and Nearby LAN are local connection methods. They do not implement:
-- Bluetooth LE discovery/mesh;
-- multi-hop forwarding across multiple phones;
-- third-party Store-and-Forward;
-- offline message routing with TTL, quotas and loop prevention.
+Bluetooth Classic, Wi-Fi Direct and Nearby LAN remain direct local connection methods. Phase 6 adds a separate BLE GATT mesh with signed multi-hop transit envelopes, TTL/hop limits, loop/replay suppression, encrypted local Store-and-Forward, relay consent and quota controls. The BLE source has not been validated across physical devices, and reliable background delivery is not claimed.
 
-Those belong to Phase 6 (local BLE Mesh) and the deferred Phase 3 Store-and-Forward completion after Phases 4–10, as recorded in the implementation plan.
+The separate deferred Phase 3 work remains: public-Internet third-party Store-and-Forward, distributed DHT/community replication, real TURN integration and per-attempt route diagnostics.
 
 ## Privacy and trust
 
