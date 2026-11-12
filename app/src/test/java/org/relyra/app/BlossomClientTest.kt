@@ -123,9 +123,12 @@ class BlossomClientTest {
         val file = tmp().also { it.writeBytes(ByteArray(10)) }
         // Simulate a dropped TCP connection deterministically; shutting MockWebServer down
         // while OkHttp is connecting creates a race and can produce environment-dependent results.
-        server.enqueue(
-            MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AT_START)
-        )
+        // OkHttp may retry the first failed connection once before surfacing the network error.
+        repeat(2) {
+            server.enqueue(
+                MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AT_START)
+            )
+        }
         val result = client.upload(base(), file, "0".repeat(64), NostrCrypto.randomSecret(), 1)
         assertTrue(result is BlossomUpload.Unavailable)
     }
