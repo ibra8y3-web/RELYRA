@@ -170,12 +170,15 @@ class MlsEngine(
 
     /** Holds the native-operation mutex while a consistent on-disk MLS snapshot is copied. */
     suspend fun <T> withBackupBarrier(block: suspend () -> T): T = withContext(Dispatchers.IO) {
-        nativeLock.withLock {
+        nativeLock.lock()
+        try {
             if (initialized) {
                 MlsNative.nativeClose()
                 initialized = false
             }
             block()
+        } finally {
+            nativeLock.unlock()
         }
     }
 
