@@ -66,9 +66,16 @@ interface GroupStore {
     suspend fun recordIncomingMessage(m: GroupMessage): Boolean
     suspend fun enqueue(rows: List<OutboxRow>)
     /** Atomically advances the Room MLS epoch/member snapshot and persists its retryable Commit outbox. */
-    suspend fun applyMlsCommit(group: GroupRecord, members: List<GroupMemberRef>, outbox: List<OutboxRow>) {
+    suspend fun applyMlsCommit(
+        group: GroupRecord,
+        members: List<GroupMemberRef>,
+        outbox: List<OutboxRow>,
+        controlMessageId: String? = null,
+        receivedAt: Long? = null,
+    ) {
         putGroup(group, members)
         enqueue(outbox)
+        if (controlMessageId != null && receivedAt != null) recordControlMessage(controlMessageId, receivedAt)
     }
     suspend fun dueOutbox(now: Long, limit: Int): List<OutboxRow>
     suspend fun updateOutbox(row: OutboxRow)
