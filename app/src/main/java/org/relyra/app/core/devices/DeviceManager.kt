@@ -41,8 +41,8 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
             body to ByteArray(s).also(i::readFully)
         }
     }
-    private fun log(type: String, detail: String) {
-        kotlinx.coroutines.runBlocking { db.eventDao().insert(SecurityEventEntity(timestamp=System.currentTimeMillis(), type=type, detail=detail)) }
+    private suspend fun log(type: String, detail: String) {
+        db.eventDao().insert(SecurityEventEntity(timestamp=System.currentTimeMillis(), type=type, detail=detail))
     }
     suspend fun ensureLocalDevice(): TrustedDeviceEntity {
         val identity = checkNotNull(db.identityDao().get()) { "Create or restore your RELYRA identity first" }
