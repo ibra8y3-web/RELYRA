@@ -178,6 +178,53 @@ class GroupEngine(
         GroupResult.OK
     }
 
+    /** Encrypts the file descriptor with the MLS group epoch and fans out only the MLS ciphertext. */
+    suspend fun sendAttachment(groupId: String, file: GroupAttachmentData): GroupResult = lock.withLock {
+        val me = ownId() ?: return@withLock GroupResult.NO_IDENTITY
+        val group = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
+        if (group.state != GroupState.ACTIVE) return@withLock GroupResult.NOT_ACTIVE
+        if (!group.mlsEnabled) return@withLock GroupResult.MLS_UNAVAILABLE
+        val engine = mls ?: return@withLock GroupResult.MLS_UNAVAILABLE
+        val members = store.members(groupId)
+        val mine = members.find { it.id == me } ?: return@withLock GroupResult.NOT_ALLOWED
+        if (!mine.mlsJoined || (group.kind == GroupKind.CHANNEL && mine.role == GroupRole.MEMBER)) {
+            return@withLock GroupResult.NOT_ALLOWED
+        }
+        val normalizedUrl = org.relyra.app.core.transfer.BlossomUrl.normalize(file.serverUrl, allowPrivate = false)
+            ?: return@withLock GroupResult.INVALID
+        if (file.name.isBlank() || file.name.length > AttachmentLimits.MAX_NAME ||
+            file.mime.length > AttachmentLimits.MAX_MIME ||
+            file.plainSha256.size != 32 || file.blobSha256.size != 32 || file.fileKey.size != 32 ||
+            !AttachmentLimits.validSizes(file.size, file.blobSize)
+        ) return@withLock GroupResult.INVALID
+
+        val recipients = members.filter { it.id != me && it.mlsJoined && peers.status(it.id) == PeerStatus.Known }
+        if (recipients.isEmpty()) return@withLock GroupResult.NO_RECIPIENTS
+        val messageId = newId()
+        val now = clock().coerceAtLeast(1L)
+        val payload = GroupPayloadCodec.encodeFile(messageId, now, file.copy(serverUrl = normalizedUrl))
+        val ciphertext = engine.encrypt(groupId, payload)
+        val copies = recipients.map { recipient ->
+            val copyId = newId()
+            OutboxRow(
+                copyId, groupId, recipient.id, messageId,
+                EnvelopeCodec.encode(Envelope.GroupMls(copyId, me, recipient.id, groupId, GroupMlsKind.APPLICATION, ciphertext)),
+                now, 0, now, acked = false, failed = false,
+            )
+        }
+        val attachment = GroupAttachmentRecord(
+            messageId, groupId, me, FileNameSanitizer.safe(file.name), file.mime,
+            file.size, file.blobSize, file.plainSha256, file.blobSha256, file.fileKey,
+            normalizedUrl, null, GroupAttachmentPhase.UPLOADED, now, true,
+        )
+        store.insertOutgoingGroupAttachment(
+            GroupMessage(messageId, groupId, me, true, attachment.name, now, true),
+            attachment,
+            copies,
+        )
+        GroupResult.OK
+    }
+
     // ---- management ----------------------------------------------------------------------------------------
 
     suspend fun addMembers(groupId: String, ids: List<String>): GroupResult = manage(groupId) { g, members, me ->
@@ -481,9 +528,30 @@ class GroupEngine(
                 val engine = mls ?: return
                 val result = engine.processMessage(env.payload)
                 if (result.groupId != env.groupId || result.kind != "application") return
-                val app = GroupPayloadCodec.decodeText(result.application ?: return) ?: return
-                val fresh = store.recordIncomingMessage(GroupMessage(app.messageId, env.groupId, env.from, false, app.body, app.sentAt, false))
-                if (fresh) runCatching { incoming?.onMessage(env.groupId, true, env.from, app.body) }
+                when (val app = GroupPayloadCodec.decode(result.application ?: return) ?: return) {
+                    is GroupTextPayload -> {
+                        val fresh = store.recordIncomingMessage(
+                            GroupMessage(app.messageId, env.groupId, env.from, false, app.body, app.sentAt, false)
+                        )
+                        if (fresh) runCatching { incoming?.onMessage(env.groupId, true, env.from, app.body) }
+                    }
+                    is GroupFilePayload -> {
+                        val safeUrl = org.relyra.app.core.transfer.BlossomUrl.normalize(
+                            app.file.serverUrl, allowPrivate = false,
+                        ) ?: return
+                        val attachment = GroupAttachmentRecord(
+                            app.messageId, env.groupId, env.from, FileNameSanitizer.safe(app.file.name),
+                            app.file.mime, app.file.size, app.file.blobSize, app.file.plainSha256,
+                            app.file.blobSha256, app.file.fileKey, safeUrl, null,
+                            GroupAttachmentPhase.REMOTE, app.sentAt, false,
+                        )
+                        val fresh = store.recordIncomingGroupAttachment(
+                            GroupMessage(app.messageId, env.groupId, env.from, false, attachment.name, app.sentAt, false),
+                            attachment,
+                        )
+                        if (fresh) runCatching { incoming?.onMessage(env.groupId, true, env.from, null) }
+                    }
+                }
                 store.recordControlMessage(env.messageId, clock())
                 ack(me, env.from, env.messageId)
             }
