@@ -474,4 +474,57 @@ mod tests {
         assert!(encrypt(&mut a, gid, b"post-removal").is_ok());
         assert!(process_message(&mut b, &encrypt(&mut a, gid, b"denied").unwrap()).is_err());
     }
+    #[test]
+    fn group_epoch_and_application_state_recover_after_reopening_sqlcipher() {
+        let temp = tempdir().unwrap();
+        let path_a = temp.path().join("restart-a.db");
+        let path_b = temp.path().join("restart-b.db");
+        let path_a = path_a.to_str().unwrap().to_owned();
+        let path_b = path_b.to_str().unwrap().to_owned();
+        let key_a = [0x31u8; 32];
+        let key_b = [0x42u8; 32];
+        let gid = b"relyra-restart-group";
+        let a_credential = b"RELYRA-MLS-V1:alice:device-a";
+        let b_credential = b"RELYRA-MLS-V1:bob:device-b";
+
+        {
+            let mut a = database(&path_a, &key_a);
+            let mut b = database(&path_b, &key_b);
+            create_group(&mut a, gid, a_credential).unwrap();
+            let key_package = generate_key_package(&mut b, b_credential).unwrap();
+            let bundle = add_members(&mut a, gid, &[key_package]).unwrap();
+            let welcome = BASE64.decode(bundle.welcome.unwrap()).unwrap();
+            join_group(&mut b, gid, &welcome, b_credential).unwrap();
+            assert_eq!(epoch(&mut a, gid).unwrap(), 1);
+            assert_eq!(epoch(&mut b, gid).unwrap(), 1);
+        }
+
+        // Closing both SQLCipher connections must not discard the OpenMLS epoch or key schedule.
+        let mut a = database(&path_a, &key_a);
+        let mut b = database(&path_b, &key_b);
+        assert_eq!(epoch(&mut a, gid).unwrap(), 1);
+        assert_eq!(epoch(&mut b, gid).unwrap(), 1);
+
+        let ciphertext = encrypt(&mut a, gid, b"recovered after process restart").unwrap();
+        let opened = process_message(&mut b, &ciphertext).unwrap();
+        assert_eq!(opened.kind, "application");
+        assert_eq!(
+            BASE64.decode(opened.application.unwrap()).unwrap(),
+            b"recovered after process restart",
+        );
+
+        let _removal = remove_member(&mut a, gid, b_credential).unwrap();
+        assert_eq!(epoch(&mut a, gid).unwrap(), 2);
+        drop(a);
+        drop(b);
+
+        let mut recovered_owner = database(&path_a, &key_a);
+        let mut recovered_removed = database(&path_b, &key_b);
+        assert_eq!(epoch(&mut recovered_owner, gid).unwrap(), 2);
+        let post_removal = encrypt(&mut recovered_owner, gid, b"new epoch only").unwrap();
+        assert!(
+            process_message(&mut recovered_removed, &post_removal).is_err(),
+            "a removed member must not recover the new epoch after reopening storage",
+        );
+    }
 }
