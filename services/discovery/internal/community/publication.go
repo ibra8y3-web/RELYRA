@@ -175,7 +175,6 @@ func (s *Store) PublishPost(ctx context.Context, raw []byte) (Post, error) {
 	if manifest.Visibility == "private" && !s.CanReadPrivate(ctx, p.CommunityID, p.AuthorPublicID) {
 		return p, errors.New("only current private community members may publish")
 	}
- 	key := postKey(p.CommunityID, p.PostID)
 	// An accepted post retry is idempotent even if moderation changed afterwards.
 	// Current membership is still required above for private communities.
 	key := postKey(p.CommunityID, p.PostID)
