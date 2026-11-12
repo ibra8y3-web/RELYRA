@@ -268,7 +268,7 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
         enabled = true; ownId = publicId; signer = sign
         _status.value = BleMeshStatus.Starting
         try {
-            openGattServer(); startAdvertising(); startScanning()
+            openGattServer()
             maintenance = scope.launch(Dispatchers.IO) {
                 while (enabled) { flushQueue(); refreshStats(); delay(MAINTENANCE_MS) }
             }
@@ -287,6 +287,14 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
     @Suppress("MissingPermission")
     private fun openGattServer() {
         gattServer = manager?.openGattServer(app, object : BluetoothGattServerCallback() {
+            override fun onServiceAdded(status: Int, service: BluetoothGattService) {
+                if (status == BluetoothGatt.GATT_SUCCESS && enabled) {
+                    runCatching { startAdvertising(); startScanning() }
+                        .onFailure { _status.value = BleMeshStatus.Failed }
+                } else if (enabled) {
+                    _status.value = BleMeshStatus.Failed
+                }
+            }
             override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
                 if (newState == BluetoothProfile.STATE_DISCONNECTED) { frames.remove(device.address); refreshStats() }
             }
@@ -352,7 +360,8 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
         scanCallback = object : ScanCallback() {
             override fun onScanResult(callbackType: Int, result: ScanResult) {
                 val address = result.device.address
-                if (!enabled || peers.values.any { it.gatt.device.address == address } || !connecting.add(address)) return
+                if (!enabled || peers.values.any { it.gatt.device.address == address } ||
+                    connecting.size >= MAX_NEIGHBORS || !connecting.add(address)) return
                 result.device.connectGatt(app, false, clientCallback, BluetoothDevice.TRANSPORT_LE)
             }
             override fun onScanFailed(errorCode: Int) { _status.value = BleMeshStatus.Failed }
@@ -388,7 +397,9 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
                 connecting.remove(gatt.device.address); gatt.disconnect(); return
             }
             peers[id] = GattPeer(id, gatt, write)
-            connecting.remove(gatt.device.address); refreshStats()
+            connecting.remove(gatt.device.address)
+            _status.value = BleMeshStatus.Active
+            refreshStats()
             scope.launch(Dispatchers.IO) { flushQueue() }
         }
         override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
@@ -403,7 +414,6 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
         if (e.destinationId == self) {
             val accepted = runCatching { onWire(e.payload) }.getOrDefault(false)
             if (accepted) store.markDelivered(e.messageId)
-            else store.markSeen(e.messageId)
             refreshStats()
             return
         }
@@ -413,12 +423,14 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
         refreshStats(); flushQueue()
     }
 
-    override fun isReady(): Boolean = enabled
+    override fun isReady(): Boolean = enabled && peers.isNotEmpty()
 
     override suspend fun send(toPeer: String, payload: ByteArray): SendOutcome {
         if (!enabled) return SendOutcome.Unavailable
         val self = ownId ?: return SendOutcome.Unavailable
-        val envelope = MeshEnvelopeCodec.create(UUID.randomUUID().toString(), self, toPeer, payload, signer ?: return SendOutcome.Unavailable)
+        val stableId = MessageDigest.getInstance("SHA-256").digest(payload)
+            .joinToString("") { "%02x".format(it) }
+        val envelope = MeshEnvelopeCodec.create(stableId, self, toPeer, payload, signer ?: return SendOutcome.Unavailable)
             ?: return SendOutcome.Rejected("invalid offline mesh envelope")
         if (!store.put(envelope, quotaBytes)) return SendOutcome.Rejected("offline mesh storage quota reached")
         refreshStats(); flushQueue()
@@ -429,6 +441,7 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
         if (!enabled || peers.isEmpty()) return@withLock
         for (envelope in store.pending()) {
             if (!MeshEnvelopeCodec.verify(envelope)) { store.markDelivered(envelope.messageId); continue }
+            if (!relayEnabled && envelope.originId != ownId) continue
             val delivered = sentTo.getOrPut(envelope.messageId) { ConcurrentHashMap.newKeySet() }
             for (peer in peers.values) {
                 if (peer.id == envelope.originId || envelope.hops.any { it.relayId == peer.id } || peer.id in delivered) continue
@@ -488,6 +501,7 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
 
     companion object {
         private const val MAINTENANCE_MS = 30_000L
+        private const val MAX_NEIGHBORS = 8
         private const val WRITE_TIMEOUT_MS = 12_000L
         private val SERVICE_UUID = UUID.fromString("f9a7d4e1-3b21-4c18-9f62-6b7d8a0c1e55")
         private val IDENTITY_UUID = UUID.fromString("f9a7d4e2-3b21-4c18-9f62-6b7d8a0c1e55")
