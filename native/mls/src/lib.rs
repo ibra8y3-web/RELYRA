@@ -16,11 +16,7 @@ use openmls_sqlite_storage::{Codec, Connection, SqliteStorageProvider};
 use openmls_traits::OpenMlsProvider;
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
-use std::{
-    error::Error,
-    fmt,
-    path::Path,
-};
+use std::path::Path;
 use zeroize::Zeroizing;
 
 pub const MLS_CIPHERSUITE: Ciphersuite =
@@ -50,53 +46,23 @@ pub struct SqlCipherMlsProvider<'a> {
 }
 
 impl<'a> SqlCipherMlsProvider<'a> {
-    pub fn new(connection: &'a Connection) -> Result<Self, MlsError> {
+    pub fn new(connection: &'a mut Connection) -> Result<Self, MlsError> {
         let mut storage = SqliteStorageProvider::<JsonCodec>::new(connection);
-        storage.run_migrations().map_err(MlsError::Storage)?;
+        storage.run_migrations().map_err(|e| MlsError::Storage(e.to_string()))?;
         Ok(Self {
             crypto: OpenMlsRustCrypto::default(),
             storage,
         })
-    }
-
-    pub fn signer(&self) -> Result<SignatureKeyPair, MlsError> {
-        let public_key: Option<Vec<u8>> = self.storage.connection().query_row(
-            "SELECT public_key FROM relyra_mls_meta WHERE slot = 1",
-            [],
-            |row| row.get(0),
-        ).optional().map_err(MlsError::Sql)?;
-        if let Some(public_key) = public_key {
-            return SignatureKeyPair::read(
-                &self.storage,
-                &public_key,
-                SignatureScheme::ED25519,
-            ).ok_or(MlsError::MissingSigningKey);
-        }
-
-        let signer = SignatureKeyPair::new(SignatureScheme::ED25519)
-            .map_err(|_| MlsError::Crypto)?;
-        signer.store(&self.storage).map_err(MlsError::Storage)?;
-        self.storage.connection().execute(
-            "INSERT OR REPLACE INTO relyra_mls_meta(slot, public_key) VALUES(1, ?1)",
-            rusqlite::params![signer.public()],
-        ).map_err(MlsError::Sql)?;
-        Ok(signer)
     }
 }
 
 impl OpenMlsProvider for SqlCipherMlsProvider<'_> {
     type CryptoProvider = <OpenMlsRustCrypto as OpenMlsProvider>::CryptoProvider;
     type RandProvider = <OpenMlsRustCrypto as OpenMlsProvider>::RandProvider;
-    type StorageProvider = SqliteStorageProvider<'static, JsonCodec>;
+    type StorageProvider = SqliteStorageProvider<'_, JsonCodec>;
 
     fn storage(&self) -> &Self::StorageProvider {
-        // SqliteStorageProvider borrows the connection. The lifetime is erased
-        // only in this trait implementation; the provider and connection are
-        // owned by the same stack frame and are never returned from an operation.
-        unsafe {
-            &*(&self.storage as *const SqliteStorageProvider<'_, JsonCodec>
-                as *const SqliteStorageProvider<'static, JsonCodec>)
-        }
+        &self.storage
     }
 
     fn crypto(&self) -> &Self::CryptoProvider {
@@ -113,7 +79,7 @@ pub enum MlsError {
     #[error("invalid SQLCipher database key")]
     InvalidDatabaseKey,
     #[error("could not access MLS storage: {0}")]
-    Storage(openmls_sqlite_storage::rusqlite::Error),
+    Storage(String),
     #[error("SQLite failure: {0}")]
     Sql(rusqlite::Error),
     #[error("MLS cryptographic operation failed")]
@@ -153,7 +119,7 @@ pub fn open_database(path: &str, key: &[u8]) -> Result<OpenDatabase, MlsError> {
         std::fs::create_dir_all(parent)?;
     }
     let key = Zeroizing::new(key.to_vec());
-    let connection = Connection::open(path).map_err(MlsError::Sql)?;
+    let mut connection = Connection::open(path).map_err(MlsError::Sql)?;
     let hex_key = key.iter().map(|b| format!("{b:02x}")).collect::<String>();
     connection.execute_batch(&format!("PRAGMA key = \"x'{hex_key}'\";")).map_err(MlsError::Sql)?;
     connection.query_row("SELECT count(*) FROM sqlite_master", [], |row| row.get::<_, i64>(0))
@@ -164,10 +130,44 @@ pub fn open_database(path: &str, key: &[u8]) -> Result<OpenDatabase, MlsError> {
          PRAGMA secure_delete = ON;
          CREATE TABLE IF NOT EXISTS relyra_mls_meta (
              slot INTEGER PRIMARY KEY CHECK(slot = 1),
-             public_key BLOB NOT NULL
+             public_key BLOB NOT NULL,
+             key_pair BLOB NOT NULL
          );"
     ).map_err(MlsError::Sql)?;
     Ok(OpenDatabase { connection, _key: key })
+}
+
+fn provider_with_signer<'a>(
+    database: &'a mut OpenDatabase,
+) -> Result<(SqlCipherMlsProvider<'a>, SignatureKeyPair), MlsError> {
+    let stored: Option<(Vec<u8>, Vec<u8>)> = database.connection.query_row(
+        "SELECT public_key, key_pair FROM relyra_mls_meta WHERE slot = 1",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    ).optional().map_err(MlsError::Sql)?;
+
+    let signer = if let Some((public_key, serialized)) = stored {
+        let pair = SignatureKeyPair::tls_deserialize_exact(serialized.as_slice())
+            .map_err(|_| MlsError::MissingSigningKey)?;
+        if pair.public() != public_key.as_slice() {
+            return Err(MlsError::MissingSigningKey);
+        }
+        pair
+    } else {
+        let pair = SignatureKeyPair::new(SignatureScheme::ED25519)
+            .map_err(|_| MlsError::Crypto)?;
+        let serialized = pair.tls_serialize_detached()
+            .map_err(|_| MlsError::Crypto)?;
+        database.connection.execute(
+            "INSERT INTO relyra_mls_meta(slot, public_key, key_pair) VALUES(1, ?1, ?2)",
+            rusqlite::params![pair.public(), serialized],
+        ).map_err(MlsError::Sql)?;
+        pair
+    };
+
+    let provider = SqlCipherMlsProvider::new(&mut database.connection)?;
+    signer.store(provider.storage()).map_err(|e| MlsError::Storage(e.to_string()))?;
+    Ok((provider, signer))
 }
 
 pub fn create_group(
@@ -178,10 +178,9 @@ pub fn create_group(
     if group_id.is_empty() || group_id.len() > 128 || credential_identity.is_empty() || credential_identity.len() > 2048 {
         return Err(MlsError::InvalidGroupId);
     }
-    let provider = SqlCipherMlsProvider::new(&database.connection)?;
-    let signer = provider.signer()?;
+    let (provider, signer) = provider_with_signer(database)?;
     let id = GroupId::from_slice(group_id);
-    if let Some(existing) = MlsGroup::load(provider.storage(), &id).map_err(MlsError::Storage)? {
+    if let Some(existing) = MlsGroup::load(provider.storage(), &id).map_err(|e| MlsError::Storage(e.to_string()))? {
         return Ok(existing.epoch().as_u64());
     }
     let config = MlsGroupCreateConfig::builder()
@@ -206,7 +205,7 @@ pub fn generate_key_package(
     if credential_identity.is_empty() || credential_identity.len() > 2048 {
         return Err(MlsError::IdentityMismatch);
     }
-    let provider = SqlCipherMlsProvider::new(&database.connection)?;
+    let (provider, _signer) = provider_with_signer(database)?;
     let signer = provider.signer()?;
     let credential = BasicCredential::new(credential_identity.to_vec());
     let bundle = KeyPackage::builder()
