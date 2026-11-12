@@ -88,6 +88,7 @@ class DeviceSyncNetwork(
         val urls = network.relays.value.filter { it.enabled }.map { it.url }.toSet()
         if (urls.isEmpty()) return
         pool.configure(secret, urls)
+        pool.waitForBacklog(20_000)
 
         val local = devices.ensureLocalDevice()
         val trusted = database.trustedDeviceDao().observeForAccount(identity.publicId).first()
