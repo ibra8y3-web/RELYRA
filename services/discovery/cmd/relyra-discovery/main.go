@@ -263,6 +263,11 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /v1/communities/{communityID}/sequence/{actorPublicID}", s.communitySequence)
 	mux.HandleFunc("POST /v1/communities/{communityID}/reports", s.submitCommunityReport)
 	mux.HandleFunc("GET /v1/communities/{communityID}/reports", s.listCommunityReports)
+	mux.HandleFunc("GET /v1/communities/{communityID}/posts", s.listCommunityPosts)
+	mux.HandleFunc("POST /v1/communities/{communityID}/posts", s.publishCommunityPost)
+	mux.HandleFunc("GET /v1/communities/{communityID}/posts/sequence/{authorPublicID}", s.communityPostSequence)
+	mux.HandleFunc("POST /v1/communities/{communityID}/reports/{reportID}/reviews", s.reviewCommunityReport)
+	mux.HandleFunc("GET /v1/communities/{communityID}/reports/{reportID}/audit", s.listCommunityReportAudit)
 	return s.guard(mux)
 }
 
@@ -643,7 +648,7 @@ func (s *server) listCommunityReports(w http.ResponseWriter, r *http.Request) {
     }
     ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
     defer cancel()
-    reports, err := s.communities.Reports(ctx, communityID, requesterID, limit)
+    reports, err := s.communities.ReportViews(ctx, communityID, requesterID, limit)
     if err != nil {
         writeError(w, http.StatusForbidden, "community report access denied")
         return
@@ -653,6 +658,11 @@ func (s *server) listCommunityReports(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) submitCommunityReport(w http.ResponseWriter, r *http.Request) {
+	requesterID, accessErr := s.privateMemberFromRequest(r, r.PathValue("communityID"))
+	if accessErr != nil {
+		writeError(w, http.StatusForbidden, "community report submission is not authorized")
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, communities.MaxReportBytes)
 	raw, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -660,8 +670,9 @@ func (s *server) submitCommunityReport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	var report communities.Report
-	if err := json.Unmarshal(raw, &report); err != nil || !strings.EqualFold(report.CommunityID, r.PathValue("communityID")) {
-		writeError(w, http.StatusBadRequest, "community ID does not match report")
+	if err := json.Unmarshal(raw, &report); err != nil || !strings.EqualFold(report.CommunityID, r.PathValue("communityID")) ||
+		!strings.EqualFold(report.ReporterPublicID, requesterID) {
+		writeError(w, http.StatusBadRequest, "report identity or community does not match authenticated request")
 		return
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
@@ -673,6 +684,154 @@ func (s *server) submitCommunityReport(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "reportId": accepted.ReportID})
+}
+
+
+func (s *server) listCommunityPosts(w http.ResponseWriter, r *http.Request) {
+	communityID := r.PathValue("communityID")
+	manifest, err := s.communities.GetManifest(r.Context(), communityID, true)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "community not found")
+		return
+	}
+	requesterID := ""
+	if manifest.Visibility == "private" {
+		requesterID, err = s.privateMemberFromRequest(r, communityID)
+		if err != nil {
+			writeError(w, http.StatusForbidden, "private community feed access denied")
+			return
+		}
+	}
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		value, parseErr := strconv.Atoi(raw)
+		if parseErr != nil || value < 1 || value > communities.MaxFeedPage {
+			writeError(w, http.StatusBadRequest, "invalid feed page size")
+			return
+		}
+		limit = value
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	posts, err := s.communities.Posts(ctx, communityID, requesterID, limit)
+	if err != nil {
+		writeError(w, http.StatusForbidden, "community feed is unavailable")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"posts": posts})
+}
+
+func (s *server) publishCommunityPost(w http.ResponseWriter, r *http.Request) {
+	communityID := r.PathValue("communityID")
+	requesterID, err := s.privateMemberFromRequest(r, communityID)
+	if err != nil {
+		writeError(w, http.StatusForbidden, "community publishing is not authorized")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, communities.MaxPostBytes)
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid or oversized community post")
+		return
+	}
+	var post communities.Post
+	if err := json.Unmarshal(raw, &post); err != nil ||
+		!strings.EqualFold(post.CommunityID, communityID) ||
+		!strings.EqualFold(post.AuthorPublicID, requesterID) {
+		writeError(w, http.StatusBadRequest, "post author or community does not match authenticated request")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	accepted, err := s.communities.PublishPost(ctx, raw)
+	if err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "post": accepted})
+}
+
+func (s *server) communityPostSequence(w http.ResponseWriter, r *http.Request) {
+	communityID := r.PathValue("communityID")
+	manifest, err := s.communities.GetManifest(r.Context(), communityID, true)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "community not found")
+		return
+	}
+	if manifest.Visibility == "private" {
+		if _, err := s.privateMemberFromRequest(r, communityID); err != nil {
+			writeError(w, http.StatusForbidden, "private community feed access denied")
+			return
+		}
+	}
+	sequence, err := s.communities.LastPostSequence(r.Context(), communityID, r.PathValue("authorPublicID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid post author identity")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"lastSequence": sequence})
+}
+
+func (s *server) reviewCommunityReport(w http.ResponseWriter, r *http.Request) {
+	communityID := r.PathValue("communityID")
+	requesterID, err := s.privateMemberFromRequest(r, communityID)
+	if err != nil {
+		writeError(w, http.StatusForbidden, "community report review is not authorized")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, communities.MaxEventBytes)
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid or oversized report review")
+		return
+	}
+	var review communities.ReportReview
+	if err := json.Unmarshal(raw, &review); err != nil ||
+		!strings.EqualFold(review.CommunityID, communityID) ||
+		!strings.EqualFold(review.ReportID, r.PathValue("reportID")) ||
+		!strings.EqualFold(review.ReviewerPublicID, requesterID) {
+		writeError(w, http.StatusBadRequest, "report review does not match authenticated request")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	accepted, err := s.communities.ReviewReport(ctx, raw)
+	if err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "review": accepted})
+}
+
+func (s *server) listCommunityReportAudit(w http.ResponseWriter, r *http.Request) {
+	communityID, reportID := r.PathValue("communityID"), r.PathValue("reportID")
+	requesterID, err := s.privateMemberFromRequest(r, communityID)
+	if err != nil {
+		writeError(w, http.StatusForbidden, "community report audit is not authorized")
+		return
+	}
+	limit := 100
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		value, parseErr := strconv.Atoi(raw)
+		if parseErr != nil || value < 1 || value > communities.MaxEventsPage {
+			writeError(w, http.StatusBadRequest, "invalid report audit page size")
+			return
+		}
+		limit = value
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	entries, err := s.communities.ReportAudit(ctx, communityID, reportID, requesterID, limit)
+	if err != nil {
+		writeError(w, http.StatusForbidden, "community report audit is unavailable")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"audit": entries})
 }
 
 func (s *server) turnCredentials(w http.ResponseWriter, r *http.Request) {
