@@ -84,4 +84,7 @@
     <string name="net_dht_gateway_untested">لم يتم الاختبار بعد</string>
     <string name="net_dht_gateway_invalid">أدخل عنوان بوابة اكتشاف HTTPS صالحًا.</string>
     <string name="net_dht_gateway_duplicate">بوابة الاكتشاف هذه مضافة بالفعل.</string>
+
+    <string name="net_transport_last_path">آخر مسار نجح في تسليم رسالة: %1$s</string>
+    <string name="net_transport_no_path">لم ينجح أي ناقل في تسليم رسالة حتى الآن.</string>
 </resources>
