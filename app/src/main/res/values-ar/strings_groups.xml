@@ -36,6 +36,12 @@
     <string name="groups_you">أنت</string>
     <string name="groups_delivered">وصلت إلى %1$d من %2$d</string>
     <string name="groups_read">قرأها %1$d من %2$d</string>
+    <string name="groups_attach_file">إرفاق ملف</string>
+    <string name="groups_file_download">تنزيل المرفق المشفّر</string>
+    <string name="groups_file_downloading">جارٍ التنزيل والتحقق من الملف…</string>
+    <string name="groups_file_save">حفظ الملف</string>
+    <string name="groups_file_uploaded">تم إرفاق الملف المشفّر</string>
+    <string name="err_group_file_upload">تعذر رفع الملف المشفّر. تحقق من خادم Blossom ثم أعد المحاولة.</string>
     <string name="groups_add_members">إضافة أعضاء</string>
     <string name="groups_add_none">كل جهات اتصالك الصالحة موجودة بالفعل في هذه المجموعة.</string>
     <string name="groups_rename">إعادة تسمية</string>
