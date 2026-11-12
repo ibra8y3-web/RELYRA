@@ -75,24 +75,24 @@ class MlsEngine(
         return "RELYRA-MLS-V1:$relyraPublicId:primary".toByteArray(StandardCharsets.UTF_8)
     }
 
-    suspend fun createGroup(groupId: String, relyraPublicId: String): Long = withContext(Dispatchers.IO) {
+    override suspend fun createGroup(groupId: String, relyraPublicId: String): Long = withContext(Dispatchers.IO) {
         ensureInitialized()
         MlsNative.nativeCreateGroup(groupIdBytes(groupId), credentialIdentity(relyraPublicId))
             .also { check(it >= 0) { "OpenMLS could not create the group" } }
     }
 
-    suspend fun generateKeyPackage(relyraPublicId: String): ByteArray = withContext(Dispatchers.IO) {
+    override suspend fun generateKeyPackage(relyraPublicId: String): ByteArray = withContext(Dispatchers.IO) {
         ensureInitialized()
         MlsNative.nativeGenerateKeyPackage(credentialIdentity(relyraPublicId))
             .also { check(it.isNotEmpty()) { "OpenMLS returned an empty KeyPackage" } }
     }
 
-    suspend fun keyPackageIdentity(keyPackage: ByteArray): String = withContext(Dispatchers.IO) {
+    override suspend fun keyPackageIdentity(keyPackage: ByteArray): String = withContext(Dispatchers.IO) {
         ensureInitialized()
         MlsNative.nativeKeyPackageIdentity(keyPackage).toString(StandardCharsets.UTF_8)
     }
 
-    suspend fun addMembers(groupId: String, keyPackages: List<ByteArray>): MlsCommitBundle =
+    override suspend fun addMembers(groupId: String, keyPackages: List<ByteArray>): MlsCommitBundle =
         withContext(Dispatchers.IO) {
             require(keyPackages.isNotEmpty() && keyPackages.size <= 200)
             ensureInitialized()
@@ -105,19 +105,19 @@ class MlsEngine(
             )
         }
 
-    suspend fun joinGroup(groupId: String, welcome: ByteArray): Long = withContext(Dispatchers.IO) {
+    override suspend fun joinGroup(groupId: String, welcome: ByteArray): Long = withContext(Dispatchers.IO) {
         ensureInitialized()
         MlsNative.nativeJoinGroup(groupIdBytes(groupId), welcome)
             .also { check(it >= 0) { "OpenMLS could not process the Welcome" } }
     }
 
-    suspend fun encrypt(groupId: String, plaintext: ByteArray): ByteArray = withContext(Dispatchers.IO) {
+    override suspend fun encrypt(groupId: String, plaintext: ByteArray): ByteArray = withContext(Dispatchers.IO) {
         ensureInitialized()
         MlsNative.nativeEncrypt(groupIdBytes(groupId), plaintext)
             .also { check(it.isNotEmpty()) { "OpenMLS returned an empty ciphertext" } }
     }
 
-    suspend fun processMessage(message: ByteArray): MlsProcessedMessage = withContext(Dispatchers.IO) {
+    override suspend fun processMessage(message: ByteArray): MlsProcessedMessage = withContext(Dispatchers.IO) {
         ensureInitialized()
         val json = JSONObject(MlsNative.nativeProcessMessage(message))
         val app = json.optString("application").takeIf { it.isNotBlank() && it != "null" }
@@ -131,7 +131,7 @@ class MlsEngine(
         )
     }
 
-    suspend fun removeMember(groupId: String, relyraPublicId: String): MlsCommitBundle =
+    override suspend fun removeMember(groupId: String, relyraPublicId: String): MlsCommitBundle =
         withContext(Dispatchers.IO) {
             ensureInitialized()
             val json = JSONObject(MlsNative.nativeRemoveMember(
@@ -146,20 +146,20 @@ class MlsEngine(
             )
         }
 
-    suspend fun epoch(groupId: String): Long = withContext(Dispatchers.IO) {
+    override suspend fun epoch(groupId: String): Long = withContext(Dispatchers.IO) {
         ensureInitialized()
         MlsNative.nativeEpoch(groupIdBytes(groupId)).also {
             check(it >= 0) { "MLS group is not present in local storage" }
         }
     }
 
-    suspend fun members(groupId: String): List<String> = withContext(Dispatchers.IO) {
+    override suspend fun members(groupId: String): List<String> = withContext(Dispatchers.IO) {
         ensureInitialized()
         val json = JSONArray(MlsNative.nativeMembers(groupIdBytes(groupId)))
         List(json.length()) { index -> json.getString(index) }
     }
 
-    suspend fun close() = withContext(Dispatchers.IO) {
+    override suspend fun close() = withContext(Dispatchers.IO) {
         initLock.withLock {
             if (initialized) {
                 MlsNative.nativeClose()
