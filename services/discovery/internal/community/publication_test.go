@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/ed25519"
 	"encoding/base64"
+	"strings"
 	"testing"
 	"time"
 )
@@ -92,6 +93,7 @@ func TestSignedCommunityPostsAreSequencedIdempotentAndFed(t *testing.T) {
 func TestPostingPolicyIsEnforcedAtPublication(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	store := testStore(now)
+	store.clock = func() time.Time { return now }
 	owner := makeIdentity(t)
 	moderator := makeIdentity(t)
 	member := makeIdentity(t)
