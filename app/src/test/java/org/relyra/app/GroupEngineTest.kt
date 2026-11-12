@@ -538,4 +538,26 @@ class GroupEngineTest {
         assertFalse(store.hasControlMessage(adminCommitId))
     }
 
+    @Test fun backupBarrierBlocksRoomGroupMutationsUntilSnapshotCompletes() = runBlocking {
+        val gid = groupWith(GroupKind.GROUP, bob)
+        val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val release = kotlinx.coroutines.CompletableDeferred<Unit>()
+        val snapshot = kotlinx.coroutines.async {
+            alice.engine.withBackupBarrier {
+                entered.complete(Unit)
+                release.await()
+            }
+        }
+        entered.await()
+
+        val mutation = kotlinx.coroutines.async { alice.engine.rename(gid, "after snapshot") }
+        kotlinx.coroutines.yield()
+        assertFalse("group mutation must wait for the cross-store snapshot", mutation.isCompleted)
+
+        release.complete(Unit)
+        snapshot.await()
+        assertEquals(GroupResult.OK, mutation.await())
+        assertEquals("after snapshot", alice.store.group(gid)?.name)
+    }
+
 }
