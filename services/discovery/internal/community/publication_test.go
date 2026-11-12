@@ -182,6 +182,33 @@ func TestReportReviewHasRoleGatesStateAndAppendOnlyAudit(t *testing.T) {
 	}
 }
 
+func TestPublicCommunityAllowsSignedPostAndOptInReportWithoutMembership(t *testing.T) {
+	now := time.Unix(1_800_000_000, 0)
+	store := testStore(now)
+	owner := makeIdentity(t)
+	author := makeIdentity(t)
+	moderator := makeIdentity(t)
+	reporter := makeIdentity(t)
+	manifest := signedManifest(t, owner, "a1b2c3d4-e5f6-4789-8abc-0123456789ab", "public", []string{moderator.id}, now)
+	if _, err := store.PublishManifest(context.Background(), mustJSON(t, manifest)); err != nil { t.Fatal(err) }
+
+	post := signedPostForTest(t, author, manifest.CommunityID, 1, "public signed post", now)
+	if _, err := store.PublishPost(context.Background(), mustJSON(t, post)); err != nil {
+		t.Fatalf("public author was incorrectly required to be a private member: %v", err)
+	}
+	report := signedReportForTest(t, reporter, manifest.CommunityID, "c1b2c3d4-e5f6-4789-8abc-0123456789ab", now)
+	if _, err := store.SubmitReport(context.Background(), mustJSON(t, report)); err != nil {
+		t.Fatalf("public report was incorrectly required to be a private member: %v", err)
+	}
+	if _, err := store.ReportViews(context.Background(), manifest.CommunityID, reporter.id, 20); err == nil {
+		t.Fatal("ordinary reporter read the moderator report inbox")
+	}
+	views, err := store.ReportViews(context.Background(), manifest.CommunityID, moderator.id, 20)
+	if err != nil || len(views) != 1 || views[0].Status != "open" {
+		t.Fatalf("moderator could not read public community report: %#v, %v", views, err)
+	}
+}
+
 func TestPostVerificationRejectsExpiredAndMalformedPosts(t *testing.T) {
 	now := time.Unix(1_800_000_000, 0)
 	author := makeIdentity(t)
