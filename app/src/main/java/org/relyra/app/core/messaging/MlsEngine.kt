@@ -141,9 +141,14 @@ class MlsEngine(
     }
 
     override suspend fun removeMember(groupId: String, relyraPublicId: String): MlsCommitBundle = runNative {
-        val json = JSONObject(
-            MlsNative.nativeRemoveMember(groupIdBytes(groupId), credentialIdentity(relyraPublicId))
-        )
+        val encodedMembers = JSONArray(MlsNative.nativeMembers(groupIdBytes(groupId)))
+        val targetCredential = (0 until encodedMembers.length())
+            .mapNotNull { index ->
+                runCatching { Base64.getDecoder().decode(encodedMembers.getString(index)) }.getOrNull()
+            }
+            .firstOrNull { MlsCredentialCodec.verify(it, relyraPublicId) }
+            ?: throw IllegalArgumentException("The requested RELYRA member is not present in the MLS group")
+        val json = JSONObject(MlsNative.nativeRemoveMember(groupIdBytes(groupId), targetCredential))
         MlsCommitBundle(
             commit = Base64.getDecoder().decode(json.getString("commit")),
             welcome = json.optString("welcome").takeIf { it.isNotBlank() && it != "null" }
