@@ -1134,6 +1134,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
         }
     }
+    fun syncDevicesNow() {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { ctr().deviceSyncNetwork.syncNow() }
+                .onSuccess { deviceMessage.value = "Encrypted device synchronization sent to approved devices through enabled relays." }
+                .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
+        }
+    }
+    fun rotateLocalDeviceKeys() {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { ctr().devices.rotateLocalDeviceKeys() }
+                .onSuccess { code ->
+                    deviceSyncCode.value = code
+                    deviceMessage.value = "This device's keys were rotated. Other trusted devices receive the new public keys through automatic sync."
+                    refreshTrustedDevices()
+                }
+                .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
+        }
+    }
+    fun applyDeviceKeyRotation(code: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { ctr().devices.acceptKeyRotation(code.trim()) }
+                .onSuccess { deviceMessage.value = "Signed device key rotation applied."; refreshTrustedDevices() }
+                .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
+        }
+    }
     fun exportDeviceSync(deviceId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { ctr().deviceSync.exportEncrypted(deviceId) }
