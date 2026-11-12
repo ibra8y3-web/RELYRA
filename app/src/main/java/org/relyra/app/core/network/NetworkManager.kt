@@ -28,6 +28,25 @@ object RelayUrl {
 
 data class RelayConfig(val url: String, val enabled: Boolean)
 
+object DiscoveryGatewayUrl {
+    /** Only HTTPS endpoints are accepted; cleartext discovery could spoof presence and TURN credentials. */
+    fun normalize(input: String): String? {
+        val value = input.trim()
+        if (value.isEmpty() || value.length > 300 || value.any { it.isWhitespace() || it.isISOControl() }) return null
+        val uri = try { URI(value) } catch (_: URISyntaxException) { return null }
+        if (uri.scheme?.lowercase() != "https" || uri.host.isNullOrBlank() ||
+            uri.userInfo != null || uri.query != null || uri.fragment != null ||
+            (uri.port != -1 && uri.port !in 1..65535)
+        ) return null
+        val host = uri.host.lowercase()
+        val port = if (uri.port == -1 || uri.port == 443) "" else ":${uri.port}"
+        val path = uri.rawPath.orEmpty().trimEnd('/').ifEmpty { "" }
+        return "https://$host$port$path"
+    }
+}
+
+data class DiscoveryGatewayConfig(val url: String, val enabled: Boolean)
+
 sealed interface RelayStatus {
     data object Untested : RelayStatus
     data object Testing : RelayStatus
@@ -83,6 +102,52 @@ class NetworkManager(context: Context, private val client: RelayClient = RelayCl
         scope.launch {
             _torProxyStatus.value = TorProxyTester().test()
         }
+    }
+
+    private val _discoveryGateways = MutableStateFlow(loadDiscoveryGateways())
+    val discoveryGateways: StateFlow<List<DiscoveryGatewayConfig>> = _discoveryGateways
+    private val _publicDiscoveryEnabled = MutableStateFlow(prefs.getBoolean("public_discovery_enabled", false))
+    val publicDiscoveryEnabled: StateFlow<Boolean> = _publicDiscoveryEnabled
+
+    fun setPublicDiscoveryEnabled(enabled: Boolean) {
+        prefs.edit { putBoolean("public_discovery_enabled", enabled) }
+        _publicDiscoveryEnabled.value = enabled
+    }
+
+    private fun loadDiscoveryGateways(): List<DiscoveryGatewayConfig> =
+        prefs.getString("discovery_gateways", "").orEmpty().lines()
+            .filter { it.isNotBlank() }
+            .mapNotNull { line ->
+                val parts = line.split('\t')
+                DiscoveryGatewayUrl.normalize(parts[0])?.let { DiscoveryGatewayConfig(it, parts.getOrNull(1) != "0") }
+            }
+            .distinctBy { it.url }
+
+    private fun saveDiscoveryGateways(values: List<DiscoveryGatewayConfig>) {
+        val normalized = values.distinctBy { it.url }
+        _discoveryGateways.value = normalized
+        prefs.edit {
+            putString("discovery_gateways", normalized.joinToString("\n") {
+                "${it.url}\t${if (it.enabled) 1 else 0}"
+            })
+        }
+    }
+
+    fun addDiscoveryGateway(input: String): AddRelayResult {
+        val url = DiscoveryGatewayUrl.normalize(input) ?: return AddRelayResult.Invalid
+        if (_discoveryGateways.value.any { it.url == url }) return AddRelayResult.Duplicate
+        saveDiscoveryGateways(_discoveryGateways.value + DiscoveryGatewayConfig(url, true))
+        return AddRelayResult.Added
+    }
+
+    fun removeDiscoveryGateway(url: String) {
+        saveDiscoveryGateways(_discoveryGateways.value.filterNot { it.url == url })
+    }
+
+    fun setDiscoveryGatewayEnabled(url: String, enabled: Boolean) {
+        saveDiscoveryGateways(_discoveryGateways.value.map {
+            if (it.url == url) it.copy(enabled = enabled) else it
+        })
     }
 
     private val _relays = MutableStateFlow(load())
