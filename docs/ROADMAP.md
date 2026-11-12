@@ -41,6 +41,8 @@ Complete native OpenMLS proposal creation, verification, persistence, owner revi
 WebRTC MediaTracks; encrypted/signed signaling; complete outgoing/incoming call lifecycle (ring, accept, reject, end, timeout, reconnect); microphone/camera permissions and controls; notifications and conversation call UI; tests for lifecycle and failure.
 
 ### Phase 5 — multi-device
+
+**Implementation status:** persistence foundation started only; the SQLCipher device inventory schema and conditional DAO operations are present. Pairing, device-scoped key generation, approval signatures, revocation enforcement, encrypted synchronization, conflict resolution, and settings UI remain unimplemented. See [Phase 5 implementation status](PHASE5_MULTI_DEVICE.md) and [Arabic status](PHASE5_MULTI_DEVICE_AR.md).
 Secure device enrollment and approval, device inventory, revoke, key rotation, account/device binding, authenticated synchronization, conflict handling and settings UI.
 
 ### Phase 6 — offline Mesh
