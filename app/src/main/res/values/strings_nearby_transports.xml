@@ -57,4 +57,27 @@
     <string name="net_p2p_incoming_offer">A verified contact is requesting a direct WebRTC connection. Approve only if you expected this request.</string>
     <string name="net_p2p_approve">Approve connection</string>
     <string name="net_p2p_decline">Decline</string>
+
+    <string name="net_dht_title">Public Internet discovery (Kademlia DHT)</string>
+    <string name="net_dht_desc">Add an HTTPS RELYRA discovery gateway backed by the distributed Kademlia network. Public presence is off by default. When enabled, your RELYRA public ID and supported connection capabilities are published as a signed, three-minute lease; no name, SDP or IP address is published.</string>
+    <string name="net_dht_presence_toggle">Publish my public presence</string>
+    <string name="net_dht_status_disabled">Public presence is disabled.</string>
+    <string name="net_dht_status_no_gateway">Add an HTTPS discovery gateway to use the DHT.</string>
+    <string name="net_dht_status_publishing">Publishing signed presence to configured gateways.</string>
+    <string name="net_dht_status_published">Signed public presence is being refreshed.</string>
+    <string name="net_dht_status_unavailable">No configured gateway accepted the signed presence.</string>
+    <string name="net_dht_gateway_label">HTTPS discovery gateway URL</string>
+    <string name="net_dht_gateway_add">Add gateway</string>
+    <string name="net_dht_gateway_remove">Remove</string>
+    <string name="net_dht_gateway_enabled">Enabled</string>
+    <string name="net_dht_gateway_test">Test gateway</string>
+    <string name="net_dht_gateway_testing">Testing</string>
+    <string name="net_dht_gateway_test_ok">Gateway API reachable</string>
+    <string name="net_dht_gateway_test_failed">Gateway test failed</string>
+    <string name="net_dht_lookup">Find presence in DHT</string>
+    <string name="net_dht_peer_found">Signed presence found. Lease expires at %1$d (Unix time). This does not add or trust the contact.</string>
+    <string name="net_dht_peer_not_found">No valid, unexpired presence record was found for this RELYRA ID.</string>
+    <string name="net_dht_turn_fetch">Get short-lived TURN credentials from discovery service</string>
+    <string name="net_dht_turn_ready">Temporary TURN credentials accepted for new sessions.</string>
+    <string name="net_dht_turn_unavailable">Could not obtain valid TURN credentials. Check the gateway, server identity and TURN deployment.</string>
 </resources>
