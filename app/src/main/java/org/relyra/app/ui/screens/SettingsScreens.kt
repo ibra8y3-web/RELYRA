@@ -59,6 +59,7 @@ fun SettingsScreen(
     onOpenTools: () -> Unit,
     onOpenNotifications: () -> Unit,
     onOpenDiagnostics: () -> Unit,
+    onOpenDevices: () -> Unit,
     onOpenHome: () -> Unit,
 ) {
     Column(
@@ -73,6 +74,8 @@ fun SettingsScreen(
             Icons.Default.Wifi, onOpenNetwork)
         SettingsHubTile(R.string.settings_cat_identity, R.string.settings_cat_identity_desc,
             Icons.Default.Person, onOpenIdentity)
+        SettingsHubTile(R.string.devices_title, R.string.devices_intro,
+            Icons.Default.Person, onOpenDevices)
         SettingsHubTile(R.string.settings_cat_privacy, R.string.settings_cat_privacy_desc,
             Icons.Default.Security, onOpenPrivacy)
         SettingsHubTile(R.string.settings_cat_storage, R.string.settings_cat_storage_desc,
