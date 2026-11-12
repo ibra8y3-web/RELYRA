@@ -135,7 +135,6 @@ func newServer(ctx context.Context) (*server, error) {
 		libp2p.Identity(privateKey),
 		libp2p.ListenAddrStrings(listenAddrs...),
 		libp2p.NATPortMap(),
-		libp2p.NonPublicAddrPublishing(false),
 	}
 	if announced := splitList(os.Getenv("RELYRA_ANNOUNCE_MULTIADDRS")); len(announced) > 0 {
 		external := make([]ma.Multiaddr, 0, len(announced))
