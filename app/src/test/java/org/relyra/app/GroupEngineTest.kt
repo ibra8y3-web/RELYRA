@@ -444,6 +444,8 @@ class GroupEngineTest {
         val acceptedProposal = bob.store.outbox.values.single { it.memberId == "alice" }
         val acceptedEnvelope = EnvelopeCodec.decode(acceptedProposal.payload) as Envelope.GroupMls
         alice.engine.onEnvelope(acceptedEnvelope) // duplicate delivery must not apply the proposal twice
+        val staleProposal = carol.store.outbox.values.single { it.memberId == "alice" }
+        assertTrue(alice.store.hasControlMessage(staleProposal.id)) // stale concurrent request was rejected and consumed
         assertEquals(8L, alice.store.group(gid)!!.epoch)
         assertEquals(1, alice.store.members(gid).count { it.id == "dave" })
         assertTrue(bob.store.outbox.values.all { it.acked })
