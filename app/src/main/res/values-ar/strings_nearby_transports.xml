@@ -87,4 +87,11 @@
 
     <string name="net_transport_last_path">آخر مسار نجح في تسليم رسالة: %1$s</string>
     <string name="net_transport_no_path">لم ينجح أي ناقل في تسليم رسالة حتى الآن.</string>
+    <string name="net_route_history_title">محاولات مسار التسليم الأخيرة</string>
+    <string name="net_route_attempt">%1$s — %2$s · %3$d مللي ثانية · %4$s</string>
+    <string name="net_route_accepted">تم القبول مباشرة</string>
+    <string name="net_route_relayed">تم الترحيل</string>
+    <string name="net_route_unavailable">غير متاح، تمت تجربة المسار البديل</string>
+    <string name="net_route_rejected">تم الرفض</string>
+    <string name="net_route_error">خطأ في الناقل، تمت تجربة المسار البديل</string>
 </resources>

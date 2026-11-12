@@ -90,22 +90,79 @@ class NostrConnector(
     }
 }
 
-/** Tries ready connectors in the user's priority order and remembers which path carried the last message. */
+enum class RouteAttemptOutcome { ACCEPTED, RELAYED, UNAVAILABLE, REJECTED, ERROR }
+
+data class RouteAttempt(
+    val path: String,
+    val outcome: RouteAttemptOutcome,
+    val elapsedMillis: Long,
+    val completedAtMillis: Long,
+    val reason: String? = null,
+)
+
+/** Tries ready connectors in priority order and retains a bounded, observable route history. */
 class AdaptiveRouter(private val connectors: () -> List<Connector>) : Transport {
     override val name = "adaptive"
     override fun isReady(): Boolean = connectors().any { it.isReady() }
     val lastPath = MutableStateFlow<String?>(null)
+    private val _routeAttempts = MutableStateFlow<List<RouteAttempt>>(emptyList())
+    val routeAttempts: kotlinx.coroutines.flow.StateFlow<List<RouteAttempt>> = _routeAttempts
 
     override suspend fun send(toPeer: String, payload: ByteArray): SendOutcome {
         var sawUnavailable = false
         var rejected: SendOutcome.Rejected? = null
-        for (c in connectors().filter { it.isReady() }) {
-            when (val r = c.send(toPeer, payload)) {
-                SendOutcome.Accepted, SendOutcome.Relayed -> { lastPath.value = c.name; return r }
-                SendOutcome.Unavailable -> sawUnavailable = true
-                is SendOutcome.Rejected -> rejected = r
+        for (connector in connectors().filter { it.isReady() }) {
+            val started = System.nanoTime()
+            val result = try {
+                connector.send(toPeer, payload)
+            } catch (cancelled: kotlinx.coroutines.CancellationException) {
+                throw cancelled
+            } catch (failure: Exception) {
+                recordAttempt(
+                    connector.name,
+                    RouteAttemptOutcome.ERROR,
+                    (System.nanoTime() - started) / 1_000_000,
+                    failure.message?.take(120) ?: failure.javaClass.simpleName,
+                )
+                sawUnavailable = true
+                continue
+            }
+            val elapsed = (System.nanoTime() - started) / 1_000_000
+            when (result) {
+                SendOutcome.Accepted -> {
+                    recordAttempt(connector.name, RouteAttemptOutcome.ACCEPTED, elapsed, null)
+                    lastPath.value = connector.name
+                    return result
+                }
+                SendOutcome.Relayed -> {
+                    recordAttempt(connector.name, RouteAttemptOutcome.RELAYED, elapsed, null)
+                    lastPath.value = connector.name
+                    return result
+                }
+                SendOutcome.Unavailable -> {
+                    recordAttempt(connector.name, RouteAttemptOutcome.UNAVAILABLE, elapsed, null)
+                    sawUnavailable = true
+                }
+                is SendOutcome.Rejected -> {
+                    recordAttempt(connector.name, RouteAttemptOutcome.REJECTED, elapsed, result.reason.take(120))
+                    rejected = result
+                }
             }
         }
         return if (sawUnavailable) SendOutcome.Unavailable else rejected ?: SendOutcome.Unavailable
+    }
+
+    private fun recordAttempt(
+        path: String,
+        outcome: RouteAttemptOutcome,
+        elapsedMillis: Long,
+        reason: String?,
+    ) {
+        val attempt = RouteAttempt(path, outcome, elapsedMillis.coerceAtLeast(0), System.currentTimeMillis(), reason)
+        _routeAttempts.value = (listOf(attempt) + _routeAttempts.value).take(MAX_ROUTE_HISTORY)
+    }
+
+    private companion object {
+        const val MAX_ROUTE_HISTORY = 64
     }
 }

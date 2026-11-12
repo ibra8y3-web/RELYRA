@@ -8,6 +8,7 @@ import org.junit.Test
 import org.relyra.app.core.messaging.SendOutcome
 import org.relyra.app.core.network.AdaptiveRouter
 import org.relyra.app.core.network.Connector
+import org.relyra.app.core.network.RouteAttemptOutcome
 
 private class ScriptedConnector(
     override val name: String,
@@ -90,4 +91,22 @@ class AdaptiveRouterTest {
 
         assertEquals(SendOutcome.Unavailable, router.send("peer", byteArrayOf(1)))
     }
+
+    @Test
+    fun recordsEveryAttemptAndFallbackOutcome() = runBlocking {
+        val first = ScriptedConnector("direct-webrtc", result = SendOutcome.Unavailable)
+        val second = ScriptedConnector("nostr", result = SendOutcome.Relayed)
+        val router = AdaptiveRouter { listOf(first, second) }
+
+        assertEquals(SendOutcome.Relayed, router.send("peer-3", byteArrayOf(5)))
+
+        val attempts = router.routeAttempts.value
+        assertEquals(2, attempts.size)
+        assertEquals("nostr", attempts[0].path)
+        assertEquals(RouteAttemptOutcome.RELAYED, attempts[0].outcome)
+        assertEquals("direct-webrtc", attempts[1].path)
+        assertEquals(RouteAttemptOutcome.UNAVAILABLE, attempts[1].outcome)
+        assertTrue(attempts.all { it.elapsedMillis >= 0 && it.completedAtMillis > 0 })
+    }
+
 }

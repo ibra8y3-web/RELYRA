@@ -71,6 +71,7 @@ fun NetworkScreen(vm: MainViewModel) {
     val wifiDirectVerifiedPeers by vm.wifiDirectVerifiedPeers.collectAsStateWithLifecycle()
     val wifiDirectStatus by vm.wifiDirectStatus.collectAsStateWithLifecycle()
     val lastTransportPath by vm.lastTransportPath.collectAsStateWithLifecycle()
+    val routeAttempts by vm.routeAttempts.collectAsStateWithLifecycle()
     val internetPeerStates by vm.internetPeerStates.collectAsStateWithLifecycle()
     val incomingInternetOffers by vm.incomingInternetOffers.collectAsStateWithLifecycle()
     val internetSignal by vm.internetSignal.collectAsStateWithLifecycle()
@@ -316,6 +317,25 @@ fun NetworkScreen(vm: MainViewModel) {
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
             )
+            if (routeAttempts.isNotEmpty()) {
+                Text(stringResource(R.string.net_route_history_title), style = MaterialTheme.typography.titleSmall)
+                routeAttempts.take(6).forEach { attempt ->
+                    val outcomeLabel = stringResource(
+                        when (attempt.outcome) {
+                            org.relyra.app.core.network.RouteAttemptOutcome.ACCEPTED -> R.string.net_route_accepted
+                            org.relyra.app.core.network.RouteAttemptOutcome.RELAYED -> R.string.net_route_relayed
+                            org.relyra.app.core.network.RouteAttemptOutcome.UNAVAILABLE -> R.string.net_route_unavailable
+                            org.relyra.app.core.network.RouteAttemptOutcome.REJECTED -> R.string.net_route_rejected
+                            org.relyra.app.core.network.RouteAttemptOutcome.ERROR -> R.string.net_route_error
+                        },
+                    )
+                    Text(
+                        stringResource(R.string.net_route_attempt, attempt.path, outcomeLabel, attempt.elapsedMillis, attempt.reason.orEmpty()),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+            }
             Text(stringResource(R.string.net_p2p_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(value = p2pPeerId, onValueChange = { p2pPeerId = it.trim() }, label = { Text(stringResource(R.string.net_p2p_peer_id)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Button(

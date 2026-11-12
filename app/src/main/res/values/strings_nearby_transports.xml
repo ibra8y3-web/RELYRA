@@ -87,4 +87,11 @@
 
     <string name="net_transport_last_path">Last successful delivery path: %1$s</string>
     <string name="net_transport_no_path">No transport has successfully delivered a message yet.</string>
+    <string name="net_route_history_title">Recent delivery route attempts</string>
+    <string name="net_route_attempt">%1$s — %2$s · %3$d ms · %4$s</string>
+    <string name="net_route_accepted">accepted directly</string>
+    <string name="net_route_relayed">relayed</string>
+    <string name="net_route_unavailable">unavailable, tried fallback</string>
+    <string name="net_route_rejected">rejected</string>
+    <string name="net_route_error">transport error, tried fallback</string>
 </resources>
