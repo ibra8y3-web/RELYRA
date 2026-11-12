@@ -96,6 +96,9 @@ interface AttachmentDao {
     @Query("SELECT messageId FROM attachments")
     suspend fun allMessageIdsForDeviceSync(): List<String>
 
+    @Query("SELECT * FROM attachments ORDER BY messageId LIMIT 100000")
+    suspend fun allForDeviceSync(): List<AttachmentEntity>
+
     @Query("SELECT a.* FROM attachments a INNER JOIN messages m ON m.messageId = a.messageId WHERE m.chatId = :chatId")
     fun observeChat(chatId: String): Flow<List<AttachmentEntity>>
 
@@ -104,6 +107,9 @@ interface AttachmentDao {
 
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(e: AttachmentEntity)
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfAbsent(e: AttachmentEntity): Long
 
     @Update
     suspend fun update(e: AttachmentEntity)
