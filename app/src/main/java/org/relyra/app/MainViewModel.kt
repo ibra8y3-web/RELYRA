@@ -1160,8 +1160,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 val input = getApplication<Application>().contentResolver.openInputStream(uri)
                     ?: throw java.io.IOException("Cannot open selected file")
                 val bytes = input.use { it.readBytes() }
-                require(bytes.size <= 8 * 1024 * 1024 + 2048)
-                ctr().deviceSync.importEncrypted(bytes).also { bytes.fill(0) }
+                try {
+                    require(bytes.size <= 8 * 1024 * 1024 + 2048)
+                    ctr().deviceSync.importEncrypted(bytes)
+                } finally { bytes.fill(0) }
             }.onSuccess { report -> deviceMessage.value = "Imported " + report.contactsAdded + " contacts, " + report.messagesAdded + " messages; " + report.preferencesUpdated + " preferences updated; " + report.conflictsKept + " conflicts kept." }
              .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
         }
