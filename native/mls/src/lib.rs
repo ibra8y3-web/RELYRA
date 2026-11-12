@@ -287,6 +287,7 @@ pub fn join_group(
     database: &mut OpenDatabase,
     group_id: &[u8],
     welcome_bytes: &[u8],
+    expected_identity: &[u8],
 ) -> Result<u64, MlsError> {
     let (provider, _signer) = provider_with_signer(database)?;
     let welcome = MlsMessageIn::tls_deserialize_exact_bytes(welcome_bytes)
@@ -300,7 +301,8 @@ pub fn join_group(
         None,
     ).map_err(|_| MlsError::InvalidMessage)?;
     let group = staged.into_group(&provider).map_err(|_| MlsError::Rejected)?;
-    if group.group_id().as_slice() != group_id {
+    if group.group_id().as_slice() != group_id ||
+        !group.members().any(|member| member.credential.serialized_content() == expected_identity) {
         return Err(MlsError::IdentityMismatch);
     }
     Ok(group.epoch().as_u64())
@@ -458,7 +460,7 @@ mod tests {
         create_group(&mut a, gid, a_credential).unwrap();
         let key_package = generate_key_package(&mut b, b_credential).unwrap();
         let bundle = add_members(&mut a, gid, &[key_package]).unwrap();
-        join_group(&mut b, gid, &BASE64.decode(bundle.welcome.unwrap()).unwrap()).unwrap();
+        join_group(&mut b, gid, &BASE64.decode(bundle.welcome.unwrap()).unwrap(), b_credential).unwrap();
 
         let app = encrypt(&mut a, gid, b"mls secret").unwrap();
         let result = process_message(&mut b, &app).unwrap();
