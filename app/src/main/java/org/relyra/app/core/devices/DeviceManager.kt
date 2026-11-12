@@ -90,8 +90,8 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
     }
     suspend fun approvePairingRequest(encoded: String): String {
         val identity = checkNotNull(db.identityDao().get())
+        val rootSeed = checkNotNull(secure.loadSeed())
         val local = ensureLocalDevice()
-        val localSigningSeed = checkNotNull(secure.loadDeviceSigningSeed(local.deviceId))
         val (body, sig) = open(encoded, REQUEST)
         val values = DataInputStream(ByteArrayInputStream(body)).use { i ->
             require(i.readUTF() == REQUEST)
@@ -117,7 +117,7 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         val approval=transcript(APPROVAL,account,id,b64(challenge),now.toString(),b64(identity.publicKey),
             local.deviceId,local.displayName,local.platform,b64(local.signingPublicKey),b64(local.encryptionPublicKey))
         log(EventType.DEVICE_APPROVED,id)
-        return envelope(APPROVAL,approval,IdentityCrypto.sign(localSigningSeed,approval))
+        return envelope(APPROVAL,approval,IdentityCrypto.sign(rootSeed,approval))
     }
     suspend fun acceptPairingApproval(encoded: String) {
         val identity=checkNotNull(db.identityDao().get())
@@ -132,8 +132,7 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         require(challenge.length in 40..64 && approved.toLong() <= System.currentTimeMillis()+60_000)
         require(secure.loadDevicePairingChallenge(id)?.contentEquals(un64(challenge)) == true) { "Pairing challenge does not match this installation" }
         val approverPublicKey=un64(approverSign)
-        require(approverPublicKey.size==32 &&
-            (IdentityCrypto.verify(approverPublicKey,sig,body) || IdentityCrypto.verify(identity.publicKey,sig,body))) {
+        require(approverPublicKey.size==32 && IdentityCrypto.verify(identity.publicKey,sig,body)) {
             "Approval signature invalid"
         }
         val row=checkNotNull(db.trustedDeviceDao().get(id))
