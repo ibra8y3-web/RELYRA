@@ -449,6 +449,13 @@ func splitList(value string) []string {
 }
 
 func clientIP(r *http.Request) string {
+	if strings.EqualFold(os.Getenv("RELYRA_TRUST_PROXY"), "true") {
+		if forwarded := strings.TrimSpace(r.Header.Get("X-Real-IP")); forwarded != "" {
+			if ip := net.ParseIP(forwarded); ip != nil {
+				return ip.String()
+			}
+		}
+	}
 	host, _, err := net.SplitHostPort(r.RemoteAddr)
 	if err == nil {
 		return host
