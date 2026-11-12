@@ -2,7 +2,7 @@
 <resources>
     <!-- النسخ الاحتياطي والاستعادة -->
     <string name="settings_backup">النسخ الاحتياطي والاستعادة</string>
-    <string name="backup_desc">يحفظ هويتك وجهات الاتصال والرسائل والمجموعات والمرفقات وملفات الخزنة والمفاتيح الخاصة المسبقة وخوادم Blossom ومرحلات Nostr وبوابات الاكتشاف وإعدادات الشبكة والتطبيق في ملف واحد مشفر بعبارة مرور. النسخة محلية وأنت تختار مكان حفظها.</string>
+    <string name="backup_desc">يحفظ هويتك وجهات الاتصال والرسائل والمجموعات والمرفقات وملفات الخزنة وبيانات MLS وخوادم Blossom ومرحلات Nostr وبوابات الاكتشاف وإعدادات الشبكة والتطبيق في ملف واحد مشفر. بعد الاستعادة تُصفّر الجلسات القديمة ويلزم تبادل بطاقات اتصال موقعة جديدة. النسخة محلية.</string>
     <string name="backup_create">إنشاء نسخة احتياطية مشفرة</string>
     <string name="backup_restore">الاستعادة من نسخة احتياطية</string>
     <string name="backup_pass_title">اختر عبارة مرور</string>
@@ -17,7 +17,7 @@
     <string name="backup_close_app">إغلاق RELYRA</string>
     <string name="backup_cancel_restore">إلغاء الاستعادة</string>
     <string name="backup_saved">تم حفظ النسخة الاحتياطية</string>
-    <string name="backup_applied">تمت استعادة النسخة الاحتياطية</string>
+    <string name="backup_applied">تمت الاستعادة. أعد استيراد بطاقات الاتصال الموقعة الجديدة على الجهازين لإنشاء جلسات تشفير جديدة.</string>
     <string name="err_backup">تعذر إنشاء النسخة الاحتياطية: %1$s</string>
     <string name="err_restore">تعذرت استعادة النسخة الاحتياطية: %1$s</string>
 
