@@ -328,4 +328,6 @@
     <string name="groups_mls_pending_hint">The owner can commit all verified admin proposals together in one MLS epoch.</string>
     <string name="groups_mls_commit_pending">Commit pending changes</string>
 
+    <string name="groups_mls_pending_delivery_hint">Waiting for %1$d member delivery acknowledgement(s). Commit is disabled until every member has stored the proposal.</string>
+
 </resources>
