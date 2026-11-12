@@ -279,6 +279,7 @@ private fun DirectChats(vm: MainViewModel, query: String, onOpen: (String) -> Un
 
 @Composable
 fun ChatScreen(vm: MainViewModel, chatId: String) {
+    val context = LocalContext.current
     val flow = remember(chatId) { vm.chatMessages(chatId) }
     val messages by flow.collectAsStateWithLifecycle(initialValue = emptyList())
     var text by remember { mutableStateOf("") }
@@ -314,13 +315,13 @@ fun ChatScreen(vm: MainViewModel, chatId: String) {
     var pendingVideoCall by remember { mutableStateOf(false) }
     val callPermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         val audioGranted = grants[Manifest.permission.RECORD_AUDIO] == true ||
-            ContextCompat.checkSelfPermission(LocalContext.current, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         val cameraGranted = !pendingVideoCall || grants[Manifest.permission.CAMERA] == true ||
-            ContextCompat.checkSelfPermission(LocalContext.current, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+            ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
         if (audioGranted && cameraGranted) vm.startCall(chatId, pendingVideoCall)
         pendingVideoCall = false
     }
-    val call by vm.callState.collectAsStateWithLifecycle().let { it }
+    val call by vm.callState.collectAsStateWithLifecycle()
     val localVideo by vm.localCallVideo.collectAsStateWithLifecycle()
     val remoteVideo by vm.remoteCallVideo.collectAsStateWithLifecycle()
 
