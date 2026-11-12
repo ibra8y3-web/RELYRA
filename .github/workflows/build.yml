@@ -13,6 +13,29 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  discovery-service:
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-go@v6
+        with:
+          go-version: "1.26.0"
+          cache-dependency-path: services/discovery/go.mod
+      - name: Resolve Go modules
+        working-directory: services/discovery
+        run: go mod tidy
+      - name: Run discovery protocol tests
+        working-directory: services/discovery
+        run: go test -race ./...
+      - name: Vet discovery service
+        working-directory: services/discovery
+        run: go vet ./...
+      - name: Build discovery container
+        run: docker build -f services/discovery/Dockerfile -t relyra-discovery:ci services/discovery
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
