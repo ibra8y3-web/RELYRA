@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"log"
+	"mime"
 	"net"
 	"net/http"
 	"os"
@@ -250,9 +251,12 @@ func (s *server) guard(next http.Handler) http.Handler {
 			writeError(w, http.StatusServiceUnavailable, "busy")
 			return
 		}
-		if r.Method != http.MethodGet && r.Header.Get("Content-Type") != "application/json" {
-			writeError(w, http.StatusUnsupportedMediaType, "application/json required")
-			return
+		if r.Method != http.MethodGet {
+			mediaType, _, err := mime.ParseMediaType(r.Header.Get("Content-Type"))
+			if err != nil || mediaType != "application/json" {
+				writeError(w, http.StatusUnsupportedMediaType, "application/json required")
+				return
+			}
 		}
 		ip := clientIP(r)
 		limit := recordRate
@@ -310,7 +314,7 @@ func (s *server) publishRecord(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) lookupRecord(w http.ResponseWriter, r *http.Request) {
 	publicID := strings.ToLower(strings.TrimSpace(r.PathValue("publicID")))
-	key, err := protocol.KeyForPublicID(publicID)
+	key, err := presence.KeyForPublicID(publicID)
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid RELYRA public ID")
 		return
@@ -326,7 +330,7 @@ func (s *server) lookupRecord(w http.ResponseWriter, r *http.Request) {
 		}
 		return
 	}
-	if _, err := protocol.ParsePeerRecord(value, time.Now()); err != nil {
+	if _, err := presence.ParsePeerRecord(value, time.Now()); err != nil {
 		writeError(w, http.StatusNotFound, "peer presence expired")
 		return
 	}
