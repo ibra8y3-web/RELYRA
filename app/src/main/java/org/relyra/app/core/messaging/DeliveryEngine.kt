@@ -93,7 +93,8 @@ class DeliveryEngine(
     suspend fun transmit(peer: String, plaintext: ByteArray): SendOutcome {
         // Do not encrypt (which advances the ratchet) when there is no route to send on anyway.
         if (transports().none { it.isReady() }) return SendOutcome.Unavailable
-        val payload = protector.protect(peer, plaintext) ?: return SendOutcome.Rejected("no encryption key for peer")
+        val payload = cryptoLock.withLock { protector.protect(peer, plaintext) }
+            ?: return SendOutcome.Rejected("no encryption key for peer")
         return transmitWire(peer, payload)
     }
 
@@ -302,7 +303,7 @@ class DeliveryEngine(
      * Duplicate but authentic packets return true because they are safely re-acknowledged by [onPacket].
      */
     suspend fun acceptWire(wire: ByteArray): Boolean {
-        val opened = protector.open(wire) ?: return false
+        val opened = cryptoLock.withLock { protector.open(wire) } ?: return false
         val env = EnvelopeCodec.decode(opened.plaintext) ?: return false
         if (env.from != opened.senderId) return false
         val me = ownId() ?: return false
