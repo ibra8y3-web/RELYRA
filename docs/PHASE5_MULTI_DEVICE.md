@@ -43,9 +43,10 @@
 - The same account identity must currently be restored on the new device. The existing shared account identity key is still used; a root-key/delegated-device architecture that avoids cloning the account signing secret is not implemented.
 - Pairing, sync and revocation currently rely on manual code transfer. Automatic sync over Nostr, WebRTC or nearby networking is not implemented.
 - Revocation codes must be manually applied to remaining devices; there is no guaranteed immediate broadcast or delivery to offline devices.
+- Current revocation state gates device management and sync only; it is not yet enforced by every inbound/outbound messaging and signaling path, so full transport denial for a revoked device is not claimed.
 - Current sync excludes file attachments, group/channel messages, group membership, MLS state or keys, Ratchet state, and outgoing messages still awaiting delivery.
 - Keep Connected, Wi-Fi-only, screenshot protection, theme and app lock remain device-local.
-- Device key rotation and distribution of updated keys to other devices are not connected to a complete lifecycle.
+- Device-scoped keys currently protect pairing and the sync channel, while core RELYRA messages still use the existing account identity. Per-message device signatures, key rotation and key-update distribution are not implemented.
 - Notifications are local to actions performed on the current device; remote security push notifications are not implemented.
 - No build, protocol tests, emulator tests or two-phone tests were run. Runtime success is not claimed.
 
