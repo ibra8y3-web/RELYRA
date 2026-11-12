@@ -21,6 +21,7 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
 )
 abstract class AppDatabase : RoomDatabase() {
     abstract fun identityDao(): IdentityDao
+    abstract fun trustedDeviceDao(): TrustedDeviceDao
     abstract fun contactDao(): ContactDao
     abstract fun eventDao(): SecurityEventDao
     abstract fun messageDao(): MessageDao
