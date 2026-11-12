@@ -43,6 +43,7 @@ fun DevicesScreen(vm: MainViewModel) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement=Arrangement.spacedBy(12.dp)) {
         Text(stringResource(R.string.devices_intro), style=MaterialTheme.typography.bodyMedium)
+        OutlinedButton(onClick={vm.registerCurrentDevice()},modifier=Modifier.fillMaxWidth()) { Text(stringResource(R.string.devices_register_primary)) }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.devices_pair_title), style=MaterialTheme.typography.titleMedium)
