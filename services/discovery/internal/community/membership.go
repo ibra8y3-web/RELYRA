@@ -130,6 +130,8 @@ func (s *Store) CreateInvitation(ctx context.Context, raw []byte, token string) 
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	banned, banErr = s.IsBanned(ctx, inv.CommunityID, inv.MemberPublicID)
+	if banErr != nil || banned { return inv, errors.New("banned identity cannot be invited to this private community") }
 	key := invitationKey(inv.CommunityID, inv.InviteID)
 	if exists, err := s.ds.Has(ctx, key); err != nil { return inv, err } else if exists {
 		return inv, errors.New("invitation ID already exists")
@@ -184,6 +186,8 @@ func (s *Store) AcceptInvitation(ctx context.Context, raw []byte, token string, 
 	if banErr != nil || banned { return membership, errors.New("banned identity cannot join this private community") }
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	banned, banErr = s.IsBanned(ctx, inv.CommunityID, acceptance.MemberPublicID)
+	if banErr != nil || banned { return membership, errors.New("banned identity cannot join this private community") }
 	storedRaw, err := s.ds.Get(ctx, invitationKey(inv.CommunityID, inv.InviteID))
 	if err != nil { return membership, errors.New("invitation is not registered with this service") }
 	var stored Invitation
