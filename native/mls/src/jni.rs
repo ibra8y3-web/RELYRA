@@ -391,12 +391,18 @@ pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativePrepar
     mut env: JNIEnv,
     _class: JClass,
     group_id: JByteArray,
+    control_message_id: JString,
 ) -> jstring {
     let group_id = match input_bytes(&mut env, group_id) {
         Ok(value) => value,
         Err(error) => { throw(&mut env, error); return ptr::null_mut(); }
     };
-    let result = catch_result(&mut env, || with_database(|db| prepare_pending_proposals_commit(db, &group_id)));
+    let control_message_id: String = match env.get_string(&control_message_id) {
+        Ok(value) => value.into(),
+        Err(error) => { throw(&mut env, error); return ptr::null_mut(); }
+    };
+    let control_message_id = (!control_message_id.is_empty()).then_some(control_message_id);
+    let result = catch_result(&mut env, || with_database(|db| prepare_pending_proposals_commit(db, &group_id, control_message_id.as_deref())));
     result.map(|value| output_json(&mut env, &value)).unwrap_or(ptr::null_mut())
 }
 
