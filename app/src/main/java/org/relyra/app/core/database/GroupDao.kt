@@ -63,7 +63,7 @@ interface GroupDao {
     @Query("SELECT * FROM group_outbox WHERE id = :id")
     suspend fun outbox(id: String): GroupOutboxEntity?
 
-    @Query("SELECT payload FROM group_outbox WHERE groupId = :id AND acked = 0 AND failed = 0")
+    @Query("SELECT payload FROM group_outbox WHERE groupId = :id AND acked = 0")
     suspend fun pendingPayloads(id: String): List<ByteArray>
 
     @Query("UPDATE group_outbox SET acked = 1 WHERE id = :id AND memberId = :memberId")
