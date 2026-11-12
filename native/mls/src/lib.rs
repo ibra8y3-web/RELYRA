@@ -1,3 +1,5 @@
+mod jni;
+
 //! RELYRA's native MLS engine.
 //!
 //! OpenMLS 0.9.2 is pinned deliberately. All OpenMLS storage is backed by a
