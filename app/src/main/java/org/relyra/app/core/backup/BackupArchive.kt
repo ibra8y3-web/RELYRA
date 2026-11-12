@@ -11,7 +11,7 @@ import java.util.zip.ZipEntry
 import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
-/** ZIP container used inside the authenticated backup stream. All paths are relative and validated. */
+/** ZIP container inside the authenticated backup stream. Entry names are relative and strictly validated. */
 internal object BackupArchive {
     private const val MAX_ENTRIES = 20_000
     private const val MAX_TOTAL_BYTES = 4L * 1024 * 1024 * 1024
@@ -40,8 +40,7 @@ internal object BackupArchive {
                 require(name.matches(Regex("[a-z][a-z0-9_-]{0,63}")))
                 val props = Properties()
                 values.forEach { (key, value) -> props.setProperty(key, value) }
-                val entry = ZipEntry("prefs/$name.properties")
-                zip.putNextEntry(entry)
+                zip.putNextEntry(ZipEntry("prefs/$name.properties"))
                 props.store(zip, "RELYRA backup preferences")
                 zip.closeEntry()
             }
@@ -51,6 +50,7 @@ internal object BackupArchive {
     fun unpack(bundle: File, databaseOut: File, filesRoot: File, prefsOut: File): Map<String, Map<String, String>> {
         var entries = 0
         var total = 0L
+        val seen = mutableSetOf<String>()
         val prefs = linkedMapOf<String, Map<String, String>>()
         val canonicalFilesRoot = filesRoot.canonicalFile
         ZipInputStream(BufferedInputStream(FileInputStream(bundle))).use { zip ->
@@ -59,12 +59,13 @@ internal object BackupArchive {
                 entries++
                 if (entries > MAX_ENTRIES) throw BackupException("backup contains too many files")
                 val name = entry.name
+                if (!seen.add(name)) throw BackupException("backup contains duplicate entries")
                 if (entry.isDirectory) {
                     zip.closeEntry()
                     continue
                 }
                 when {
-                    name == "database.db" -> copyEntry(zip, databaseOut)
+                    name == "database.db" -> total += copyEntry(zip, databaseOut)
                     name.startsWith("files/") -> {
                         val rest = name.removePrefix("files/")
                         val slash = rest.indexOf('/')
@@ -75,32 +76,38 @@ internal object BackupArchive {
                         validatePath(relative)
                         val target = File(File(canonicalFilesRoot, rootName), relative).canonicalFile
                         if (!target.toPath().startsWith(canonicalFilesRoot.toPath())) throw BackupException("invalid backup file path")
-                        target.parentFile?.mkdirs()
-                        copyEntry(zip, target)
+                        total += copyEntry(zip, target)
                     }
                     name.startsWith("prefs/") && name.endsWith(".properties") -> {
                         val prefName = name.removePrefix("prefs/").removeSuffix(".properties")
                         if (!prefName.matches(Regex("[a-z][a-z0-9_-]{0,63}"))) throw BackupException("invalid preferences entry")
-                        val p = Properties().also { it.load(zip) }
-                        prefs[prefName] = p.stringPropertyNames().associateWith { p.getProperty(it) }
+                        val props = Properties()
+                        props.load(zip)
+                        prefs[prefName] = props.stringPropertyNames().associateWith { props.getProperty(it) }
                     }
                     else -> throw BackupException("backup contains an unknown entry")
                 }
+                if (total > MAX_TOTAL_BYTES) throw BackupException("backup is too large")
                 zip.closeEntry()
             }
         }
         if (!databaseOut.isFile || databaseOut.length() <= 0) throw BackupException("backup database is missing")
-        prefsOut.parentFile?.mkdirs()
+        if (!prefsOut.mkdirs() && !prefsOut.isDirectory) throw IOException("could not create preference staging directory")
         return prefs
     }
 
     private fun addFile(zip: ZipOutputStream, name: String, file: File) {
+        val beforeLength = file.length()
+        val beforeModified = file.lastModified()
         zip.putNextEntry(ZipEntry(name))
-        FileInputStream(file).use { input -> input.copyTo(zip, 64 * 1024) }
+        val copied = FileInputStream(file).use { it.copyTo(zip, 64 * 1024) }
         zip.closeEntry()
+        if (copied != beforeLength || file.length() != beforeLength || file.lastModified() != beforeModified) {
+            throw IOException("a file changed while the backup was being created")
+        }
     }
 
-    private fun copyEntry(input: ZipInputStream, output: File) {
+    private fun copyEntry(input: ZipInputStream, output: File): Long {
         output.parentFile?.mkdirs()
         var copied = 0L
         FileOutputStream(output).use { out ->
@@ -109,15 +116,12 @@ internal object BackupArchive {
                 val n = input.read(buffer)
                 if (n < 0) break
                 copied += n
-                totalGuard(copied)
+                if (copied > MAX_TOTAL_BYTES) throw BackupException("backup is too large")
                 out.write(buffer, 0, n)
             }
             out.fd.sync()
         }
-    }
-
-    private fun totalGuard(bytes: Long) {
-        if (bytes > MAX_TOTAL_BYTES) throw BackupException("backup is too large")
+        return copied
     }
 
     private fun validatePath(path: String) {
