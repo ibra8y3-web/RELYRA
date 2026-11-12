@@ -86,12 +86,18 @@ internal class GroupNet {
     val log = mutableListOf<Pair<String, ByteArray>>()
 }
 
-internal class GNode(val id: String, val net: GroupNet, val clock: () -> Long) {
+internal class GNode(
+    val id: String,
+    val net: GroupNet,
+    val clock: () -> Long,
+    mlsProvider: GroupMlsProvider? = null,
+) {
     val store = FakeGroupStore()
     val engine = GroupEngine(
         store = store,
         peers = Peers(mapOf("alice" to PeerStatus.Known, "bob" to PeerStatus.Known, "carol" to PeerStatus.Known, "dave" to PeerStatus.Known)),
         ownId = { id },
+        mls = mlsProvider,
         transmit = { peer, plaintext ->
             if (peer in net.down) SendOutcome.Unavailable
             else {
@@ -454,24 +460,46 @@ class GroupEngineTest {
         assertTrue(carol.store.outbox.values.all { it.acked })
     }
 
-    @Test fun mlsAdminRemovalProposalIsAppliedOnlyByOwner() = runBlocking {
+    @Test fun mlsAdminRemovalCreatesNativeProposalWithoutAdvancingTheEpoch() = runBlocking {
         val gid = UUID.randomUUID().toString()
         val members = listOf(
             GroupMemberRef("alice", GroupRole.OWNER, mlsJoined = true),
             GroupMemberRef("bob", GroupRole.ADMIN, mlsJoined = true),
-            GroupMemberRef("carol", GroupRole.MEMBER, mlsJoined = false),
+            GroupMemberRef("carol", GroupRole.MEMBER, mlsJoined = true),
         )
         val record = GroupRecord(gid, "MLS team", GroupKind.GROUP, "alice", 7, GroupState.ACTIVE,
             now, "alice", mlsEnabled = true, mlsEpoch = 4)
-        listOf(alice, bob, carol).forEach { it.store.putGroup(record, members) }
+        val fakeMls = object : GroupMlsProvider {
+            override suspend fun proposeRemoveMember(groupId: String, relyraPublicId: String) = relyraPublicId.toByteArray()
+            override suspend fun createGroup(groupId: String, relyraPublicId: String): Long = error("unused")
+            override suspend fun generateKeyPackage(relyraPublicId: String): ByteArray = error("unused")
+            override suspend fun keyPackageIdentity(keyPackage: ByteArray): ByteArray = error("unused")
+            override suspend fun addMembers(groupId: String, keyPackages: List<ByteArray>): MlsCommitBundle = error("unused")
+            override suspend fun joinGroup(groupId: String, welcome: ByteArray, relyraPublicId: String): Long = error("unused")
+            override suspend fun encrypt(groupId: String, plaintext: ByteArray): ByteArray = error("unused")
+            override suspend fun processMessage(message: ByteArray): MlsProcessedMessage = error("unused")
+            override suspend fun removeMember(groupId: String, relyraPublicId: String): MlsCommitBundle = error("unused")
+            override suspend fun proposeAddMember(groupId: String, keyPackage: ByteArray): ByteArray = error("unused")
+            override suspend fun processProposal(message: ByteArray, messageId: String, expectedSenderPublicId: String, allowedTargetPublicIds: Set<String>, allowAdd: Boolean, allowRemove: Boolean): Long = error("unused")
+            override suspend fun commitPendingProposals(groupId: String, controlMessageId: String?): MlsPreparedCommit = error("unused")
+            override suspend fun pendingCommitInfo(groupId: String): MlsPreparedCommit? = null
+            override suspend fun mergePendingCommit(groupId: String): Long = error("unused")
+            override suspend fun pendingProposalCount(groupId: String): Int = 0
+            override suspend fun epoch(groupId: String): Long = 4
+            override suspend fun members(groupId: String): List<String> = error("unused")
+            override suspend fun close() = Unit
+        }
+        val bobMls = GNode("bob", net, { now }, fakeMls)
+        listOf(alice, bobMls, carol).forEach { it.store.putGroup(record, members) }
 
-        assertEquals(GroupResult.PROPOSAL_QUEUED, bob.engine.removeMember(gid, "carol"))
-        pump()
-
-        assertEquals(8L, alice.store.group(gid)!!.epoch)
+        assertEquals(GroupResult.PROPOSAL_QUEUED, bobMls.engine.removeMember(gid, "carol"))
+        val row = bobMls.store.outbox.values.single()
+        val proposal = EnvelopeCodec.decode(row.payload) as Envelope.GroupMls
+        assertEquals(GroupMlsKind.PROPOSAL, proposal.kind)
+        assertEquals("carol", proposal.payload.toString(Charsets.UTF_8))
+        assertEquals(4L, bobMls.store.group(gid)!!.mlsEpoch)
         assertEquals(4L, alice.store.group(gid)!!.mlsEpoch)
-        assertFalse(alice.store.members(gid).any { it.id == "carol" })
-        assertEquals(GroupState.REMOVED, carol.store.group(gid)!!.state)
+        assertTrue(alice.store.members(gid).any { it.id == "carol" })
     }
 
     @Test fun membershipProposalCodecRejectsMalformedOrTrailingBytes() {
