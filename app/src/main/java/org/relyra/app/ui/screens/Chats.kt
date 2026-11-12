@@ -285,7 +285,7 @@ fun ChatScreen(vm: MainViewModel, chatId: String) {
     var text by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val contacts by vm.contacts.collectAsStateWithLifecycle()
-    val canEncrypt = contacts.find { it.publicId == chatId }?.let { it.encKey != null && it.nostrKey != null } == true
+    val canEncrypt = contacts.find { it.publicId == chatId }?.let { !it.blocked && it.encKey != null && it.nostrKey != null } == true
     val unread = messages.count { !it.outgoing && !it.readLocally }
     val attFlow = remember(chatId) { vm.attachmentsOf(chatId) }
     val atts by attFlow.collectAsStateWithLifecycle(initialValue = emptyList())
@@ -421,7 +421,15 @@ fun ChatScreen(vm: MainViewModel, chatId: String) {
                         }
                         TextButton(onClick = vm::endCall) { Text(stringResource(R.string.call_end), color = MaterialTheme.colorScheme.error) }
                     }
-                    call.detail?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                    call.detail?.let { detail ->
+                        val detailText = when (detail) {
+                            "connection_interrupted" -> stringResource(R.string.call_connection_interrupted)
+                            "connection_failed" -> stringResource(R.string.call_connection_failed)
+                            "no_answer" -> stringResource(R.string.call_no_answer)
+                            else -> detail
+                        }
+                        Text(detailText, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+                    }
                 }
             }
         }
