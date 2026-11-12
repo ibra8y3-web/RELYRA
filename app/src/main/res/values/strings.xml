@@ -323,4 +323,9 @@
     <string name="communities_report_status_resolved">Resolved</string>
     <string name="communities_report_status_dismissed">Dismissed</string>
 
+
+    <string name="groups_mls_pending_title">Pending MLS changes: %1$d</string>
+    <string name="groups_mls_pending_hint">The owner can commit all verified admin proposals together in one MLS epoch.</string>
+    <string name="groups_mls_commit_pending">Commit pending changes</string>
+
 </resources>
