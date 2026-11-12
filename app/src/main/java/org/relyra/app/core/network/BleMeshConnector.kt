@@ -175,6 +175,14 @@ private class MeshTransitStore(context: Context) {
         files().forEach { it.delete() }
         prefs.edit().clear().apply()
     }
+    @Synchronized fun bindAccount(accountId: String) {
+        val previous = prefs.getString("owner_account", null)
+        if (previous != null && previous != accountId) {
+            files().forEach { it.delete() }
+            prefs.edit().clear().apply()
+        }
+        prefs.edit().putString("owner_account", accountId).apply()
+    }
     @Synchronized fun removeThirdParty(ownId: String) {
         pending().filter { it.originId != ownId }.forEach { fileFor(it.messageId).delete() }
     }
@@ -275,6 +283,7 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
         relayEnabled = allowRelay
         quotaBytes = quotaMb.coerceIn(5, 100) * 1024L * 1024L
         if (publicId != null) {
+            store.bindAccount(publicId)
             if (lastAccountId != null && lastAccountId != publicId) store.clearAll()
             lastAccountId = publicId
             if (!allowRelay) store.removeThirdParty(publicId)
