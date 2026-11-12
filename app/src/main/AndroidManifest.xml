@@ -6,6 +6,8 @@
     <uses-permission android:name="android.permission.CAMERA" />
     <uses-permission android:name="android.permission.RECORD_AUDIO" />
     <uses-permission android:name="android.permission.MODIFY_AUDIO_SETTINGS" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_MICROPHONE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_CAMERA" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.ACCESS_WIFI_STATE" />
     <uses-permission android:name="android.permission.CHANGE_WIFI_MULTICAST_STATE" />
@@ -54,6 +56,11 @@
                 <data android:mimeType="*/*" />
             </intent-filter>
         </activity>
+
+        <service
+            android:name=".background.CallForegroundService"
+            android:exported="false"
+            android:foregroundServiceType="microphone|camera" />
 
         <service
             android:name=".background.ConnectionService"
