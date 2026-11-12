@@ -48,6 +48,7 @@ import org.relyra.app.core.network.WifiDirectTransportStatus
 import org.relyra.app.core.network.TorProxyStatus
 import org.relyra.app.core.network.RelayStatus
 import org.relyra.app.core.network.InternetPeerState
+import org.relyra.app.core.network.DhtDiscoveryStatus
 import org.relyra.app.core.transfer.ServerStatus
 import org.relyra.app.ui.components.InfoRow
 import org.relyra.app.ui.components.SectionCard
@@ -72,6 +73,11 @@ fun NetworkScreen(vm: MainViewModel) {
     val internetPeerStates by vm.internetPeerStates.collectAsStateWithLifecycle()
     val incomingInternetOffers by vm.incomingInternetOffers.collectAsStateWithLifecycle()
     val internetSignal by vm.internetSignal.collectAsStateWithLifecycle()
+    val discoveryGateways by vm.discoveryGateways.collectAsStateWithLifecycle()
+    val publicDiscoveryEnabled by vm.publicDiscoveryEnabled.collectAsStateWithLifecycle()
+    val discoveryStatus by vm.discoveryStatus.collectAsStateWithLifecycle()
+    val discoveredPeer by vm.discoveredPeer.collectAsStateWithLifecycle()
+    val discoveryGatewayTests by vm.discoveryGatewayTests.collectAsStateWithLifecycle()
     val torSettings by vm.torProxySettings.collectAsStateWithLifecycle()
     val torStatus by vm.torProxyStatus.collectAsStateWithLifecycle()
     val fileServers by vm.fileServers.collectAsStateWithLifecycle()
@@ -88,6 +94,8 @@ fun NetworkScreen(vm: MainViewModel) {
     var turnUsername by rememberSaveable { mutableStateOf("") }
     var turnCredential by remember { mutableStateOf("") }
     var turnError by rememberSaveable { mutableStateOf(false) }
+    var discoveryGatewayInput by rememberSaveable { mutableStateOf("") }
+    var discoveryGatewayError by rememberSaveable { mutableStateOf(false) }
 
     val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -224,9 +232,96 @@ fun NetworkScreen(vm: MainViewModel) {
             )
         }
 
+        SectionCard(stringResource(R.string.net_dht_title)) {
+            Text(
+                stringResource(R.string.net_dht_desc),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(stringResource(R.string.net_dht_presence_toggle), Modifier.weight(1f))
+                Switch(
+                    checked = publicDiscoveryEnabled,
+                    onCheckedChange = vm::setPublicDiscoveryEnabled,
+                )
+            }
+            Text(
+                stringResource(when (discoveryStatus) {
+                    DhtDiscoveryStatus.Disabled -> R.string.net_dht_status_disabled
+                    DhtDiscoveryStatus.NoGateway -> R.string.net_dht_status_no_gateway
+                    DhtDiscoveryStatus.Publishing -> R.string.net_dht_status_publishing
+                    DhtDiscoveryStatus.Published -> R.string.net_dht_status_published
+                    DhtDiscoveryStatus.Unavailable -> R.string.net_dht_status_unavailable
+                }),
+                style = MaterialTheme.typography.bodySmall,
+                color = if (discoveryStatus == DhtDiscoveryStatus.Unavailable)
+                    MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            discoveryGateways.forEach { gateway ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(gateway.url, fontFamily = FontFamily.Monospace, style = MaterialTheme.typography.bodySmall)
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        val gatewayTest = discoveryGatewayTests[gateway.url]
+                        Text(
+                            stringResource(when (gatewayTest) {
+                                true -> R.string.net_dht_gateway_test_ok
+                                false -> R.string.net_dht_gateway_test_failed
+                                null -> R.string.net_dht_gateway_test
+                            }),
+                            modifier = Modifier.weight(1f),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = if (gatewayTest == false) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        TextButton(onClick = { vm.testDiscoveryGateway(gateway.url) }) {
+                            Text(stringResource(R.string.net_dht_gateway_test))
+                        }
+                        TextButton(onClick = { vm.removeDiscoveryGateway(gateway.url) }) {
+                            Text(stringResource(R.string.net_dht_gateway_remove), color = MaterialTheme.colorScheme.error)
+                        }
+                        Switch(
+                            checked = gateway.enabled,
+                            onCheckedChange = { vm.setDiscoveryGatewayEnabled(gateway.url, it) },
+                        )
+                    }
+                }
+            }
+            OutlinedTextField(
+                value = discoveryGatewayInput,
+                onValueChange = { discoveryGatewayInput = it; discoveryGatewayError = false },
+                label = { Text(stringResource(R.string.net_dht_gateway_label)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            if (discoveryGatewayError) {
+                Text(stringResource(R.string.err_server_invalid), color = MaterialTheme.colorScheme.error)
+            }
+            Button(
+                onClick = {
+                    when (vm.addDiscoveryGateway(discoveryGatewayInput)) {
+                        AddRelayResult.Added -> { discoveryGatewayInput = ""; discoveryGatewayError = false }
+                        AddRelayResult.Invalid, AddRelayResult.Duplicate -> discoveryGatewayError = true
+                    }
+                },
+                enabled = discoveryGatewayInput.isNotBlank(),
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(stringResource(R.string.net_dht_gateway_add)) }
+        }
+
         SectionCard(stringResource(R.string.net_p2p_title)) {
             Text(stringResource(R.string.net_p2p_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(value = p2pPeerId, onValueChange = { p2pPeerId = it.trim() }, label = { Text(stringResource(R.string.net_p2p_peer_id)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
+            Button(
+                onClick = { vm.lookupDhtPeer(p2pPeerId) },
+                enabled = p2pPeerId.isNotBlank() && discoveryGateways.any { it.enabled },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(stringResource(R.string.net_dht_lookup)) }
+            discoveredPeer?.let { presence ->
+                Text(
+                    stringResource(R.string.net_dht_peer_found, presence.expiresAt),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
+                )
+            }
             if (incomingInternetOffers.isNotEmpty()) {
                 Text(stringResource(R.string.net_p2p_incoming_offer), style = MaterialTheme.typography.titleSmall)
                 incomingInternetOffers.values.forEach { offer ->
@@ -270,6 +365,11 @@ fun NetworkScreen(vm: MainViewModel) {
             }
             HorizontalDivider()
             Text(stringResource(R.string.net_p2p_turn_optional), style = MaterialTheme.typography.titleSmall)
+            TextButton(
+                onClick = vm::fetchDhtTurnCredentials,
+                enabled = discoveryGateways.any { it.enabled },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(stringResource(R.string.net_dht_turn_fetch)) }
             OutlinedTextField(value = turnUrl, onValueChange = { turnUrl = it; turnError = false }, label = { Text(stringResource(R.string.net_p2p_turn_url)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(value = turnUsername, onValueChange = { turnUsername = it; turnError = false }, label = { Text(stringResource(R.string.net_p2p_turn_username)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(value = turnCredential, onValueChange = { turnCredential = it; turnError = false }, label = { Text(stringResource(R.string.net_p2p_turn_credential)) }, singleLine = true, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
