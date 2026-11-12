@@ -27,6 +27,9 @@
     <string name="communities_moderators_help">المالك فقط يستطيع تغيير سياسة المشرفين الموقعة. يجب أن تكون المعرّفات لجهات اتصال معروفة.</string>
     <string name="communities_moderators_updated">تم تحديث سياسة المشرفين وتوقيعها.</string>
     <string name="communities_moderate">إجراء إشراف</string>
+    <string name="communities_view_reports">عرض البلاغات</string>
+    <string name="communities_recent_reports">أحدث البلاغات</string>
+    <string name="communities_no_reports">لا توجد بلاغات موثقة لهذا المجتمع.</string>
     <string name="communities_subject_id">معرّف RELYRA العام للشخص المستهدف</string>
     <string name="communities_reason_code">رمز السبب (حروف وأرقام و _ أو -)</string>
     <string name="communities_apply_action">تنفيذ الإجراء الموقّع</string>
