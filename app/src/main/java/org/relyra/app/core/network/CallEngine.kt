@@ -171,7 +171,16 @@ class CallEngine(
     }
     fun setCameraEnabled(value: Boolean) {
         val peer = mutableState.value.peerId ?: return
-        sessions[peer]?.videoTrack?.setEnabled(value)
+        val session = sessions[peer] ?: return
+        val capturer = session.capturer ?: return
+        if (value) {
+            val restarted = runCatching { capturer.startCapture(1280, 720, 24) }.isSuccess
+            if (!restarted) return
+            session.videoTrack?.setEnabled(true)
+        } else {
+            runCatching { capturer.stopCapture() }
+            session.videoTrack?.setEnabled(false)
+        }
         mutableState.value = mutableState.value.copy(cameraEnabled = value)
     }
     fun setSpeakerEnabled(value: Boolean) {
