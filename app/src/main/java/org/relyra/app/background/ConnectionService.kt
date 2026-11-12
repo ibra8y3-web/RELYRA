@@ -15,14 +15,12 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import org.relyra.app.AppContainer
 import org.relyra.app.RelyraApp
 import org.relyra.app.core.notify.Notifier
 
 /**
- * Optional "stay connected" mode. A foreground service with a visible notification keeps the process alive so the
- * relay connections that [org.relyra.app.core.network.NostrConnector] already holds keep receiving messages while the
- * app is closed. It does nothing the app does not do while open, and it stops as soon as the user switches it off.
+ * Optional "stay connected" mode. The foreground service keeps relay connections active while the UI is closed.
+ * Android may still stop it under system policy; WorkManager remains the periodic fallback.
  */
 class ConnectionService : Service() {
     private var scope: CoroutineScope? = null
@@ -45,7 +43,7 @@ class ConnectionService : Service() {
         return START_STICKY
     }
 
-    private suspend fun keepAlive(container: AppContainer) {
+    private suspend fun keepAlive(container: org.relyra.app.AppContainer) {
         try {
             container.open()
         } catch (t: Throwable) {
@@ -54,7 +52,6 @@ class ConnectionService : Service() {
         }
         val secret = container.identities.nostrSecret()
         if (secret == null) {
-            // No identity on this device (never created, or reset): nothing to keep connected.
             stopSelf()
             return
         }
@@ -64,6 +61,8 @@ class ConnectionService : Service() {
         s.launch {
             container.settings.keepConnected.collect { if (!it) stopSelf() }
         }
+        // Do not wait for the first 15-minute timer after the user explicitly enabled stay-connected mode.
+        runCatching { container.deviceSyncNetwork.syncNow() }
         while (s.isActive) {
             val enabled = container.network.relays.value.count { it.enabled }
             val connected = container.nostr.connections.value.values.count { it }
