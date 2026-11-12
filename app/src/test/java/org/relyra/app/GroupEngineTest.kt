@@ -381,4 +381,65 @@ class GroupEngineTest {
         for (cut in 1 until bytes.size) assertNull(EnvelopeCodec.decode(bytes.copyOf(cut)))
         assertNull(EnvelopeCodec.decode(bytes + byteArrayOf(0)))
     }
+    @Test fun mlsMembershipChangesHaveOneOwnerWriterAndAdminsCannotAdvanceEpoch() = runBlocking {
+        val gid = UUID.randomUUID().toString()
+        val store = FakeGroupStore()
+        val members = listOf(
+            GroupMemberRef("alice", GroupRole.OWNER, mlsJoined = true),
+            GroupMemberRef("bob", GroupRole.ADMIN, mlsJoined = true),
+            GroupMemberRef("carol", GroupRole.MEMBER, mlsJoined = true),
+        )
+        store.putGroup(
+            GroupRecord(gid, "MLS team", GroupKind.GROUP, "alice", 7, GroupState.ACTIVE,
+                now, "alice", mlsEnabled = true, mlsEpoch = 4),
+            members,
+        )
+        val admin = GroupEngine(
+            store = store,
+            peers = Peers(mapOf("alice" to PeerStatus.Known, "bob" to PeerStatus.Known,
+                "carol" to PeerStatus.Known, "dave" to PeerStatus.Known)),
+            ownId = { "bob" },
+            transmit = { _, _ -> SendOutcome.Unavailable },
+        )
+
+        assertEquals(GroupResult.NOT_ALLOWED, admin.addMembers(gid, listOf("dave")))
+        assertEquals(GroupResult.NOT_ALLOWED, admin.removeMember(gid, "carol"))
+        assertEquals(GroupResult.NOT_ALLOWED, admin.setAdmin(gid, "carol", true))
+        assertEquals(setOf("alice", "bob", "carol"), store.members(gid).map { it.id }.toSet())
+        assertEquals(7L, store.group(gid)!!.epoch)
+        assertEquals(4L, store.group(gid)!!.mlsEpoch)
+
+        // A metadata-only change is safe for an admin; it advances only the snapshot epoch,
+        // never the cryptographic MLS epoch.
+        assertEquals(GroupResult.OK, admin.rename(gid, "MLS team renamed"))
+        assertEquals(8L, store.group(gid)!!.epoch)
+        assertEquals(4L, store.group(gid)!!.mlsEpoch)
+    }
+
+    @Test fun mlsCommitFromAdminIsIgnoredAtReceiver() = runBlocking {
+        val gid = UUID.randomUUID().toString()
+        val store = FakeGroupStore()
+        store.putGroup(
+            GroupRecord(gid, "MLS team", GroupKind.GROUP, "alice", 3, GroupState.ACTIVE,
+                now, "alice", mlsEnabled = true, mlsEpoch = 9),
+            listOf(
+                GroupMemberRef("alice", GroupRole.OWNER, mlsJoined = true),
+                GroupMemberRef("bob", GroupRole.ADMIN, mlsJoined = true),
+                GroupMemberRef("carol", GroupRole.MEMBER, mlsJoined = true),
+            ),
+        )
+        val receiver = GroupEngine(
+            store = store,
+            peers = Peers(mapOf("alice" to PeerStatus.Known, "bob" to PeerStatus.Known, "carol" to PeerStatus.Known)),
+            ownId = { "carol" },
+            transmit = { _, _ -> SendOutcome.Unavailable },
+        )
+        receiver.onEnvelope(
+            Envelope.GroupMls(UUID.randomUUID().toString(), "bob", "carol", gid,
+                GroupMlsKind.COMMIT, byteArrayOf(1, 2, 3))
+        )
+        assertEquals(9L, store.group(gid)!!.mlsEpoch)
+        assertFalse(store.hasControlMessage("an-admin-commit"))
+    }
+
 }
