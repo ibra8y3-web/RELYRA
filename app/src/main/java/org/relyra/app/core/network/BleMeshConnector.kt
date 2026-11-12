@@ -461,12 +461,6 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
         override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
             writes.remove(gatt.device.address)?.complete(status)
         }
-
-        override fun onCharacteristicWrite(
-            gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray, status: Int,
-        ) {
-            writes.remove(gatt.device.address)?.complete(status)
-        }
     }
 
     private suspend fun receiveTransit(packet: ByteArray) {
