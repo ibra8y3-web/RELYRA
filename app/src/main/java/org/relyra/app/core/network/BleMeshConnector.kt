@@ -256,6 +256,7 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
     val stats: kotlinx.coroutines.flow.StateFlow<BleMeshStats> = _stats
     private val peers = ConcurrentHashMap<String, GattPeer>()
     private val connecting = ConcurrentHashMap.newKeySet<String>()
+    private val inboundConnections = ConcurrentHashMap.newKeySet<String>()
     private val frames = ConcurrentHashMap<String, IncomingFrame>()
     private val writes = ConcurrentHashMap<String, CompletableDeferred<Int>>()
     private val sentTo = ConcurrentHashMap<String, ConcurrentHashMap<String, Long>>()
@@ -325,7 +326,14 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
                 }
             }
             override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
-                if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                if (newState == BluetoothProfile.STATE_CONNECTED) {
+                    if (inboundConnections.size >= MAX_NEIGHBORS && device.address !in inboundConnections) {
+                        gattServer?.cancelConnection(device)
+                    } else {
+                        inboundConnections.add(device.address)
+                    }
+                } else if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    inboundConnections.remove(device.address)
                     frames.remove(device.address)
                     negotiatedMtu.remove(device.address)
                     refreshStats()
@@ -394,8 +402,11 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
             override fun onScanResult(callbackType: Int, result: ScanResult) {
                 val address = result.device.address
                 if (!enabled || peers.values.any { it.gatt.device.address == address } ||
-                    connecting.size >= MAX_NEIGHBORS || !connecting.add(address)) return
-                result.device.connectGatt(app, false, clientCallback, BluetoothDevice.TRANSPORT_LE)
+                    peers.size + connecting.size >= MAX_NEIGHBORS || !connecting.add(address)) return
+                val connection = try {
+                    result.device.connectGatt(app, false, clientCallback, BluetoothDevice.TRANSPORT_LE)
+                } catch (_: Exception) { null }
+                if (connection == null) connecting.remove(address)
             }
             override fun onScanFailed(errorCode: Int) { _status.value = BleMeshStatus.Failed }
         }
@@ -558,7 +569,7 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
         advertiseCallback?.let { runCatching { advertiser?.stopAdvertising(it) } }
         scanCallback = null; advertiseCallback = null
         peers.values.forEach { runCatching { it.gatt.disconnect(); it.gatt.close() } }
-        peers.clear(); connecting.clear(); frames.clear()
+        peers.clear(); connecting.clear(); inboundConnections.clear(); frames.clear()
         writes.values.forEach { it.complete(BluetoothGatt.GATT_FAILURE) }; writes.clear()
         runCatching { gattServer?.clearServices(); gattServer?.close() }
         gattServer = null; scanner = null; advertiser = null; ownId = null; signer = null
