@@ -3,9 +3,7 @@ package community
 import (
 	"context"
 	"crypto/ed25519"
-	"context"
 	"encoding/base64"
-	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"fmt"
