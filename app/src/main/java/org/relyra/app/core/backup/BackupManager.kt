@@ -149,6 +149,7 @@ object RestoreApplier {
         previous.delete()
         sidecarBackups.values.forEach { it.delete() }
 
+        var installed = false
         try {
             FileInputStream(stagedDb).use { input ->
                 FileOutputStream(candidate).use { output ->
@@ -166,6 +167,7 @@ object RestoreApplier {
                 }
             }
             if (!candidate.renameTo(dbFile)) throw java.io.IOException("could not install restored database")
+            installed = true
 
             secure.restoreKeys(if (seed.isEmpty()) null else seed, key)
             previous.delete()
@@ -173,7 +175,7 @@ object RestoreApplier {
             clear(stageDir)
             return true
         } catch (t: Throwable) {
-            dbFile.delete()
+            if (installed) dbFile.delete()
             if (previous.exists() && !previous.renameTo(dbFile)) {
                 throw java.io.IOException("restore failed and the previous database could not be recovered", t)
             }

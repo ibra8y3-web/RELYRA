@@ -64,9 +64,20 @@ class SecureStore(context: Context) {
 
     /** Used only when a backup is applied: replaces both secrets, re-wrapped by this device's Keystore key. */
     fun restoreKeys(seed: ByteArray?, dbKey: ByteArray) {
-        write(DB_KEY, dbKey)
-        clearPreKeys()
-        if (seed != null && seed.isNotEmpty()) saveSeed(seed) else clearSeed()
+        require(dbKey.size == 32) { "invalid database key" }
+        require(seed == null || seed.isEmpty() || seed.size == 32) { "invalid identity seed" }
+        // Commit both root secrets and prekey invalidation in one SharedPreferences transaction.
+        // This avoids a partially restored keyset if one individual write fails.
+        val dbWrapped = Base64.getEncoder().encodeToString(
+            KeystoreVault.wrap(dbKey, DB_KEY.toByteArray())
+        )
+        val seedWrapped = seed?.takeIf { it.isNotEmpty() }?.let {
+            Base64.getEncoder().encodeToString(KeystoreVault.wrap(it, SEED.toByteArray()))
+        }
+        val editor = prefs.edit().putString(DB_KEY, dbWrapped)
+        if (seedWrapped == null) editor.remove(SEED) else editor.putString(SEED, seedWrapped)
+        prefs.all.keys.filter { it.startsWith("prekey_") }.forEach { editor.remove(it) }
+        check(editor.commit()) { "secure key restore failed" }
     }
 
     private companion object {
