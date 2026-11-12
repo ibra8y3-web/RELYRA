@@ -579,9 +579,8 @@ pub fn propose_add_member(
         .map_err(|_| MlsError::InvalidKeyPackage)?;
     // Use a by-value proposal so recipients can process the Commit even if they
     // were offline when the standalone proposal was first delivered to the owner.
-    let (message, _proposal_ref) = group.propose(
-        &provider, &signer, Propose::Add(key_package), ProposalOrRefType::Proposal,
-    ).map_err(|_| MlsError::Rejected)?;
+    let (message, _proposal_ref) = group.propose_add_member_by_value(&provider, &signer, key_package)
+        .map_err(|_| MlsError::Rejected)?;
     message.tls_serialize_detached().map_err(|_| MlsError::InvalidMessage)
 }
 
@@ -597,15 +596,14 @@ pub fn propose_remove_member(
     let mut group = MlsGroup::load(provider.storage(), &id)
         .map_err(|e| MlsError::Storage(e.to_string()))?
         .ok_or(MlsError::GroupNotFound)?;
-    let target_credential = group.members()
+    let target_index = group.members()
         .find(|member| member.credential.serialized_content() == member_identity)
-        .map(|member| member.credential)
+        .map(|member| member.index)
         .ok_or(MlsError::IdentityMismatch)?;
     // By-value Remove proposal keeps Commit processing independent from whether
     // every member received this standalone proposal before going offline.
-    let (message, _proposal_ref) = group.propose(
-        &provider, &signer, Propose::RemoveCredential(target_credential), ProposalOrRefType::Proposal,
-    ).map_err(|_| MlsError::Rejected)?;
+    let (message, _proposal_ref) = group.propose_remove_member_by_value(&provider, &signer, target_index)
+        .map_err(|_| MlsError::Rejected)?;
     message.tls_serialize_detached().map_err(|_| MlsError::InvalidMessage)
 }
 
