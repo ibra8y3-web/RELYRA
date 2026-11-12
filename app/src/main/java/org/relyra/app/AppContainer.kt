@@ -132,6 +132,24 @@ class AppContainer(context: Context) {
             scope = netScope,
         )
     }
+    val calls by lazy {
+        CallEngine(
+            context = appContext,
+            ownId = { database.identityDao().get()?.publicId },
+            knownPeer = { id -> contacts.peers.status(id) == PeerStatus.Known },
+            sign = { bytes -> identities.sign(bytes) },
+            scope = netScope,
+            iceServersProvider = { discovery.fetchTurnCredentials()?.iceServers.orEmpty() },
+            sendSignal = { peerId, kind, signedSignal ->
+                val own = database.identityDao().get()?.publicId
+                if (own == null) SendOutcome.Rejected("local RELYRA identity is unavailable")
+                else delivery.transmit(peerId, EnvelopeCodec.encode(
+                    Envelope.P2pSignal(UUID.randomUUID().toString(), own, peerId, kind, signedSignal)
+                ))
+            },
+        )
+    }
+
     val internetP2p by lazy {
         WebRtcP2pConnector(
             context = appContext,
