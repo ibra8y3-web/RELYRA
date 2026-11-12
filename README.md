@@ -28,22 +28,36 @@ RELYRA is a native Android app written in **Kotlin** with **Jetpack Compose and 
 
 The current source includes local identity, SQLCipher storage, direct conversations, groups and channels, Nostr relay transport, encrypted file transfer, diagnostics, passphrase-protected backup/restore, and an encrypted local vault.
 
-## Features implemented in the current source
+## Current implementation status
 
-| Area | Included |
+The current `main` branch contains the following implemented code. A green CI run confirms the build and automated tests listed in the workflow; it does **not** prove interoperability between independent phones or operation of a public DHT/TURN network.
+
+| Area | Current implementation |
 |---|---|
-| **Identity** | On-device Ed25519 identity, public ID and fingerprint, signed contact cards, QR/link exchange and recovery key |
-| **Local security** | Room + SQLCipher; database key protected with Android Keystore; biometric/device-credential lock |
-| **Direct messages** | Persistent outbox, acknowledgements, delivery states, retries, backoff and duplicate suppression |
-| **Message encryption** | X25519/HKDF/AES-GCM and one-to-one Double Ratchet sessions |
-| **Network** | User-added WSS relays; WebRTC direct DataChannels; configurable HTTPS Kademlia presence discovery; bounded recovery/renegotiation; optional Bluetooth Classic, Wi-Fi Direct and Nearby LAN |
-| **Groups / channels** | Membership roles and per-member message delivery using individual sessions |
-| **File transfer** | Client-side encrypted files over user-configured Blossom-compatible servers |
-| **Background work** | WorkManager retries and optional visible foreground connection service (subject to Android restrictions) |
-| **On-device tools** | Hashes, hex/strings inspection, MIME detection, EXIF, archive inspection, APK metadata, a restricted WebView and a read-only PDF reader |
-| **Diagnostics and resources** | Relay/server tests, database integrity, battery and memory, live app CPU and per-app RX/TX rates, filesystem availability and redacted report |
-| **Backup / vault** | Passphrase-protected database backup/restore and encrypted local file vault |
-| **UI** | Arabic RTL and English; light, dark and AMOLED themes |
+| Identity and local security | Ed25519 identity and signed contact cards; Room + SQLCipher; database key protected by Android Keystore; device/biometric lock |
+| Direct messaging | X3DH + Double Ratchet, durable outgoing queue, acknowledgements, retry/backoff and duplicate suppression |
+| Groups | Legacy groups use per-member Double Ratchet fan-out. New MLS groups use OpenMLS 0.9.2 through Rust/JNI, with KeyPackage, Welcome, Commit, ApplicationData, membership changes and persisted epochs |
+| MLS attachments and receipts | Group attachment descriptors travel in MLS ApplicationData; encrypted blobs use Blossom. Per-recipient group read receipts exist as authenticated RELYRA control messages (not MLS ApplicationData) |
+| Communities | Go discovery service and Android client; signed manifests/posts/moderation events, private invitations/access proofs, membership controls, reports and audit records. Community post bodies are currently stored as plaintext at the discovery service; signatures provide authenticity, not end-to-end confidentiality |
+| Network | Nostr WSS relays; WebRTC P2P DataChannel; signed presence through an operator-deployed Go/libp2p Kademlia service and HTTPS gateway; coturn configuration and short-lived TURN credentials |
+| Nearby connections | Bluetooth Classic for already-paired devices, Wi-Fi Direct and Nearby LAN; authenticated known-contact handshakes. These are not BLE mesh or multi-hop relaying |
+| Files and local tools | Encrypted Blossom attachments, resumable HTTP Range downloads, local encrypted Vault, restricted WebView, read-only PDF viewer, file inspection and diagnostics |
+| Backup and restore | Passphrase-protected archive includes the database, Vault, inbox/outbox, MLS data and portable network/server preferences; archive paths, sizes and hashes are checked; restore stages data and supports guarded rollback |
+| UI | Arabic RTL and English resources, conversations, group/community screens, network settings and diagnostics |
+
+### Known limits in `main`
+
+- The Android app uses the HTTPS discovery gateway; it is not itself a libp2p DHT host. Public discovery requires operators to deploy and configure multiple reachable nodes.
+- There is no public DHT/TURN cluster operated by this repository. Real NAT/TURN and independent-device interoperability testing remains pending.
+- Presence anti-replay high-water persistence, a true multi-node DHT integration test, distributed community-directory replication, third-party Store-and-Forward, and per-attempt routing diagnostics remain outstanding on `main`.
+- The WebRTC implementation is a data channel, not voice/video MediaTracks.
+- MLS membership requests are routed through the group owner, who serializes epoch writes. Native multi-admin RFC 9420 Proposal merging and distributed fork reconciliation are not implemented.
+- Community post content is not end-to-end encrypted from the discovery service.
+- Blossom downloads support HTTP Range resume; uploads are not byte-resumable.
+- Backup archive/crypto tests exist, but full SQLCipher RestoreApplier end-to-end, crash-at-each-restore-stage, Room/MLS cross-database consistency and real migration-fixture integration tests remain to be closed.
+- No multi-device enrollment/sync, Bluetooth LE multi-hop mesh, Matrix/XMPP bridges, Plugin SDK/runtime, Local API, Server Studio, desktop/developer tools, independent security audit or final physical-device test matrix yet.
+
+The current source intentionally does not label these remaining items as complete.
 
 ## Visual system maps
 
@@ -92,22 +106,11 @@ These transports are for nearby devices only. They do not provide Internet P2P, 
 
 ## Not implemented yet
 
-The following are **not** present in the current build:
-
-- A project-operated public DHT/TURN cluster. The source includes a deployable Go libp2p Kademlia node, HTTPS gateway, coturn service and short-lived TURN credential API, but operators must deploy multiple public nodes and configure them. Android uses the HTTPS gateway, not an embedded libp2p host. Real network/NAT device validation remains pending.
-- A bundled Tor client, in-app bridge configuration and Onion Services. An external Tor SOCKS5 service (e.g. Orbot) is supported for OkHttp traffic with Strict Mode and a Tor exit check; browser/WebView and nearby local links are separate.
-- Bluetooth Low Energy mesh and third-party multi-hop Store & Forward. Bluetooth Classic and Wi-Fi Direct nearby transports are present, but are not Internet P2P.
-- MLS group encryption. Current group messages are encrypted separately for each member using one-to-one sessions.
-- Group file attachments and group read receipts.
-- Communities, public group discovery and a RELYRA-operated relay/node network.
-- Voice/video calls and multi-device synchronization.
-- Matrix/XMPP interoperability, multi-device sync, plugin runtime, Local API, Server Studio, Desktop/Node tools and Developer Studio. The current WebView is restricted and the PDF reader is read-only; neither is a full browser or document editor.
-
-Other limits: Android may defer background work due to battery policy or force-stop; backups exclude downloaded attachments, vault files and relay/file-server settings; restoring an older ratchet snapshot can affect conversations that continued after backup creation. See [Networking](docs/NETWORKING.md) and [Roadmap](docs/ROADMAP.md).
+See the detailed limits in **Current implementation status** above. The next scheduled work is: (1) fix/verify the current build pipeline, (2) reconcile the main-branch inventory and documentation, (3) close Phase 1 backup/restore integration-test gaps without rebuilding existing backup code, and (4) finish the remaining MLS coordination work. Only after these are complete will Phases 4–10 be implemented and integrated into the Android app. The remaining Phase 3 network items (distributed DHT, distributed community directory, TURN integration, route diagnostics and third-party Store-and-Forward) are explicitly deferred until after those phases.
 
 ## Build from source
 
-**Android requirements:** Android SDK Platform 37.0, Build Tools 37.0.0, JDK 17 and Gradle 9.6.0. **Service requirements:** Go 1.26 and Docker Compose for the discovery/TURN services. The repository does not currently include a Gradle Wrapper.
+**Android requirements:** Android SDK Platform 37.0, Build Tools 37.0.0, JDK 17 and Gradle 9.6.0. **Service requirements:** Go 1.26 and Docker Compose for the discovery/TURN services. The repository currently does not contain a root Gradle Wrapper; use the Gradle version configured by the project/CI.
 
 Run from the repository root:
 
