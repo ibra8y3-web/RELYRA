@@ -36,7 +36,7 @@ The empty frame is reserved for the initial authenticated reachability probe. It
 
 The current DeliveryEngine persists outgoing messages locally, retries them with backoff, and keeps a stable message ID across retries. Nostr relays can retain events until a recipient's inbox subscription retrieves them. These two paths provide local queueing and relay-assisted delivery.
 
-They do not implement a mesh store-and-forward network. A nearby device does not yet accept, persist, route or forward another user's ciphertext on their behalf. That requires a separate signed transit envelope, hop limits, expiry, consent/quota controls, storage quotas, privacy analysis and end-to-end duplicate/replay tests.
+The separate BLE Mesh implementation now provides a signed transit envelope, signed hop chain, hop limit, expiry, duplicate/loop suppression, a Keystore-encrypted bounded queue, explicit relay consent and a configurable storage quota. It forwards only opaque ciphertext to BLE GATT neighbors. This source has not been compiled or tested across physical phones; background reliability and end-to-end multi-hop delivery remain unverified.
 
 ## Not covered by this implementation
 
