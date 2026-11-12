@@ -397,33 +397,58 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
             ScanSettings.Builder().setScanMode(ScanSettings.SCAN_MODE_LOW_POWER).build(), scanCallback)
     }
 
+    @Suppress("MissingPermission")
     private val clientCallback = object : BluetoothGattCallback() {
         override fun onConnectionStateChange(gatt: BluetoothGatt, status: Int, newState: Int) {
             if (status != BluetoothGatt.GATT_SUCCESS || newState == BluetoothProfile.STATE_DISCONNECTED) {
                 peers.entries.removeAll { it.value.gatt.device.address == gatt.device.address }
-                connecting.remove(gatt.device.address); runCatching { gatt.close() }; refreshStats()
-            } else if (newState == BluetoothProfile.STATE_CONNECTED) gatt.discoverServices()
+                connecting.remove(gatt.device.address)
+                negotiatedMtu.remove(gatt.device.address)
+                runCatching { gatt.close() }
+                refreshStats()
+            } else if (newState == BluetoothProfile.STATE_CONNECTED) {
+                gatt.discoverServices()
+            }
         }
+
         override fun onServicesDiscovered(gatt: BluetoothGatt, status: Int) {
             val identity = gatt.getService(SERVICE_UUID)?.getCharacteristic(IDENTITY_UUID)
             if (status != BluetoothGatt.GATT_SUCCESS || identity == null) {
-                connecting.remove(gatt.device.address); gatt.disconnect(); return
+                connecting.remove(gatt.device.address)
+                gatt.disconnect()
+                return
             }
             gatt.requestMtu(517)
             gatt.readCharacteristic(identity)
         }
+
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
             val negotiated = if (status == BluetoothGatt.GATT_SUCCESS) mtu else 23
             negotiatedMtu[gatt.device.address] = negotiated
             peers.values.firstOrNull { it.gatt === gatt }?.mtu = negotiated
         }
+
         @Suppress("DEPRECATION")
         override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+            acceptIdentityRead(gatt, characteristic, characteristic.value ?: ByteArray(0), status)
+        }
+
+        override fun onCharacteristicRead(
+            gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray, status: Int,
+        ) {
+            acceptIdentityRead(gatt, characteristic, value, status)
+        }
+
+        private fun acceptIdentityRead(
+            gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray, status: Int,
+        ) {
             if (characteristic.uuid != IDENTITY_UUID || status != BluetoothGatt.GATT_SUCCESS) return
-            val id = String(characteristic.value ?: ByteArray(0), Charsets.UTF_8).trim().lowercase()
+            val id = String(value, Charsets.UTF_8).trim().lowercase()
             val write = gatt.getService(SERVICE_UUID)?.getCharacteristic(RX_UUID)
             if (IdentityCrypto.parsePublicId(id) == null || id == ownId || write == null) {
-                connecting.remove(gatt.device.address); gatt.disconnect(); return
+                connecting.remove(gatt.device.address)
+                gatt.disconnect()
+                return
             }
             peers[id] = GattPeer(id, gatt, write, negotiatedMtu[gatt.device.address] ?: 23)
             connecting.remove(gatt.device.address)
@@ -431,7 +456,15 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
             refreshStats()
             scope.launch(Dispatchers.IO) { flushQueue() }
         }
+
+        @Suppress("DEPRECATION")
         override fun onCharacteristicWrite(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
+            writes.remove(gatt.device.address)?.complete(status)
+        }
+
+        override fun onCharacteristicWrite(
+            gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, value: ByteArray, status: Int,
+        ) {
             writes.remove(gatt.device.address)?.complete(status)
         }
     }
@@ -483,6 +516,7 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
         refreshStats()
     }
 
+    @Suppress("MissingPermission")
     private suspend fun writeFrame(peer: GattPeer, packet: ByteArray): Boolean = peer.lock.withLock {
         if (packet.isEmpty() || packet.size > MeshEnvelopeCodec.MAX_FRAME_BYTES) return@withLock false
         val frame = ByteArrayOutputStream().use { bytes ->
