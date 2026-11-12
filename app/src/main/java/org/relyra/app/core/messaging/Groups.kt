@@ -165,7 +165,9 @@ class GroupEngine(
 
     suspend fun send(groupId: String, body: String): GroupResult = lock.withLock {
         val me = ownId() ?: return@withLock GroupResult.NO_IDENTITY
-        val g = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
+        var g = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
+        if (!recoverPendingMlsCommitLocked(g)) return@withLock GroupResult.INVALID
+        g = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
         if (g.state != GroupState.ACTIVE) return@withLock GroupResult.NOT_ACTIVE
         if (body.isBlank()) return@withLock GroupResult.EMPTY
         if (body.length > EnvelopeCodec.MAX_BODY) return@withLock GroupResult.TOO_LONG
@@ -205,7 +207,9 @@ class GroupEngine(
     /** Encrypts the file descriptor with the MLS group epoch and fans out only the MLS ciphertext. */
     suspend fun sendAttachment(groupId: String, file: GroupAttachmentData): GroupResult = lock.withLock {
         val me = ownId() ?: return@withLock GroupResult.NO_IDENTITY
-        val group = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
+        var group = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
+        if (!recoverPendingMlsCommitLocked(group)) return@withLock GroupResult.INVALID
+        group = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
         if (group.state != GroupState.ACTIVE) return@withLock GroupResult.NOT_ACTIVE
         if (!group.mlsEnabled) return@withLock GroupResult.MLS_UNAVAILABLE
         val engine = mls ?: return@withLock GroupResult.MLS_UNAVAILABLE
