@@ -339,6 +339,17 @@ func (s *Store) Discover(ctx context.Context, limit int) ([]Manifest, error) {
 	return out, nil
 }
 
+func (s *Store) LastSequence(ctx context.Context, communityID, actorPublicID string) (uint64, error) {
+	if !validCommunityID(communityID) { return 0, errors.New("invalid community ID") }
+	if _, err := identityKey(actorPublicID); err != nil { return 0, err }
+	raw, err := s.ds.Get(ctx, datastore.NewKey(sequenceStorageKey(communityID, actorPublicID)))
+	if errors.Is(err, datastore.ErrNotFound) { return 0, nil }
+	if err != nil { return 0, err }
+	value, err := strconv.ParseUint(string(raw), 10, 64)
+	if err != nil { return 0, errors.New("stored moderation sequence is corrupt") }
+	return value, nil
+}
+
 func eventStorageKey(id, actor string, sequence uint64) string {
 	return fmt.Sprintf("%s%s/%s/%020d", eventPrefix, strings.ToLower(id), strings.ToLower(actor), sequence)
 }
