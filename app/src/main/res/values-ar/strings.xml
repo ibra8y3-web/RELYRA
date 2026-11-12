@@ -387,4 +387,6 @@
     <string name="ev_device_sync_conflict">تعارض مزامنة الأجهزة</string>
     <string name="devices_register_primary">تسجيل هذا الجهاز كأول جهاز موثوق</string>
     <string name="devices_register_primary_hint">استخدم هذا الخيار على أول جهاز للحساب فقط. على الجهاز الجديد أنشئ طلب اقتران بدلًا منه.</string>
+    <string name="devices_import_file">استيراد ملف النسخة المشفرة</string>
+    <string name="devices_import_code">استيراد رمز المزامنة الملصوق</string>
 </resources>
