@@ -121,10 +121,10 @@ internal class GNode(
 class GroupEngineTest {
     private var now = 1_000_000L
     private val net = GroupNet()
-    private val alice = GNode("alice", net) { now }
-    private val bob = GNode("bob", net) { now }
-    private val carol = GNode("carol", net) { now }
-    private val dave = GNode("dave", net) { now }
+    private val alice = GNode("alice", net, { now })
+    private val bob = GNode("bob", net, { now })
+    private val carol = GNode("carol", net, { now })
+    private val dave = GNode("dave", net, { now })
 
     private suspend fun pump() { repeat(3) { listOf(alice, bob, carol, dave).forEach { it.engine.processOutbox() } } }
 
