@@ -31,6 +31,7 @@
     <string name="groups_role_member">Member</string>
     <string name="groups_you">You</string>
     <string name="groups_delivered">Delivered to %1$d of %2$d</string>
+    <string name="groups_read">Read by %1$d of %2$d</string>
     <string name="groups_add_members">Add members</string>
     <string name="groups_add_none">All your usable contacts are already in this group.</string>
     <string name="groups_rename">Rename</string>
