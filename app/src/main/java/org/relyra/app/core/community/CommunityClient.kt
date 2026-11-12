@@ -244,6 +244,14 @@ class CommunityClient(
         r.reporterPublicId.lowercase(), r.category, r.summary, r.createdAt.toString(),
     ).joinToString("\n").toByteArray(Charsets.UTF_8)
 
+    fun serializeManifest(manifest: CommunityManifest): String = manifestJson(manifest).toString()
+
+    fun deserializeAndVerifyManifest(raw: String): CommunityManifest {
+        val manifest = parseManifest(JSONObject(raw))
+        require(verifyManifest(manifest)) { "Saved community owner signature is invalid" }
+        return manifest
+    }
+
     private fun manifestJson(m: CommunityManifest) = JSONObject().apply {
         put("version", 1); put("communityId", m.communityId); put("ownerPublicId", m.ownerPublicId)
         put("name", m.name); put("description", m.description); put("visibility", m.visibility)
