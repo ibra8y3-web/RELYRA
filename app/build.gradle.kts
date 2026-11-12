@@ -1,4 +1,12 @@
 import org.gradle.api.tasks.testing.Test
+import org.gradle.api.DefaultTask
+import org.gradle.api.file.DirectoryProperty
+import org.gradle.api.file.RegularFileProperty
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.TaskAction
+import org.gradle.process.ExecOperations
+import javax.inject.Inject
 
 plugins {
     alias(libs.plugins.android.application)
@@ -39,21 +47,38 @@ android {
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 
 // OpenMLS is compiled from native/mls and packaged as a real Android JNI library.
-// This is a required build input: MLS is never silently downgraded to pairwise encryption.
-val mlsJniOutput = layout.buildDirectory.dir("generated/mls-jniLibs")
-android.sourceSets.getByName("main").jniLibs.srcDir(mlsJniOutput)
+// The Variant API carries the generated task dependency into each Android variant.
+abstract class BuildMlsNativeTask @Inject constructor(
+    private val execOperations: ExecOperations,
+) : DefaultTask() {
+    @get:InputFile
+    abstract val buildScript: RegularFileProperty
 
-val buildMlsNative by tasks.registering(Exec::class) {
-    val script = rootProject.file("scripts/build_mls_android.sh")
-    inputs.file(script)
-    inputs.dir(rootProject.file("native/mls"))
-    outputs.dir(mlsJniOutput)
-    workingDir(rootProject.projectDir)
-    commandLine("bash", script.absolutePath, mlsJniOutput.get().asFile.absolutePath)
+    @get:OutputDirectory
+    abstract val outputDirectory: DirectoryProperty
+
+    @TaskAction
+    fun buildNativeLibraries() {
+        execOperations.exec {
+            workingDir(project.rootDir)
+            commandLine(
+                "bash",
+                buildScript.get().asFile.absolutePath,
+                outputDirectory.get().asFile.absolutePath,
+            )
+        }
+    }
 }
 
-tasks.named("preBuild").configure {
-    dependsOn(buildMlsNative)
+val buildMlsNative = tasks.register<BuildMlsNativeTask>("buildMlsNative") {
+    buildScript.set(rootProject.layout.projectDirectory.file("scripts/build_mls_android.sh"))
+    outputDirectory.set(layout.buildDirectory.dir("generated/mls-jniLibs"))
+}
+
+androidComponents.onVariants { variant ->
+    variant.sources.jniLibs?.addGeneratedSourceDirectory(buildMlsNative) { task ->
+        task.outputDirectory
+    }
 }
 
 dependencies {
