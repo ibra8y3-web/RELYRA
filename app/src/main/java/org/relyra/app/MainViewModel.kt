@@ -487,7 +487,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 message.value = UiMessage(R.string.net_dht_turn_unavailable)
                 return@launch
             }
-            val configured = ctr().internetP2p.setIceServers(
+            val configured = ctr().internetP2p.setManagedIceServers(
                 listOf(
                     IceServerConfig("stun:stun.l.google.com:19302"),
                     IceServerConfig("stun:stun.cloudflare.com:3478"),
@@ -569,12 +569,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         )
 
     fun resetInternetIceServers() {
-        ctr().internetP2p.setIceServers(
-            listOf(
-                IceServerConfig("stun:stun.l.google.com:19302"),
-                IceServerConfig("stun:stun.cloudflare.com:3478"),
-            )
-        )
+        ctr().internetP2p.resetIceServers()
     }
 
     fun closeInternetPeer(peerId: String) = ctr().internetP2p.close(peerId.trim())
