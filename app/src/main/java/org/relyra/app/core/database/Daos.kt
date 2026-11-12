@@ -32,6 +32,12 @@ interface ContactDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(contact: ContactEntity)
 
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfAbsent(contact: ContactEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(contact: ContactEntity)
+
     @Query("UPDATE contacts SET verified = :verified WHERE publicId = :id")
     suspend fun setVerified(id: String, verified: Boolean)
 
