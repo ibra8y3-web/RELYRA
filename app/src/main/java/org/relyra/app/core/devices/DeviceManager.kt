@@ -109,21 +109,33 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         val identity=checkNotNull(db.identityDao().get())
         val (body,sig)=open(encoded,APPROVAL)
         val values=DataInputStream(ByteArrayInputStream(body)).use { i ->
-            require(i.readUTF()==APPROVAL); List(5){i.readUTF()}.also{require(i.available()==0)}
+            require(i.readUTF()==APPROVAL); List(10){i.readUTF()}.also{require(i.available()==0)}
         }
-        val (account,id,challenge,approved,signer)=values
+        val (account,id,challenge,approved,signer,approverId,approverName,approverPlatform,approverSign,approverEnc)=values
         require(account==identity.publicId && id==secure.deviceId() && un64(signer).contentEquals(identity.publicKey))
+        require(approverId != id && runCatching { java.util.UUID.fromString(approverId) }.isSuccess)
+        require(un64(approverSign).size==32 && un64(approverEnc).size==32)
         require(challenge.length in 40..64 && approved.toLong() <= System.currentTimeMillis()+60_000)
         require(secure.loadDevicePairingChallenge(id)?.contentEquals(un64(challenge)) == true) { "Pairing challenge does not match this installation" }
         require(IdentityCrypto.verify(identity.publicKey,sig,body)) { "Approval signature invalid" }
         val row=checkNotNull(db.trustedDeviceDao().get(id))
         check(row.status==TrustedDeviceStatus.PENDING)
-        check(db.trustedDeviceDao().approvePending(id,account,approved.toLong())==1)
-        secure.clearDevicePairingChallenge(id)
         val localSigning = checkNotNull(secure.loadDeviceSigningSeed(id))
         val localEncryption = checkNotNull(secure.loadDeviceEncryptionSecret(id))
         require(row.signingPublicKey.contentEquals(IdentityCrypto.fromSeed(localSigning).publicKey))
         require(row.encryptionPublicKey.contentEquals(PayloadCrypto.publicKey(localEncryption)))
+        check(db.trustedDeviceDao().approvePending(id,account,approved.toLong())==1)
+        secure.clearDevicePairingChallenge(id)
+        val existingApprover=db.trustedDeviceDao().get(approverId)
+        if(existingApprover==null) {
+            db.trustedDeviceDao().insertPending(TrustedDeviceEntity(approverId,account,approverName,approverPlatform,
+                un64(approverSign),un64(approverEnc),TrustedDeviceStatus.APPROVED,approved.toLong(),approved.toLong(),
+                approved.toLong(),null,1,0))
+        } else {
+            require(existingApprover.signingPublicKey.contentEquals(un64(approverSign)) &&
+                existingApprover.encryptionPublicKey.contentEquals(un64(approverEnc)) &&
+                existingApprover.status==TrustedDeviceStatus.APPROVED)
+        }
         log(EventType.DEVICE_APPROVED,id)
     }
     suspend fun revoke(deviceId: String): String {
