@@ -250,6 +250,7 @@ pub struct PreparedCommitBundle {
     pub epoch: u64,
     pub removed_ids: Vec<String>,
     pub added_ids: Vec<String>,
+    pub control_message_id: Option<String>,
 }
 
 pub fn key_package_identity(
@@ -613,6 +614,7 @@ pub fn propose_remove_member(
 pub fn prepare_pending_proposals_commit(
     database: &mut OpenDatabase,
     group_id: &[u8],
+    control_message_id: Option<&str>,
 ) -> Result<PreparedCommitBundle, MlsError> {
     let id = GroupId::from_slice(group_id);
     database.connection.execute_batch("BEGIN IMMEDIATE").map_err(MlsError::Sql)?;
@@ -675,6 +677,7 @@ pub fn prepare_pending_proposals_commit(
             epoch: group.epoch().as_u64() + 1,
             removed_ids,
             added_ids,
+            control_message_id: control_message_id.map(str::to_owned),
         };
         let json = serde_json::to_string(&bundle).map_err(|_| MlsError::InvalidMessage)?;
         drop(group);
@@ -745,7 +748,7 @@ pub fn commit_pending_proposals(
     database: &mut OpenDatabase,
     group_id: &[u8],
 ) -> Result<CommitBundle, MlsError> {
-    let prepared = prepare_pending_proposals_commit(database, group_id)?;
+    let prepared = prepare_pending_proposals_commit(database, group_id, None)?;
     let epoch = merge_pending_commit(database, group_id)?;
     Ok(CommitBundle { commit: prepared.commit, welcome: prepared.welcome, epoch })
 }
