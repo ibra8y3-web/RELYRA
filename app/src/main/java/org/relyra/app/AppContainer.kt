@@ -126,7 +126,7 @@ class AppContainer(context: Context) {
             knownPeer = { id -> contacts.peers.status(id) == PeerStatus.Known },
             onWire = { delivery.acceptWire(it) },
             scope = netScope,
-            refreshIceServers = { discovery.fetchTurnCredentials() },
+            refreshIceServers = { discovery.fetchTurnCredentials()?.iceServers },
             sendSignal = { peerId, kind, signedSignal ->
                 val own = database.identityDao().get()?.publicId
                 if (own == null) {
