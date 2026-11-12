@@ -12,7 +12,7 @@ data class DeviceSyncReport(val contactsAdded:Int,val messagesAdded:Int,val pref
 
 /** User-triggered E2EE sync. Ratchet, MLS, Keystore secrets and transport ciphertext are never copied. */
 class DeviceSyncRepository(private val db:AppDatabase,private val devices:DeviceManager,private val settings:org.relyra.app.core.storage.AppSettings) {
-    companion object { private const val FORMAT="RELYRA-DEVICE-SYNC"; private const val VERSION=1; private const val MAX=8*1024*1024; private const val LIMIT=100_000 }
+    companion object { private const val FORMAT="RELYRA-DEVICE-SYNC"; private const val VERSION=2; private const val MAX=8*1024*1024; private const val LIMIT=100_000 }
     private fun enc(b:ByteArray)=Base64.getUrlEncoder().withoutPadding().encodeToString(b)
     private fun dec(s:String,max:Int):ByteArray { require(s.length in 1..max*2); return Base64.getUrlDecoder().decode(s).also{require(it.size<=max)} }
 
@@ -47,6 +47,37 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
         root.put("globalPreferences", JSONObject().put("updatedAt",global.updatedAt)
             .put("notifications",global.notifications).put("notificationPreview",global.notificationPreview)
             .put("listPreview",global.listPreview))
+
+        // Group history and attachment decryption metadata travel only inside the per-device E2EE payload.
+        // Absolute local paths are intentionally never exported.
+        val groupDao=db.groupDao()
+        val groups=groupDao.allForDeviceSync()
+        val groupMembers=groupDao.allMembersForDeviceSync()
+        val groupMessages=groupDao.allMessagesForDeviceSync()
+        val groupAttachments=groupDao.allAttachmentsForDeviceSync()
+        require(contacts.size+messages.size+prefs.size+groups.size+groupMembers.size+
+            groupMessages.size+groupAttachments.size<=LIMIT)
+        root.put("groups",JSONArray().also { a -> groups.forEach { g ->
+            a.put(JSONObject().put("id",g.groupId).put("name",g.name).put("kind",g.kind)
+                .put("owner",g.ownerId).put("epoch",g.epoch).put("state",g.state)
+                .put("created",g.createdAt).put("invitedBy",g.invitedBy)
+                .put("mlsEnabled",g.mlsEnabled).put("mlsEpoch",g.mlsEpoch))
+        } })
+        root.put("groupMembers",JSONArray().also { a -> groupMembers.forEach { m ->
+            a.put(JSONObject().put("group",m.groupId).put("member",m.memberId)
+                .put("role",m.role).put("mlsJoined",m.mlsJoined))
+        } })
+        root.put("groupMessages",JSONArray().also { a -> groupMessages.forEach { m ->
+            a.put(JSONObject().put("id",m.messageId).put("group",m.groupId).put("sender",m.senderId)
+                .put("out",m.outgoing).put("body",m.body).put("created",m.createdAt).put("read",m.readLocally))
+        } })
+        root.put("groupAttachments",JSONArray().also { a -> groupAttachments.forEach { f ->
+            a.put(JSONObject().put("id",f.messageId).put("group",f.groupId).put("sender",f.senderId)
+                .put("name",f.name).put("mime",f.mime).put("size",f.size).put("blobSize",f.blobSize)
+                .put("plainHash",enc(f.plainSha256)).put("blobHash",enc(f.blobSha256))
+                .put("fileKey",enc(f.fileKey)).put("url",f.serverUrl).put("phase",f.phase)
+                .put("created",f.createdAt).put("out",f.outgoing))
+        } })
         val bytes=root.toString().toByteArray(Charsets.UTF_8)
         require(bytes.size<=MAX)
         return devices.encryptForDevice(targetDeviceId,bytes)
@@ -62,7 +93,12 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
             require(root.optString("account")==identity.publicId)
             val ca=root.getJSONArray("contacts"); val ma=root.getJSONArray("messages"); val pa=root.getJSONArray("preferences")
             val global = root.optJSONObject("globalPreferences")
-            require(ca.length()+ma.length()+pa.length()<=LIMIT)
+            val ga=root.optJSONArray("groups") ?: JSONArray()
+            val gma=root.optJSONArray("groupMembers") ?: JSONArray()
+            val gmessages=root.optJSONArray("groupMessages") ?: JSONArray()
+            val gattachments=root.optJSONArray("groupAttachments") ?: JSONArray()
+            require(ca.length()+ma.length()+pa.length()+ga.length()+gma.length()+
+                gmessages.length()+gattachments.length()<=LIMIT)
             var cAdded=0; var mAdded=0; var pUpdated=0; var conflicts=0
             db.withTransaction {
                 for(i in 0 until ca.length()) {
@@ -122,6 +158,61 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
                     val current=db.chatPrefDao().get(chat)
                     if(current==null||incoming.updatedAt>current.updatedAt) { db.chatPrefDao().put(incoming); pUpdated++ }
                     else if(current!=incoming) conflicts++
+                }
+
+                val groupDao=db.groupDao()
+                for(i in 0 until ga.length()) {
+                    val j=ga.getJSONObject(i)
+                    val id=j.getString("id")
+                    require(id.isNotBlank() && id.length<=128)
+                    val incoming=GroupEntity(id,j.getString("name").take(120),j.getString("kind"),
+                        j.getString("owner"),j.getLong("epoch"),j.getString("state"),
+                        j.getLong("created"),j.getString("invitedBy"),j.optBoolean("mlsEnabled"),
+                        j.optLong("mlsEpoch"))
+                    require(runCatching { incoming.toModel() }.isSuccess) { "Invalid group record" }
+                    val current=groupDao.get(id)
+                    if(current==null || incoming.epoch>current.epoch ||
+                        (incoming.epoch==current.epoch && incoming.mlsEpoch>current.mlsEpoch)) {
+                        groupDao.put(incoming); pUpdated++
+                    } else if(current!=incoming) conflicts++
+                }
+                for(i in 0 until gma.length()) {
+                    val j=gma.getJSONObject(i); val group=j.getString("group")
+                    if(groupDao.get(group)==null) { conflicts++; continue }
+                    val member=GroupMemberEntity(group,j.getString("member"),j.getString("role"),j.optBoolean("mlsJoined"))
+                    require(runCatching { member.toModel() }.isSuccess)
+                    groupDao.putMembers(listOf(member))
+                }
+                for(i in 0 until gmessages.length()) {
+                    val j=gmessages.getJSONObject(i); val group=j.getString("group")
+                    if(groupDao.get(group)==null) { conflicts++; continue }
+                    val incoming=GroupMessageEntity(j.getString("id"),group,j.getString("sender"),
+                        j.getBoolean("out"),j.getString("body"),j.getLong("created"),j.optBoolean("read"))
+                    require(incoming.messageId.isNotBlank() && incoming.messageId.length<=128 &&
+                        incoming.body.length<=1_000_000)
+                    val inserted=groupDao.insertMessageIfAbsent(incoming)
+                    if(inserted!=-1L) mAdded++ else {
+                        val current=groupDao.groupMessage(incoming.messageId)
+                        if(current!=null && (current.groupId!=incoming.groupId ||
+                            current.senderId!=incoming.senderId || current.body!=incoming.body ||
+                            current.createdAt!=incoming.createdAt)) {
+                            error("Group message ID collision; refusing to replace a different message")
+                        }
+                    }
+                }
+                for(i in 0 until gattachments.length()) {
+                    val j=gattachments.getJSONObject(i); val group=j.getString("group")
+                    if(groupDao.get(group)==null) { conflicts++; continue }
+                    val key=dec(j.getString("fileKey"),64)
+                    require(key.size in 16..64)
+                    val attachment=GroupAttachmentEntity(j.getString("id"),group,j.getString("sender"),
+                        j.getString("name").take(255),j.getString("mime").take(255),j.getLong("size"),
+                        j.getLong("blobSize"),dec(j.getString("plainHash"),64),dec(j.getString("blobHash"),64),
+                        key,j.getString("url").take(4096),null,j.getString("phase"),j.getLong("created"),
+                        j.getBoolean("out"))
+                    require(attachment.size>=0 && attachment.blobSize>=0 &&
+                        runCatching { org.relyra.app.core.messaging.GroupAttachmentPhase.valueOf(attachment.phase) }.isSuccess)
+                    groupDao.insertGroupAttachmentIfAbsent(attachment)
                 }
             }
             if(global != null) {
