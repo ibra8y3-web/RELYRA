@@ -204,11 +204,11 @@ func newServer(ctx context.Context) (*server, error) {
 
 	turnURLs := splitList(os.Getenv("RELYRA_TURN_URLS"))
 	for _, url := range turnURLs {
-		if !(strings.HasPrefix(url, "turn:") || strings.HasPrefix(url, "turns:")) {
+		if err := presence.ValidateTurnURL(url); err != nil {
 			_ = router.Close()
 			_ = p2pHost.Close()
 			_ = datastore.Close()
-			return nil, fmt.Errorf("invalid RELYRA_TURN_URLS entry %q", url)
+			return nil, fmt.Errorf("invalid RELYRA_TURN_URLS entry %q: %w", url, err)
 		}
 	}
 	turnTTL := 5 * time.Minute
