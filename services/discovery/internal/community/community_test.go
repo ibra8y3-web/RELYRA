@@ -156,6 +156,15 @@ func TestOptInReportContainsOnlyDeclaredRedactedFields(t *testing.T) {
 	reporter := makeIdentity(t)
 	manifest := signedManifest(t, owner, "a1b2c3d4-e5f6-4789-8abc-0123456789ab", "private", nil, now)
 	if _, err := store.PublishManifest(context.Background(), mustJSON(t, manifest)); err != nil { t.Fatal(err) }
+	membership := Membership{
+		CommunityID: manifest.CommunityID, MemberPublicID: reporter.id,
+		InviteID: "d1b2c3d4-e5f6-4789-8abc-0123456789ab", JoinedAt: now.UnixMilli(), PolicyVersion: manifest.PolicyVersion,
+	}
+	membershipBytes, err := json.Marshal(membership)
+	if err != nil { t.Fatal(err) }
+	if err := store.ds.Put(context.Background(), membershipKey(manifest.CommunityID, reporter.id), membershipBytes); err != nil {
+		t.Fatal(err)
+	}
 
 	report := Report{
 		Version: ManifestVersion, ReportID: "c1b2c3d4-e5f6-4789-8abc-0123456789ab",
