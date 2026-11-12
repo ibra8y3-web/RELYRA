@@ -258,5 +258,10 @@ private fun eventLabel(type: String): Int = when (type) {
     EventType.CONTACT_DELETED -> R.string.ev_contact_deleted
     EventType.APP_LOCK_ON -> R.string.ev_lock_on
     EventType.APP_LOCK_OFF -> R.string.ev_lock_off
+    EventType.DEVICE_ENROLLMENT_PENDING -> R.string.ev_device_pending
+    EventType.DEVICE_APPROVED -> R.string.ev_device_approved
+    EventType.DEVICE_REVOKED -> R.string.ev_device_revoked
+    EventType.DEVICE_KEY_ROTATED -> R.string.ev_device_key_rotated
+    EventType.DEVICE_SYNC_CONFLICT -> R.string.ev_device_sync_conflict
     else -> R.string.ev_unknown
 }
