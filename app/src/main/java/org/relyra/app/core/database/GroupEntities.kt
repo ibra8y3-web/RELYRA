@@ -1,5 +1,6 @@
 package org.relyra.app.core.database
 
+import androidx.room.ColumnInfo
 import androidx.room.Entity
 import androidx.room.PrimaryKey
 import org.relyra.app.core.messaging.GroupKind
@@ -21,19 +22,22 @@ data class GroupEntity(
     val state: String,
     val createdAt: Long,
     val invitedBy: String,
+    @ColumnInfo(defaultValue = "0") val mlsEnabled: Boolean = false,
+    @ColumnInfo(defaultValue = "0") val mlsEpoch: Long = 0,
 ) {
-    fun toModel() = GroupRecord(groupId, name, GroupKind.valueOf(kind), ownerId, epoch, GroupState.valueOf(state), createdAt, invitedBy)
+    fun toModel() = GroupRecord(groupId, name, GroupKind.valueOf(kind), ownerId, epoch, GroupState.valueOf(state), createdAt, invitedBy, mlsEnabled, mlsEpoch)
 }
 
-fun GroupRecord.toEntity() = GroupEntity(groupId, name, kind.name, owner, epoch, state.name, createdAt, invitedBy)
+fun GroupRecord.toEntity() = GroupEntity(groupId, name, kind.name, owner, epoch, state.name, createdAt, invitedBy, mlsEnabled, mlsEpoch)
 
 @Entity(tableName = "group_members", primaryKeys = ["groupId", "memberId"])
 data class GroupMemberEntity(
     val groupId: String,
     val memberId: String,
     val role: String,
+    @ColumnInfo(defaultValue = "0") val mlsJoined: Boolean = false,
 ) {
-    fun toModel() = GroupMemberRef(memberId, GroupRole.valueOf(role))
+    fun toModel() = GroupMemberRef(memberId, GroupRole.valueOf(role), mlsJoined)
 }
 
 @Entity(tableName = "group_messages")
