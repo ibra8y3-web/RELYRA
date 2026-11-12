@@ -334,6 +334,14 @@ class CommunityClient(
             manifest.policyVersion < 1 || manifest.createdAt <= 0 || manifest.updatedAt < manifest.createdAt ||
             manifest.moderatorPublicIds.size > 32 || manifest.ownerPublicId.isBlank()
         ) return false
+        val now = System.currentTimeMillis()
+        if (manifest.createdAt > now + 5 * 60 * 1000 ||
+            manifest.updatedAt > now + 5 * 60 * 1000 ||
+            now - manifest.createdAt > 3650L * 24 * 60 * 60 * 1000
+        ) return false
+        if (manifest.moderatorPublicIds.map { it.lowercase() }.distinct().size != manifest.moderatorPublicIds.size ||
+            manifest.moderatorPublicIds.any { IdentityCrypto.parsePublicId(it) == null }
+        ) return false
         val publicKey = IdentityCrypto.parsePublicId(manifest.ownerPublicId) ?: return false
         val signature = decodeSignature(manifest.signature) ?: return false
         return IdentityCrypto.verify(publicKey, signature, canonicalManifest(manifest))
@@ -344,6 +352,13 @@ class CommunityClient(
             event.policyVersion != manifest.policyVersion || event.sequence < 1 ||
             event.reasonCode.isBlank() || event.createdAt <= 0 ||
             event.action !in setOf("ban", "unban", "mute", "slow_mode", "remove_member", "allow_post")
+        ) return false
+        val now = System.currentTimeMillis()
+        if (event.createdAt > now + 5 * 60 * 1000 ||
+            now - event.createdAt > 30L * 24 * 60 * 60 * 1000 ||
+            (event.expiresAt != 0L && event.expiresAt <= now) ||
+            !event.reasonCode.matches(Regex("[a-z0-9_-]{1,32}")) ||
+            event.actorPublicId.equals(event.subjectPublicId, true)
         ) return false
         if (!isModerator(manifest, event.actorPublicId)) return false
         if ((event.action == "remove_member" || event.action == "allow_post" || event.action == "unban") &&
