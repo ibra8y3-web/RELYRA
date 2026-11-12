@@ -189,4 +189,75 @@ class BackupRestoreSqlCipherIntegrationTest {
             secure.clearSeed()
         }
     }
+    @Test
+    fun interruptedRestoreAtEveryDurableBoundaryResumesWithoutLosingTheSnapshot() = runBlocking {
+        val secure = SecureStore(context)
+        val passphrase = "crash-recovery-integration-passphrase".toCharArray()
+        for (checkpoint in RestoreApplier.RestoreCheckpoint.values()) {
+            val id = UUID.randomUUID().toString()
+            val databaseName = "restore-crash-$id.db"
+            val dbFile = context.getDatabasePath(databaseName)
+            val filesRoot = File(context.filesDir, "restore-crash-$id")
+            val stageDir = File(context.cacheDir, "restore-crash-stage-$id")
+            val prefs = context.getSharedPreferences("restore-crash-prefs-$id", Context.MODE_PRIVATE)
+            val dbKey = secure.databaseKey()
+            secure.saveSeed(ByteArray(32) { (it + checkpoint.ordinal).toByte() })
+            val db = AppDatabase.buildNamed(context, dbKey, databaseName)
+            try {
+                db.openHelper.writableDatabase
+                db.identityDao().put(IdentityEntity(
+                    1, "Snapshot ${checkpoint.name}", "identity-${checkpoint.name.lowercase()}",
+                    ByteArray(32) { 3 }, 300L,
+                ))
+                listOf("vault", "inbox", "outbox", "mls").forEach { File(filesRoot, it).mkdirs() }
+                File(filesRoot, "vault/marker.enc").writeBytes(byteArrayOf(4, 5, 6, checkpoint.ordinal.toByte()))
+                File(filesRoot, "inbox/marker.bin").writeBytes(byteArrayOf(7, 8, 9))
+                prefs.edit().putString("checkpoint", checkpoint.name).commit()
+
+                val manager = BackupManager(
+                    db, secure, dbFile, stageDir, filesRoot, mapOf("relyra_settings" to prefs),
+                )
+                val archive = ByteArrayOutputStream()
+                manager.export(archive, passphrase)
+                manager.stageRestore(ByteArrayInputStream(archive.toByteArray()), passphrase)
+                db.close()
+
+                try {
+                    RestoreApplier.applyIfPendingInternal(
+                        context, stageDir, dbFile, secure, filesRoot, mapOf("relyra_settings" to prefs),
+                    ) { reached ->
+                        if (reached == checkpoint) throw RestoreApplier.RestoreProcessInterrupted(reached)
+                    }
+                    fail("expected simulated process interruption at $checkpoint")
+                } catch (interrupted: RestoreApplier.RestoreProcessInterrupted) {
+                    assertEquals(checkpoint, interrupted.checkpoint)
+                }
+
+                val wasCommitted = checkpoint == RestoreApplier.RestoreCheckpoint.COMMIT_MARKER_REMOVED
+                assertEquals(!wasCommitted, RestoreApplier.applyIfPending(
+                    context, stageDir, dbFile, secure, filesRoot, mapOf("relyra_settings" to prefs),
+                ))
+                val restored = AppDatabase.buildNamed(context, secure.databaseKey(), databaseName)
+                try {
+                    assertEquals("Snapshot ${checkpoint.name}", restored.identityDao().get()?.displayName)
+                    assertEquals(checkpoint.name, prefs.getString("checkpoint", null))
+                    assertArrayEquals(
+                        byteArrayOf(4, 5, 6, checkpoint.ordinal.toByte()),
+                        File(filesRoot, "vault/marker.enc").readBytes(),
+                    )
+                    assertArrayEquals(byteArrayOf(7, 8, 9), File(filesRoot, "inbox/marker.bin").readBytes())
+                } finally {
+                    restored.close()
+                }
+            } finally {
+                runCatching { db.close() }
+                stageDir.deleteRecursively()
+                filesRoot.deleteRecursively()
+                prefs.edit().clear().commit()
+                context.deleteDatabase(databaseName)
+                secure.clearSeed()
+            }
+        }
+    }
+
 }
