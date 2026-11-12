@@ -98,6 +98,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val summaries = MutableStateFlow<List<ChatSummary>>(emptyList())
     val pendingCount = MutableStateFlow(0)
     val groups = MutableStateFlow<List<GroupEntity>>(emptyList())
+    val pendingMlsProposals get() = rely.container.groups.pendingMlsProposals
     val savedCommunities = MutableStateFlow<List<CommunityEntity>>(emptyList())
     val discoveredCommunities = MutableStateFlow<List<CommunityManifest>>(emptyList())
     val communityEvents = MutableStateFlow<Map<String, List<CommunityEvent>>>(emptyMap())
@@ -509,6 +510,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun addGroupMembers(groupId: String, ids: List<String>) = groupOp { ctr().groups.addMembers(groupId, ids) }
     fun removeGroupMember(groupId: String, id: String) = groupOp { ctr().groups.removeMember(groupId, id) }
+    fun refreshPendingMlsProposals(groupId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { ctr().groups.refreshPendingMlsProposals(groupId) }
+        }
+    }
+    fun commitPendingMlsProposals(groupId: String) = groupOp {
+        ctr().groups.commitPendingMlsProposals(groupId)
+    }
     fun setGroupAdmin(groupId: String, id: String, admin: Boolean) = groupOp { ctr().groups.setAdmin(groupId, id, admin) }
     fun renameGroup(groupId: String, name: String) = groupOp { ctr().groups.rename(groupId, name) }
     fun transferGroup(groupId: String, id: String) = groupOp { ctr().groups.transferOwnership(groupId, id) }
