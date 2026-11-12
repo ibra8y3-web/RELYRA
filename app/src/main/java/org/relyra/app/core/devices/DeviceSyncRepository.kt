@@ -18,7 +18,7 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
     suspend fun exportEncrypted(targetDeviceId:String):ByteArray {
         val identity=checkNotNull(db.identityDao().get())
         val contacts=db.contactDao().allForDeviceSync()
-        val messages=db.messageDao().allForDeviceSync()
+        val messages=db.messageDao().allForDeviceSync().filter { !it.outgoing || it.state !in setOf("QUEUED", "SENT", "RELAYED") }
         val prefs=db.chatPrefDao().allForDeviceSync()
         require(contacts.size+messages.size+prefs.size<=LIMIT)
         val root=JSONObject().put("format",FORMAT).put("version",VERSION).put("account",identity.publicId)
@@ -90,6 +90,7 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
                     require(incoming.body.length<=1_000_000)
                     val current=db.messageDao().get(id)
                     if(current==null) { if(db.messageDao().insertIfAbsent(incoming)!=-1L) mAdded++ }
+                    if(!incoming.outgoing) db.messageDao().insertProcessed(ProcessedIdEntity(id,System.currentTimeMillis()))
                     else {
                         require(current.chatId==incoming.chatId&&current.outgoing==incoming.outgoing&&
                             current.createdAt==incoming.createdAt&&current.body==incoming.body) {
