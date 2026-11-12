@@ -1,5 +1,6 @@
 package org.relyra.app.ui.screens
 
+import androidx.annotation.StringRes
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -267,7 +268,7 @@ fun CommunitiesScreen(vm: MainViewModel) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                             Text(
                                 report.category + " · " + report.reporterPublicId.take(12) +
-                                    " · " + communityReportStatusLabel(row.status),
+                                    " · " + stringResource(communityReportStatusLabel(row.status)),
                                 style = MaterialTheme.typography.labelMedium,
                             )
                             Text(report.summary, style = MaterialTheme.typography.bodySmall)
@@ -303,7 +304,7 @@ fun CommunitiesScreen(vm: MainViewModel) {
                             if (auditReportId == report.reportId) {
                                 reportAudits[auditKey].orEmpty().forEach { audit ->
                                     Text(
-                                        "#${audit.order} · ${communityReportStatusLabel(audit.review.status)} · ${audit.review.reviewerPublicId.take(10)}",
+                                        "#${audit.order} · ${stringResource(communityReportStatusLabel(audit.review.status))} · ${audit.review.reviewerPublicId.take(10)}",
                                         style = MaterialTheme.typography.labelSmall,
                                     )
                                     if (audit.review.note.isNotBlank()) {
@@ -572,11 +573,12 @@ private fun CommunityCard(
     }
 }
 
-private fun communityReportStatusLabel(status: String): String = when (status) {
-    "in_review" -> "In review"
-    "resolved" -> "Resolved"
-    "dismissed" -> "Dismissed"
-    else -> "Open"
+@StringRes
+private fun communityReportStatusLabel(status: String): Int = when (status) {
+    "in_review" -> R.string.communities_report_status_in_review
+    "resolved" -> R.string.communities_report_status_resolved
+    "dismissed" -> R.string.communities_report_status_dismissed
+    else -> R.string.communities_report_status_open
 }
 
 private fun manifestFromEntity(entity: CommunityEntity): CommunityManifest {
