@@ -74,6 +74,7 @@ class RoomGroupStore(private val db: AppDatabase) : GroupStore {
     override suspend fun enqueue(rows: List<OutboxRow>) = dao.insertOutbox(rows.map { it.toEntity() })
     override suspend fun dueOutbox(now: Long, limit: Int): List<OutboxRow> = dao.due(now, limit).map { it.toModel() }
     override suspend fun updateOutbox(row: OutboxRow) = dao.updateOutbox(row.toEntity())
+    override suspend fun outbox(id: String): OutboxRow? = dao.outbox(id)?.toModel()
     override suspend fun markAcked(id: String, memberId: String): Boolean = dao.ack(id, memberId) > 0
 
     override suspend fun markMessagesRead(groupId: String): List<GroupMessage> = db.withTransaction {
