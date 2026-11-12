@@ -37,6 +37,8 @@ class DeliveryEngine(
     private val groups: GroupInbound? = null,
     private val incoming: IncomingListener? = null,
     private val onP2pSignal: suspend (String, Envelope.P2pSignal) -> Unit = { _, _ -> },
+    /** Must be false for pending/revoked local installations; gates every message and signaling path. */
+    private val localDeviceAuthorized: suspend () -> Boolean = { true },
 ) {
     private val lock = Mutex()
     // Serializes outbox workers without holding the state mutex across network I/O.
@@ -64,6 +66,7 @@ class DeliveryEngine(
     }
 
     private suspend fun rejectionFor(chatId: String): EnqueueResult? {
+        if (!localDeviceAuthorized()) return EnqueueResult.Blocked
         if (ownId() == null) return EnqueueResult.NoIdentity
         return when (peers.status(chatId)) {
             PeerStatus.Unknown -> EnqueueResult.UnknownPeer
@@ -91,6 +94,7 @@ class DeliveryEngine(
 
     /** Encrypts [plaintext] for [peer] and hands it to the first transport that accepts it. Also used by groups. */
     suspend fun transmit(peer: String, plaintext: ByteArray): SendOutcome {
+        if (!localDeviceAuthorized()) return SendOutcome.Rejected("local device is not trusted")
         // Do not encrypt (which advances the ratchet) when there is no route to send on anyway.
         if (transports().none { it.isReady() }) return SendOutcome.Unavailable
         val payload = cryptoLock.withLock { protector.protect(peer, plaintext) }
@@ -114,7 +118,10 @@ class DeliveryEngine(
     }
 
     /** Sends everything that is due. Safe to call from the UI and from the background worker. */
-    suspend fun processOutbox(): Int = processDirect() + (groups?.processOutbox() ?: 0)
+    suspend fun processOutbox(): Int {
+        if (!localDeviceAuthorized()) return 0
+        return processDirect() + (groups?.processOutbox() ?: 0)
+    }
 
     private suspend fun processDirect(): Int {
         uploadPending()
@@ -303,6 +310,7 @@ class DeliveryEngine(
      * Duplicate but authentic packets return true because they are safely re-acknowledged by [onPacket].
      */
     suspend fun acceptWire(wire: ByteArray): Boolean {
+        if (!localDeviceAuthorized()) return false
         val opened = cryptoLock.withLock { protector.open(wire) } ?: return false
         val env = EnvelopeCodec.decode(opened.plaintext) ?: return false
         if (env.from != opened.senderId) return false
@@ -315,6 +323,7 @@ class DeliveryEngine(
 
     /** Entry point for every decrypted packet a transport receives. Malformed or unwanted packets are dropped silently. */
     suspend fun onPacket(bytes: ByteArray) {
+        if (!localDeviceAuthorized()) return
         val env = EnvelopeCodec.decode(bytes) ?: return
         val me = ownId() ?: return
         if (env.to != me || env.from == me) return
@@ -367,6 +376,7 @@ class DeliveryEngine(
     }
 
     suspend fun markChatRead(chatId: String, sendReceipts: Boolean) {
+        if (!localDeviceAuthorized()) return
         val unread = store.unreadIncoming(chatId)
         if (unread.isEmpty()) return
         store.markReadLocal(unread.map { it.messageId })
