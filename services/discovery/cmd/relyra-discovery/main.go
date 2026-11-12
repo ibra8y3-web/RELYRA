@@ -260,6 +260,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /v1/communities/{communityID}/events", s.publishCommunityEvent)
 	mux.HandleFunc("GET /v1/communities/{communityID}/events", s.listCommunityEvents)
 	mux.HandleFunc("GET /v1/communities/{communityID}/private/events", s.listPrivateCommunityEvents)
+	mux.HandleFunc("GET /v1/communities/{communityID}/sequence/{actorPublicID}", s.communitySequence)
 	mux.HandleFunc("POST /v1/communities/{communityID}/reports", s.submitCommunityReport)
 	return s.guard(mux)
 }
