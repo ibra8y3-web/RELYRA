@@ -82,6 +82,14 @@ class SecureStore(context: Context) {
         }
     }
 
+    fun saveDevicePairingChallenge(deviceId: String, challenge: ByteArray) {
+        require(challenge.size == 32)
+        write("device_challenge_" + deviceId, challenge)
+    }
+    fun loadDevicePairingChallenge(deviceId: String): ByteArray? = read("device_challenge_" + deviceId)
+    fun clearDevicePairingChallenge(deviceId: String) {
+        check(prefs.edit().remove("device_challenge_" + deviceId).commit())
+    }
     fun saveSeed(seed: ByteArray) = write(SEED, seed)
     fun loadSeed(): ByteArray? = read(SEED)
     fun clearSeed() { prefs.edit().remove(SEED).commit() }
