@@ -38,6 +38,7 @@ fun DevicesScreen(vm: MainViewModel) {
     var requestInput by remember { mutableStateOf("") }
     var approvalInput by remember { mutableStateOf("") }
     var syncInput by remember { mutableStateOf("") }
+    var revocationInput by remember { mutableStateOf("") }
     LaunchedEffect(Unit) { vm.refreshTrustedDevices() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -80,6 +81,8 @@ fun DevicesScreen(vm: MainViewModel) {
                     }
                 }
                 OutlinedTextField(value=syncInput,onValueChange={syncInput=it},label={Text(stringResource(R.string.devices_sync_code))},modifier=Modifier.fillMaxWidth(),minLines=3)
+                OutlinedTextField(value=revocationInput,onValueChange={revocationInput=it},label={Text(stringResource(R.string.devices_revocation_code))},modifier=Modifier.fillMaxWidth(),minLines=3)
+                OutlinedButton(onClick={vm.applyDeviceRevocation(revocationInput)},enabled=revocationInput.isNotBlank(),modifier=Modifier.fillMaxWidth()) { Text(stringResource(R.string.devices_apply_revocation)) }
                 Button(onClick={vm.importDeviceSync(syncInput)},enabled=syncInput.isNotBlank(),modifier=Modifier.fillMaxWidth()) {
                     Text(stringResource(R.string.devices_import))
                 }
