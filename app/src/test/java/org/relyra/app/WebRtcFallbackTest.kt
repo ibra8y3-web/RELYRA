@@ -2,7 +2,6 @@ package org.relyra.app
 
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
-import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import org.relyra.app.core.messaging.DeliveryEngine
@@ -14,15 +13,6 @@ import org.relyra.app.core.network.Connector
 import java.util.UUID
 
 class WebRtcFallbackTest {
-    private fun receiver(): DeliveryEngine = DeliveryEngine(
-        store = FakeStore(),
-        peers = Peers(mapOf("alice" to org.relyra.app.core.messaging.PeerStatus.Known)),
-        protector = PlainProtector,
-        transports = { emptyList() },
-        ownId = { "bob" },
-        clock = { 1_800_000_000L },
-    )
-
     @Test fun lostDirectAcknowledgementFallsBackToNostrWithoutCreatingDuplicateMessage() = runBlocking {
         val receiverStore = FakeStore()
         val receivingEngine = DeliveryEngine(
