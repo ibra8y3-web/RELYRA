@@ -115,6 +115,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val internetPeerStates get() = rely.container.internetP2p.peerStates
     val incomingInternetOffers get() = rely.container.internetP2p.incomingOffers
     val internetSignal = MutableStateFlow("")
+    val discoveryGateways get() = rely.container.network.discoveryGateways
+    val publicDiscoveryEnabled get() = rely.container.network.publicDiscoveryEnabled
+    val discoveryStatus get() = rely.container.discovery.status
+    val discoveredPeer get() = rely.container.discovery.foundPresence
+    val discoveryGatewayTests = MutableStateFlow<Map<String, Boolean?>>(emptyMap())
     val torProxySettings get() = rely.container.network.torProxySettings
     val torProxyStatus get() = rely.container.network.torProxyStatus
     val fileServers get() = rely.container.blossom.servers
@@ -449,6 +454,50 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setWifiDirectEnabled(enabled: Boolean) = ctr().network.setWifiDirectEnabled(enabled)
     fun refreshWifiDirectPeers() = ctr().wifiDirect.refreshPeers()
     fun connectWifiDirect(deviceAddress: String) = ctr().wifiDirect.connect(deviceAddress)
+
+    fun addDiscoveryGateway(url: String): AddRelayResult = ctr().network.addDiscoveryGateway(url)
+    fun removeDiscoveryGateway(url: String) = ctr().network.removeDiscoveryGateway(url)
+    fun setDiscoveryGatewayEnabled(url: String, enabled: Boolean) =
+        ctr().network.setDiscoveryGatewayEnabled(url, enabled)
+    fun setPublicDiscoveryEnabled(enabled: Boolean) =
+        ctr().network.setPublicDiscoveryEnabled(enabled)
+
+    fun testDiscoveryGateway(url: String) {
+        discoveryGatewayTests.value = discoveryGatewayTests.value + (url to null)
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = ctr().discovery.testGateway(url)
+            discoveryGatewayTests.value = discoveryGatewayTests.value + (url to ok)
+        }
+    }
+
+    fun lookupDhtPeer(peerId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val id = peerId.trim().lowercase()
+            val presence = runCatching { ctr().discovery.lookup(id) }.getOrNull()
+            message.value = UiMessage(
+                if (presence != null) R.string.net_dht_peer_found else R.string.net_dht_peer_not_found
+            )
+        }
+    }
+
+    fun fetchDhtTurnCredentials() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val servers = runCatching { ctr().discovery.fetchTurnCredentials() }.getOrNull()
+            if (servers.isNullOrEmpty()) {
+                message.value = UiMessage(R.string.net_dht_turn_unavailable)
+                return@launch
+            }
+            val configured = ctr().internetP2p.setIceServers(
+                listOf(
+                    IceServerConfig("stun:stun.l.google.com:19302"),
+                    IceServerConfig("stun:stun.cloudflare.com:3478"),
+                ) + servers
+            )
+            message.value = UiMessage(
+                if (configured) R.string.net_dht_turn_ready else R.string.net_dht_turn_unavailable
+            )
+        }
+    }
 
     fun createInternetOffer(peerId: String) {
         viewModelScope.launch(Dispatchers.IO) {
