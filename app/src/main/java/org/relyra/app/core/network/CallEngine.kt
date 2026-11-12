@@ -141,7 +141,9 @@ class CallEngine(
 
     private suspend fun sendControl(kind: P2pSignalKind, type: String) {
         val peer = mutableState.value.peerId ?: return
-        val id = sessions[peer]?.id ?: UUID.randomUUID().toString()
+        val id = sessions[peer]?.id ?: mutableState.value.incomingSignal?.let { encoded ->
+            InternetSignalCodec.decode(encoded, ownId() ?: return, peer)?.sessionId
+        } ?: UUID.randomUUID().toString()
         signed(peer, type, "", id)?.let { runCatching { sendSignal(peer, kind, it) } }
         close(peer)
         mutableState.value = CallUiState(peerId = peer, phase = CallPhase.ENDED)
@@ -227,6 +229,7 @@ class CallEngine(
         }
         val pc = factory.createPeerConnection(config, observer) ?: return null
         session = Session(id, pc, video)
+        sessions[peer] = session
         val audioSource = factory.createAudioSource(MediaConstraints())
         val audioTrack = factory.createAudioTrack("relyra-audio-$id", audioSource)
         session.audioSource = audioSource; session.audioTrack = audioTrack
