@@ -695,17 +695,43 @@ class GroupEngine(
                 val credential = engine.keyPackageIdentity(env.payload)
                 if (!MlsCredentialCodec.verify(credential, env.from)) return
                 if (store.hasControlMessage(env.messageId)) { ack(me, env.from, env.messageId); return }
-                // The owner turns the validated KeyPackage into a native RFC 9420
-                // Add Proposal. Pending admin proposals are never auto-approved by this path.
+                // Add is performed by the owner from the validated KeyPackage.
+                // Never combine it with pending admin Remove proposals.
                 if (engine.pendingProposalCount(env.groupId) > 0) return
-                val addProposal = engine.proposeAddMember(env.groupId, env.payload)
-                engine.processProposal(
-                    addProposal, newId(), me, setOf(env.from), allowAdd = true, allowRemove = false,
+                val bundle = engine.addMembers(env.groupId, listOf(env.payload))
+                val welcome = bundle.welcome ?: return
+                val activeIds = mlsCredentialIds(env.groupId) ?: return
+                val updatedMembers = members
+                    .filter { !it.mlsJoined || it.id.lowercase() in activeIds }
+                    .map { it.copy(mlsJoined = it.id.lowercase() in activeIds) }
+                val removedIds = members.filter {
+                    it.mlsJoined && it.id.lowercase() !in activeIds
+                }.map { it.id }.toSet()
+                val now = clock().coerceAtLeast(1L)
+                val commitRows = members.filter {
+                    it.mlsJoined && it.id != me && peers.status(it.id) == PeerStatus.Known
+                }.map { recipient ->
+                    val id = newId()
+                    OutboxRow(
+                        id, env.groupId, recipient.id, null,
+                        EnvelopeCodec.encode(Envelope.GroupMls(id, me, recipient.id, env.groupId, GroupMlsKind.COMMIT, bundle.commit)),
+                        now, 0, now, acked = false, failed = false,
+                    )
+                }
+                val welcomeId = newId()
+                val welcomeRow = OutboxRow(
+                    welcomeId, env.groupId, env.from, null,
+                    EnvelopeCodec.encode(Envelope.GroupMls(welcomeId, me, env.from, env.groupId, GroupMlsKind.WELCOME, welcome)),
+                    now, 0, now, acked = false, failed = false,
                 )
-                val bundle = engine.commitPendingProposals(env.groupId)
-                val prepared = engine.commitPendingProposals(env.groupId, env.messageId)
-                if (prepared.welcome == null || env.from.lowercase() !in prepared.addedIds) return
-                persistPreparedMlsCommit(group, members, prepared, env.messageId, clock())
+                store.applyMlsCommit(
+                    group.copy(epoch = group.epoch + 1, mlsEpoch = bundle.epoch),
+                    updatedMembers,
+                    commitRows + welcomeRow,
+                    env.messageId,
+                    clock(),
+                )
+                broadcastSnapshot(env.groupId, removedIds)
                 refreshPendingMlsProposalsLocked(env.groupId)
                 ack(me, env.from, env.messageId)
             }
