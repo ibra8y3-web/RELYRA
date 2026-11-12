@@ -18,7 +18,7 @@ use openmls_sqlite_storage::{Codec, Connection, SqliteStorageProvider};
 use openmls_traits::OpenMlsProvider;
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
-use std::path::Path;
+use std::{collections::HashSet, path::Path};
 use tls_codec::{Deserialize as TlsDeserialize, Serialize as TlsSerialize};
 use zeroize::Zeroizing;
 
@@ -566,6 +566,29 @@ pub fn commit_pending_proposals(
     let mut group = MlsGroup::load(provider.storage(), &id)
         .map_err(|e| MlsError::Storage(e.to_string()))?
         .ok_or(MlsError::GroupNotFound)?;
+    if !group.has_pending_proposals() {
+        return Err(MlsError::Rejected);
+    }
+    // Resolve identical concurrent admin actions deterministically. The first
+    // proposal in OpenMLS queue order wins; redundant Add/Remove proposals for
+    // the same RELYRA identity are removed before constructing the Commit.
+    let mut seen = HashSet::new();
+    let duplicate_refs = group.pending_proposals().filter_map(|queued| {
+        let target = match queued.proposal() {
+            Proposal::Add(add) => credential_public_id(
+                add.key_package().leaf_node().credential().serialized_content()
+            ).map(|id| format!("add:{}", id.to_ascii_lowercase())),
+            Proposal::Remove(remove) => group.member(remove.removed())
+                .and_then(|credential| credential_public_id(credential.serialized_content()))
+                .map(|id| format!("remove:{}", id.to_ascii_lowercase())),
+            _ => None,
+        }?;
+        if seen.insert(target) { None } else { Some(queued.proposal_reference_ref().clone()) }
+    }).collect::<Vec<_>>();
+    for proposal_ref in duplicate_refs {
+        group.remove_pending_proposal(provider.storage(), &proposal_ref)
+            .map_err(|e| MlsError::Storage(e.to_string()))?;
+    }
     if !group.has_pending_proposals() {
         return Err(MlsError::Rejected);
     }
