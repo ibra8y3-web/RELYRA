@@ -25,10 +25,24 @@ data class MlsProcessedMessage(
     val application: ByteArray?,
 )
 
+interface GroupMlsProvider {
+    override suspend fun createGroup(groupId: String, relyraPublicId: String): Long
+    override suspend fun generateKeyPackage(relyraPublicId: String): ByteArray
+    override suspend fun keyPackageIdentity(keyPackage: ByteArray): String
+    override suspend fun addMembers(groupId: String, keyPackages: List<ByteArray>): MlsCommitBundle
+    override suspend fun joinGroup(groupId: String, welcome: ByteArray): Long
+    override suspend fun encrypt(groupId: String, plaintext: ByteArray): ByteArray
+    override suspend fun processMessage(message: ByteArray): MlsProcessedMessage
+    override suspend fun removeMember(groupId: String, relyraPublicId: String): MlsCommitBundle
+    override suspend fun epoch(groupId: String): Long
+    override suspend fun members(groupId: String): List<String>
+    override suspend fun close()
+}
+
 class MlsEngine(
     context: Context,
     private val secure: SecureStore,
-) {
+) : GroupMlsProvider {
     private val appContext = context.applicationContext
     private val initLock = Mutex()
     @Volatile private var initialized = false
