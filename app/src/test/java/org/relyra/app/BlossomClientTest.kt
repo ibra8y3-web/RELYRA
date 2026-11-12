@@ -114,11 +114,15 @@ class BlossomClientTest {
         assertTrue(client.upload(base(), file, hex, secret, 1) is BlossomUpload.Rejected)
     }
 
-    @Test fun unreachableServerIsUnavailable() = runBlocking {
+    @Test(timeout = 15_000) fun unreachableServerIsUnavailable() = runBlocking {
         val file = tmp().also { it.writeBytes(ByteArray(10)) }
-        val dead = base()
-        server.shutdown()
-        assertTrue(client.upload(dead, file, "0".repeat(64), NostrCrypto.randomSecret(), 1) is BlossomUpload.Unavailable)
+        // Simulate a dropped TCP connection deterministically; shutting MockWebServer down
+        // while OkHttp is connecting creates a race and can produce environment-dependent results.
+        server.enqueue(
+            MockResponse().setSocketPolicy(okhttp3.mockwebserver.SocketPolicy.DISCONNECT_AT_START)
+        )
+        val result = client.upload(base(), file, "0".repeat(64), NostrCrypto.randomSecret(), 1)
+        assertTrue(result is BlossomUpload.Unavailable)
     }
 
     @Test fun downloadWritesVerifiesAndReportsProgress() = runBlocking {
