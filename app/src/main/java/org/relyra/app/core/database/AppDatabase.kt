@@ -13,10 +13,10 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         IdentityEntity::class, ContactEntity::class, SecurityEventEntity::class,
         MessageEntity::class, ProcessedIdEntity::class, AttachmentEntity::class,
         RatchetEntity::class,
-        GroupEntity::class, GroupMemberEntity::class, GroupMessageEntity::class, GroupOutboxEntity::class, GroupAttachmentEntity::class,
+        GroupEntity::class, GroupMemberEntity::class, GroupMessageEntity::class, GroupOutboxEntity::class, GroupAttachmentEntity::class, CommunityEntity::class,
         ChatPrefEntity::class, VaultItemEntity::class, PreKeyEntity::class, EncryptedPacketEntity::class,
     ],
-    version = 15,
+    version = 16,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -27,6 +27,7 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun attachmentDao(): AttachmentDao
     abstract fun ratchetDao(): RatchetDao
     abstract fun groupDao(): GroupDao
+    abstract fun communityDao(): CommunityDao
     abstract fun chatPrefDao(): ChatPrefDao
     abstract fun vaultDao(): VaultDao
     abstract fun preKeyDao(): PreKeyDao
@@ -184,11 +185,22 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_15_16 = object : Migration(15, 16) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `communities` (" +
+                        "`communityId` TEXT NOT NULL, `manifestJson` TEXT NOT NULL, `localRole` TEXT NOT NULL, " +
+                        "`updatedAt` INTEGER NOT NULL, `savedAt` INTEGER NOT NULL, PRIMARY KEY(`communityId`))"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_communities_updatedAt` ON `communities` (`updatedAt`)")
+            }
+        }
+
         /** SQLCipher-encrypted. Never uses destructive migration: user data must survive updates. */
         fun build(context: Context, passphrase: ByteArray): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, "relyra.db")
                 .openHelperFactory(SupportOpenHelperFactory(passphrase))
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
                 .build()
     }
 }
