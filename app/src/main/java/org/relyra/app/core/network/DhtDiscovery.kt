@@ -242,9 +242,9 @@ class DhtDiscoveryManager(
     }
 
     suspend fun lookup(publicId: String): PeerPresence? {
+        _foundPresence.value = null
         val normalized = publicId.trim().lowercase()
         if (IdentityCrypto.parsePublicId(normalized) == null) return null
-        _foundPresence.value = null
         for (gateway in network.discoveryGateways.value.filter { it.enabled }) {
             try {
                 val json = withTimeout(12_000) { client.lookup(gateway.url, normalized) } ?: continue
@@ -278,6 +278,8 @@ class DhtDiscoveryManager(
 
     suspend fun testGateway(url: String): Boolean = try {
         withTimeout(8_000) { client.test(url) }
+    } catch (cancelled: CancellationException) {
+        throw cancelled
     } catch (_: Exception) {
         false
     }
