@@ -10,7 +10,7 @@ import java.util.Base64
 data class DeviceSyncReport(val contactsAdded:Int,val messagesAdded:Int,val preferencesUpdated:Int,val conflictsKept:Int)
 
 /** User-triggered E2EE sync. Ratchet, MLS, Keystore secrets and transport ciphertext are never copied. */
-class DeviceSyncRepository(private val db:AppDatabase,private val devices:DeviceManager) {
+class DeviceSyncRepository(private val db:AppDatabase,private val devices:DeviceManager,private val settings:org.relyra.app.core.storage.AppSettings) {
     companion object { private const val FORMAT="RELYRA-DEVICE-SYNC"; private const val VERSION=1; private const val MAX=8*1024*1024; private const val LIMIT=100_000 }
     private fun enc(b:ByteArray)=Base64.getUrlEncoder().withoutPadding().encodeToString(b)
     private fun dec(s:String,max:Int):ByteArray { require(s.length in 1..max*2); return Base64.getUrlDecoder().decode(s).also{require(it.size<=max)} }
@@ -41,6 +41,10 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
         prefs.forEach { p -> pa.put(JSONObject().put("chat",p.chatId).put("pinned",p.pinned)
             .put("archived",p.archived).put("muted",p.muted).put("updated",p.updatedAt)) }
         root.put("preferences",pa)
+        val global = settings.exportSyncable()
+        root.put("globalPreferences", JSONObject().put("updatedAt",global.updatedAt)
+            .put("notifications",global.notifications).put("notificationPreview",global.notificationPreview)
+            .put("listPreview",global.listPreview))
         val bytes=root.toString().toByteArray(Charsets.UTF_8)
         require(bytes.size<=MAX)
         return devices.encryptForDevice(targetDeviceId,bytes)
@@ -55,6 +59,7 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
             val identity=checkNotNull(db.identityDao().get())
             require(root.optString("account")==identity.publicId)
             val ca=root.getJSONArray("contacts"); val ma=root.getJSONArray("messages"); val pa=root.getJSONArray("preferences")
+            val global = root.optJSONObject("globalPreferences")
             require(ca.length()+ma.length()+pa.length()<=LIMIT)
             var cAdded=0; var mAdded=0; var pUpdated=0; var conflicts=0
             db.withTransaction {
@@ -105,6 +110,13 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
                     if(current==null||incoming.updatedAt>current.updatedAt) { db.chatPrefDao().put(incoming); pUpdated++ }
                     else if(current!=incoming) conflicts++
                 }
+            }
+            if(global != null) {
+                val merged = settings.applySyncable(org.relyra.app.core.storage.SyncablePreferences(
+                    global.optLong("updatedAt"), global.optBoolean("notifications"),
+                    global.optBoolean("notificationPreview"), global.optBoolean("listPreview")
+                ))
+                if(merged) pUpdated++
             }
             return DeviceSyncReport(cAdded,mAdded,pUpdated,conflicts)
         } finally { plain.fill(0) }
