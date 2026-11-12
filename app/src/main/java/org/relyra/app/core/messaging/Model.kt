@@ -66,7 +66,7 @@ object GroupChangeProposalCodec {
         require(proposal.baseGroupEpoch >= 1 && proposal.baseMlsEpoch >= 0)
         require(proposal.action == "add" || proposal.action == "remove")
         require(proposal.targets.size in 1..GroupLimits.MAX_MEMBERS)
-        require(proposal.targets.distinct().size == proposal.targets.size)
+        require(proposal.targets.map { it.lowercase() }.distinct().size == proposal.targets.size)
         require(proposal.targets.all { it.isNotBlank() && it.length <= 128 })
         val bytes = ByteArrayOutputStream()
         DataOutputStream(bytes).use { out ->
