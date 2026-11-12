@@ -120,12 +120,14 @@ class BlossomClientTest {
     }
 
     @Test(timeout = 15_000) fun unreachableServerIsUnavailable() = runBlocking {
-        val file = tmp().also { it.writeBytes(ByteArray(10)) }
+        val data = ByteArray(10)
+        val file = tmp().also { it.writeBytes(data) }
+        val hash = Hex.encode(sha(data))
         // Close the listener before starting the request. This creates a stable connection-refused
         // condition instead of relying on MockWebServer's asynchronous socket-disconnect policy.
         val serverUrl = base()
         server.shutdown()
-        val result = client.upload(serverUrl, file, "0".repeat(64), NostrCrypto.randomSecret(), 1)
+        val result = client.upload(serverUrl, file, hash, NostrCrypto.randomSecret(), 1)
         assertTrue("Expected a closed server to be classified as unavailable, got $result", result is BlossomUpload.Unavailable)
     }
 
