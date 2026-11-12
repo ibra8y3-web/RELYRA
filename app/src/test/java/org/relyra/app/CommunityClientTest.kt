@@ -60,7 +60,7 @@ class CommunityClientTest {
         val subject = IdentityCrypto.generate()
         val ownerId = IdentityCrypto.publicId(owner.publicKey)
         val moderatorId = IdentityCrypto.publicId(moderator.publicKey)
-        val now = 1_800_000_000_000L
+        val now = System.currentTimeMillis()
         val manifestUnsigned = CommunityManifest(
             "a1b2c3d4-e5f6-4789-8abc-0123456789ab", ownerId, "Community", "Policy",
             "public", listOf(moderatorId), 2, now, now, "",
