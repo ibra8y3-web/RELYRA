@@ -37,7 +37,7 @@ mkdir -p "$OUT_DIR"
   cargo ndk \
     -t arm64-v8a \
     -t x86_64 \
-    -p 29 \
+    --platform 29 \
     -o "$OUT_DIR" \
     build --release
 )
