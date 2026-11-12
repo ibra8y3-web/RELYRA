@@ -39,7 +39,7 @@ interface GroupMlsProvider {
     suspend fun proposeRemoveMember(groupId: String, relyraPublicId: String): ByteArray
     /** Stores a native RFC 9420 proposal only when its MLS credential matches the authenticated envelope sender. */
     suspend fun processProposal(message: ByteArray, messageId: String, expectedSenderPublicId: String, allowedTargetPublicIds: Set<String>, allowAdd: Boolean, allowRemove: Boolean): Long
-    suspend fun commitPendingProposals(groupId: String): MlsPreparedCommit
+    suspend fun commitPendingProposals(groupId: String, controlMessageId: String? = null): MlsPreparedCommit
     suspend fun pendingCommitInfo(groupId: String): MlsPreparedCommit?
     suspend fun mergePendingCommit(groupId: String): Long
     suspend fun pendingProposalCount(groupId: String): Int
@@ -199,8 +199,8 @@ class MlsEngine(
             .also { check(it >= 0) { "OpenMLS rejected the proposal or its sender identity" } }
     }
 
-    override suspend fun commitPendingProposals(groupId: String): MlsPreparedCommit = runNative {
-        decodePreparedCommit(MlsNative.nativePreparePendingProposalsCommit(groupIdBytes(groupId)))
+    override suspend fun commitPendingProposals(groupId: String, controlMessageId: String?): MlsPreparedCommit = runNative {
+        decodePreparedCommit(MlsNative.nativePreparePendingProposalsCommit(groupIdBytes(groupId), controlMessageId.orEmpty()))
     }
 
     override suspend fun pendingCommitInfo(groupId: String): MlsPreparedCommit? = runNative {
@@ -227,6 +227,7 @@ class MlsEngine(
             epoch = json.getLong("epoch"),
             removedIds = stringSet("removed_ids"),
             addedIds = stringSet("added_ids"),
+            controlMessageId = json.optString("control_message_id").takeIf { it.isNotBlank() && it != "null" },
         )
     }
 
