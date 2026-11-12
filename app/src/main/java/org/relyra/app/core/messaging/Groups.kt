@@ -838,6 +838,7 @@ class GroupEngine(
         return when {
             group.mlsEpoch == prepared.epoch -> {
                 engine.mergePendingCommit(group.groupId)
+                broadcastSnapshot(group.groupId, prepared.removedIds)
                 true
             }
             group.mlsEpoch + 1 == prepared.epoch -> {
