@@ -450,6 +450,26 @@ class GroupEngineTest {
         assertTrue(carol.store.outbox.values.all { it.acked })
     }
 
+    @Test fun mlsAdminRemovalProposalIsAppliedOnlyByOwner() = runBlocking {
+        val gid = UUID.randomUUID().toString()
+        val members = listOf(
+            GroupMemberRef("alice", GroupRole.OWNER, mlsJoined = true),
+            GroupMemberRef("bob", GroupRole.ADMIN, mlsJoined = true),
+            GroupMemberRef("carol", GroupRole.MEMBER, mlsJoined = false),
+        )
+        val record = GroupRecord(gid, "MLS team", GroupKind.GROUP, "alice", 7, GroupState.ACTIVE,
+            now, "alice", mlsEnabled = true, mlsEpoch = 4)
+        listOf(alice, bob, carol).forEach { it.store.putGroup(record, members) }
+
+        assertEquals(GroupResult.PROPOSAL_QUEUED, bob.engine.removeMember(gid, "carol"))
+        pump()
+
+        assertEquals(8L, alice.store.group(gid)!!.epoch)
+        assertEquals(4L, alice.store.group(gid)!!.mlsEpoch)
+        assertFalse(alice.store.members(gid).any { it.id == "carol" })
+        assertEquals(GroupState.REMOVED, carol.store.group(gid)!!.state)
+    }
+
     @Test fun membershipProposalCodecRejectsMalformedOrTrailingBytes() {
         val proposal = GroupChangeProposal(
             UUID.randomUUID().toString(), UUID.randomUUID().toString(), 3, 2, "add", listOf("alice", "bob")
