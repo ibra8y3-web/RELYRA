@@ -26,10 +26,15 @@ import kotlin.random.Random
 
 class BlossomClientTest {
     private val server = MockWebServer()
-    private val client = BlossomClient(OkHttpClient())
+    private val testHttp = OkHttpClient()
+    private val client = BlossomClient(testHttp)
 
     @Before fun start() = server.start()
-    @After fun stop() = server.shutdown()
+    @After fun stop() {
+        server.shutdown()
+        testHttp.dispatcher.executorService.shutdown()
+        testHttp.connectionPool.evictAll()
+    }
 
     private fun base() = server.url("/").toString().trimEnd('/')
     private fun tmp(): File = File.createTempFile("relyra", ".bin").also { it.deleteOnExit() }
@@ -114,11 +119,16 @@ class BlossomClientTest {
         assertTrue(client.upload(base(), file, hex, secret, 1) is BlossomUpload.Rejected)
     }
 
-    @Test fun unreachableServerIsUnavailable() = runBlocking {
-        val file = tmp().also { it.writeBytes(ByteArray(10)) }
-        val dead = base()
+    @Test(timeout = 15_000) fun unreachableServerIsUnavailable() = runBlocking {
+        val data = ByteArray(10)
+        val file = tmp().also { it.writeBytes(data) }
+        val hash = Hex.encode(sha(data))
+        // Close the listener before starting the request. This creates a stable connection-refused
+        // condition instead of relying on MockWebServer's asynchronous socket-disconnect policy.
+        val serverUrl = base()
         server.shutdown()
-        assertTrue(client.upload(dead, file, "0".repeat(64), NostrCrypto.randomSecret(), 1) is BlossomUpload.Unavailable)
+        val result = client.upload(serverUrl, file, hash, NostrCrypto.randomSecret(), 1)
+        assertTrue("Expected a closed server to be classified as unavailable, got $result", result is BlossomUpload.Unavailable)
     }
 
     @Test fun downloadWritesVerifiesAndReportsProgress() = runBlocking {

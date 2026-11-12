@@ -22,6 +22,13 @@ class Base32Test {
     @Test fun rejectsInvalidCharacters() {
         assertNull(Base32.decode("AB1!"))
     }
+
+    @Test fun rejectsNonCanonicalTrailingPaddingBits() {
+        assertArrayEquals(byteArrayOf(0), Base32.decode("AA"))
+        assertNull(Base32.decode("AB")) // same decoded byte as AA, but non-zero trailing padding bits
+        assertNull(Base32.decode("A")) // insufficient bits for a byte
+        assertNull(Base32.decode("AA=")) // RELYRA uses unpadded Base32
+    }
 }
 
 class IdentityCryptoTest {

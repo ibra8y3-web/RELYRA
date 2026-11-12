@@ -36,7 +36,7 @@ The current source includes local identity, SQLCipher storage, direct conversati
 | **Local security** | Room + SQLCipher; database key protected with Android Keystore; biometric/device-credential lock |
 | **Direct messages** | Persistent outbox, acknowledgements, delivery states, retries, backoff and duplicate suppression |
 | **Message encryption** | X25519/HKDF/AES-GCM and one-to-one Double Ratchet sessions |
-| **Network** | User-added WSS relays plus opt-in Bluetooth Classic, Wi-Fi Direct and Nearby LAN for nearby known contacts |
+| **Network** | User-added WSS relays; WebRTC direct DataChannels; configurable HTTPS Kademlia presence discovery; bounded recovery/renegotiation; optional Bluetooth Classic, Wi-Fi Direct and Nearby LAN |
 | **Groups / channels** | Membership roles and per-member message delivery using individual sessions |
 | **File transfer** | Client-side encrypted files over user-configured Blossom-compatible servers |
 | **Background work** | WorkManager retries and optional visible foreground connection service (subject to Android restrictions) |
@@ -76,7 +76,7 @@ Read the [Architecture guide](docs/ARCHITECTURE.md), [Networking guide](docs/NET
 
 ## Nearby transports
 
-Bluetooth Classic, Wi-Fi Direct and Nearby LAN are optional and off by default. Bluetooth requires the phones to be paired first in Android Settings. Wi-Fi Direct requires the user to choose a discovered device and form a Wi-Fi P2P group. Nearby LAN requires both phones to share a Wi-Fi network or local hotspot. All three verify the RELYRA Ed25519 identity against an existing contact before accepting an encrypted message.
+Public Internet presence discovery is optional and off by default. The app can publish a signed three-minute RELYRA identity lease to an operator-run Kademlia DHT through HTTPS gateways. Finding presence never adds a contact or authorizes messaging. WebRTC direct sessions use signed E2EE signaling and bounded recovery for previously approved peers. The deployable DHT/TURN service templates live in services/discovery; the repository does not host public services for users.\n\nBluetooth Classic, Wi-Fi Direct and Nearby LAN are optional and off by default. Bluetooth requires the phones to be paired first in Android Settings. Wi-Fi Direct requires the user to choose a discovered device and form a Wi-Fi P2P group. Nearby LAN requires both phones to share a Wi-Fi network or local hotspot. All three verify the RELYRA Ed25519 identity against an existing contact before accepting an encrypted message.
 
 These transports are for nearby devices only. They do not provide Internet P2P, multi-hop mesh or Store & Forward through third-party phones. The public RELYRA ID is visible on a local network when Nearby LAN is enabled; use it only on a trusted network. See [Nearby transport details](docs/NEARBY_TRANSPORTS.md).
 
@@ -94,7 +94,7 @@ These transports are for nearby devices only. They do not provide Internet P2P, 
 
 The following are **not** present in the current build:
 
-- Internet P2P across separate networks, libp2p and ICE/STUN/TURN traversal.
+- A project-operated public DHT/TURN cluster. The source includes a deployable Go libp2p Kademlia node, HTTPS gateway, coturn service and short-lived TURN credential API, but operators must deploy multiple public nodes and configure them. Android uses the HTTPS gateway, not an embedded libp2p host. Real network/NAT device validation remains pending.
 - A bundled Tor client, in-app bridge configuration and Onion Services. An external Tor SOCKS5 service (e.g. Orbot) is supported for OkHttp traffic with Strict Mode and a Tor exit check; browser/WebView and nearby local links are separate.
 - Bluetooth Low Energy mesh and third-party multi-hop Store & Forward. Bluetooth Classic and Wi-Fi Direct nearby transports are present, but are not Internet P2P.
 - MLS group encryption. Current group messages are encrypted separately for each member using one-to-one sessions.
@@ -107,13 +107,17 @@ Other limits: Android may defer background work due to battery policy or force-s
 
 ## Build from source
 
-**Requirements:** Android SDK Platform 37.0, Build Tools 37.0.0, JDK 17 and Gradle 9.6.0. The repository does not currently include a Gradle Wrapper.
+**Android requirements:** Android SDK Platform 37.0, Build Tools 37.0.0, JDK 17 and Gradle 9.6.0. **Service requirements:** Go 1.26 and Docker Compose for the discovery/TURN services. The repository does not currently include a Gradle Wrapper.
 
 Run from the repository root:
 
 ```bash
 gradle --no-daemon assembleDebug
 gradle --no-daemon testDebugUnitTest
+
+cd services/discovery
+go test -race ./...
+go vet ./...
 ```
 
 Debug APK output:
@@ -122,7 +126,7 @@ Debug APK output:
 app/build/outputs/apk/debug/
 ```
 
-GitHub Actions builds the debug APK and runs JVM tests on pushes, pull requests and manual dispatch. Download APK and test reports from the run's **Artifacts** section. Check the latest workflow result before treating a build as verified.
+GitHub Actions builds the debug APK, runs Android JVM tests, tests/vets the Go discovery service and builds its container on pushes, pull requests and manual dispatch. Download APK and test reports from the run's **Artifacts** section. Check the latest workflow result before treating a build as verified.
 
 ## Repository map
 
@@ -135,7 +139,7 @@ app/src/main/java/org/relyra/app/
 │   ├── diagnostics/  Device and application diagnostics
 │   ├── identity/     Identity and contact repositories
 │   ├── messaging/    Delivery engine, envelopes and groups
-│   ├── network/      Nostr, local LAN, Bluetooth Classic, Wi-Fi Direct and adaptive router
+│   ├── network/      WebRTC P2P, DHT HTTPS client, Nostr, LAN, Bluetooth and Wi-Fi Direct
 │   ├── notify/       Message notifications
 │   ├── storage/      Private attachment storage
 │   ├── tools/        On-device file inspection tools
@@ -144,6 +148,7 @@ app/src/main/java/org/relyra/app/
 └── ui/               Compose screens, navigation and theme
 
 app/src/test/          JVM tests
+services/discovery/      Go Kademlia DHT gateway, coturn/Caddy deployment and protocol tests
 docs/                  Architecture, networking, roadmap, specification crosswalk and visual maps
 .github/workflows/     Build and test automation
 ```

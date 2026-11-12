@@ -10,6 +10,10 @@ import org.relyra.app.core.identity.ContactRepository
 import org.relyra.app.core.identity.IdentityRepository
 import org.relyra.app.core.identity.SecurityLog
 import org.relyra.app.core.messaging.DeliveryEngine
+import org.relyra.app.core.messaging.Envelope
+import org.relyra.app.core.messaging.EnvelopeCodec
+import org.relyra.app.core.messaging.P2pSignalKind
+import org.relyra.app.core.messaging.SendOutcome
 import org.relyra.app.core.messaging.GroupEngine
 import org.relyra.app.core.messaging.IncomingListener
 import org.relyra.app.core.notify.Notifier
@@ -17,17 +21,20 @@ import org.relyra.app.core.storage.AppSettings
 import org.relyra.app.core.storage.DataManager
 import org.relyra.app.core.messaging.Transport
 import org.relyra.app.core.network.AdaptiveRouter
+import org.relyra.app.core.network.DhtDiscoveryManager
 import org.relyra.app.core.network.NetworkManager
 import org.relyra.app.core.network.NostrConnector
 import org.relyra.app.core.network.NearbyLanConnector
 import org.relyra.app.core.network.BluetoothConnector
 import org.relyra.app.core.network.WifiDirectConnector
+import org.relyra.app.core.network.WebRtcP2pConnector
 import org.relyra.app.core.messaging.PeerStatus
 import org.relyra.app.core.storage.SecureStore
 import org.relyra.app.core.transfer.BlossomServers
 import org.relyra.app.core.transfer.TransferEngine
 import org.relyra.app.core.vault.VaultEngine
 import org.relyra.app.core.resources.ResourceManager
+import java.util.UUID
 
 class AppContainer(context: Context) {
     private val appContext = context.applicationContext
@@ -81,6 +88,14 @@ class AppContainer(context: Context) {
     }
 
     val network by lazy { NetworkManager(appContext) }
+    val discovery by lazy {
+        DhtDiscoveryManager(
+            network = network,
+            ownId = { database.identityDao().get()?.publicId },
+            sign = { bytes -> identities.sign(bytes) },
+            scope = netScope,
+        )
+    }
     private val netScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
     val protector by lazy { org.relyra.app.core.identity.E2eeProtector(database, secure) }
     val nostr by lazy {
@@ -103,6 +118,28 @@ class AppContainer(context: Context) {
             scope = netScope,
         )
     }
+    val internetP2p by lazy {
+        WebRtcP2pConnector(
+            context = appContext,
+            ownId = { database.identityDao().get()?.publicId },
+            sign = { bytes -> identities.sign(bytes) },
+            knownPeer = { id -> contacts.peers.status(id) == PeerStatus.Known },
+            onWire = { delivery.acceptWire(it) },
+            scope = netScope,
+            refreshIceServers = { discovery.fetchTurnCredentials()?.iceServers },
+            sendSignal = { peerId, kind, signedSignal ->
+                val own = database.identityDao().get()?.publicId
+                if (own == null) {
+                    SendOutcome.Rejected("local RELYRA identity is unavailable")
+                } else {
+                    val envelope = Envelope.P2pSignal(
+                        UUID.randomUUID().toString(), own, peerId, kind, signedSignal,
+                    )
+                    delivery.transmit(peerId, EnvelopeCodec.encode(envelope))
+                }
+            },
+        )
+    }
     val wifiDirect by lazy {
         WifiDirectConnector(
             context = appContext,
@@ -114,7 +151,7 @@ class AppContainer(context: Context) {
     }
     val blossom by lazy { BlossomServers(appContext) }
     val transfers: TransferEngine by lazy { TransferEngine(appContext, blossom, messages, { identities.nostrSecret() }) }
-    val router by lazy { AdaptiveRouter { listOf(wifiDirect, bluetooth, nearby, nostr) } }
+    val router by lazy { AdaptiveRouter { listOf(internetP2p, wifiDirect, bluetooth, nearby, nostr) } }
     val transports: List<Transport> by lazy { listOf(router) }
 
     val delivery: DeliveryEngine by lazy {
@@ -127,6 +164,17 @@ class AppContainer(context: Context) {
             uploader = transfers,
             groups = groups,
             incoming = incomingListener,
+            onP2pSignal = { peerId, signal ->
+                when (signal.kind) {
+                    P2pSignalKind.OFFER -> {
+                        // A signed signal is not consent. Queue it for explicit approval in Network settings.
+                        internetP2p.requestIncomingOffer(peerId, signal.signedSignal)
+                    }
+                    P2pSignalKind.ANSWER -> {
+                        internetP2p.acceptAnswer(peerId, signal.signedSignal)
+                    }
+                }
+            },
         )
     }
 

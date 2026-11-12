@@ -22,6 +22,7 @@ work = "2.12.0"
 okhttp = "4.12.1"
 secp256k1 = "0.15.0"
 orgjson = "20260814"
+webrtc = "150.7871.04"
 
 [libraries]
 compose-bom = { module = "androidx.compose:compose-bom", version.ref = "composeBom" }
@@ -56,6 +57,7 @@ secp256k1-android = { module = "fr.acinq.secp256k1:secp256k1-kmp-jni-android", v
 secp256k1-jvm = { module = "fr.acinq.secp256k1:secp256k1-kmp-jni-jvm", version.ref = "secp256k1" }
 orgjson = { module = "org.json:json", version.ref = "orgjson" }
 junit = { module = "junit:junit", version.ref = "junit" }
+webrtc = { module = "io.github.webrtc-sdk:android", version.ref = "webrtc" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

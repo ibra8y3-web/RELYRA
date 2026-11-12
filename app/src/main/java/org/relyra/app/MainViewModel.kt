@@ -18,7 +18,13 @@ import org.relyra.app.core.database.ChatSummary
 import org.relyra.app.core.database.MessageEntity
 import org.relyra.app.core.identity.AddResult
 import org.relyra.app.core.messaging.EnqueueResult
+import org.relyra.app.core.messaging.Envelope
+import org.relyra.app.core.messaging.EnvelopeCodec
+import org.relyra.app.core.messaging.P2pSignalKind
+import org.relyra.app.core.messaging.SendOutcome
 import org.relyra.app.core.network.AddRelayResult
+import org.relyra.app.core.network.IceServerConfig
+import java.util.UUID
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.delay
@@ -106,6 +112,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val wifiDirectPeers get() = rely.container.wifiDirect.discovered
     val wifiDirectVerifiedPeers get() = rely.container.wifiDirect.verified
     val wifiDirectStatus get() = rely.container.wifiDirect.status
+    val lastTransportPath get() = rely.container.router.lastPath
+    val internetPeerStates get() = rely.container.internetP2p.peerStates
+    val incomingInternetOffers get() = rely.container.internetP2p.incomingOffers
+    val internetSignal = MutableStateFlow("")
+    val discoveryGateways get() = rely.container.network.discoveryGateways
+    val publicDiscoveryEnabled get() = rely.container.network.publicDiscoveryEnabled
+    val discoveryStatus get() = rely.container.discovery.status
+    val discoveredPeer get() = rely.container.discovery.foundPresence
+    val discoveryGatewayTests = MutableStateFlow<Map<String, Boolean?>>(emptyMap())
     val torProxySettings get() = rely.container.network.torProxySettings
     val torProxyStatus get() = rely.container.network.torProxyStatus
     val fileServers get() = rely.container.blossom.servers
@@ -440,6 +455,126 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setWifiDirectEnabled(enabled: Boolean) = ctr().network.setWifiDirectEnabled(enabled)
     fun refreshWifiDirectPeers() = ctr().wifiDirect.refreshPeers()
     fun connectWifiDirect(deviceAddress: String) = ctr().wifiDirect.connect(deviceAddress)
+
+    fun addDiscoveryGateway(url: String): AddRelayResult = ctr().network.addDiscoveryGateway(url)
+    fun removeDiscoveryGateway(url: String) = ctr().network.removeDiscoveryGateway(url)
+    fun setDiscoveryGatewayEnabled(url: String, enabled: Boolean) =
+        ctr().network.setDiscoveryGatewayEnabled(url, enabled)
+    fun setPublicDiscoveryEnabled(enabled: Boolean) =
+        ctr().network.setPublicDiscoveryEnabled(enabled)
+
+    fun testDiscoveryGateway(url: String) {
+        discoveryGatewayTests.value = discoveryGatewayTests.value + (url to null)
+        viewModelScope.launch(Dispatchers.IO) {
+            val ok = ctr().discovery.testGateway(url)
+            discoveryGatewayTests.value = discoveryGatewayTests.value + (url to ok)
+        }
+    }
+
+    fun lookupDhtPeer(peerId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val id = peerId.trim().lowercase()
+            val presence = runCatching { ctr().discovery.lookup(id) }.getOrNull()
+            message.value = UiMessage(
+                if (presence != null) R.string.net_dht_peer_found else R.string.net_dht_peer_not_found
+            )
+        }
+    }
+
+    fun fetchDhtTurnCredentials() {
+        viewModelScope.launch(Dispatchers.IO) {
+            val credentials = runCatching { ctr().discovery.fetchTurnCredentials() }.getOrNull()
+            if (credentials == null || credentials.iceServers.isEmpty()) {
+                message.value = UiMessage(R.string.net_dht_turn_unavailable)
+                return@launch
+            }
+            val configured = ctr().internetP2p.setManagedIceServers(
+                listOf(
+                    IceServerConfig("stun:stun.l.google.com:19302"),
+                    IceServerConfig("stun:stun.cloudflare.com:3478"),
+                ) + credentials.iceServers
+            )
+            message.value = UiMessage(
+                if (configured) R.string.net_dht_turn_ready else R.string.net_dht_turn_unavailable
+            )
+        }
+    }
+
+    fun createInternetOffer(peerId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val c = ctr()
+            val target = peerId.trim().lowercase()
+            val card = runCatching { c.internetP2p.createOffer(target) }.getOrNull()
+            internetSignal.value = card ?: ""
+            if (card == null) {
+                message.value = UiMessage(R.string.net_p2p_signal_failed)
+                return@launch
+            }
+            val own = c.database.identityDao().get()?.publicId ?: return@launch
+            val envelope = Envelope.P2pSignal(
+                UUID.randomUUID().toString(), own, target, P2pSignalKind.OFFER, card,
+            )
+            when (c.delivery.transmit(target, EnvelopeCodec.encode(envelope))) {
+                SendOutcome.Accepted, SendOutcome.Relayed ->
+                    message.value = UiMessage(R.string.net_p2p_signal_sent)
+                SendOutcome.Unavailable, is SendOutcome.Rejected ->
+                    message.value = UiMessage(R.string.net_p2p_manual_fallback)
+            }
+        }
+    }
+
+    fun acceptInternetOffer(peerId: String, offer: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val c = ctr()
+            val target = peerId.trim().lowercase()
+            val answer = runCatching { c.internetP2p.acceptOffer(target, offer.trim()) }.getOrNull()
+            internetSignal.value = answer ?: ""
+            if (answer == null) {
+                message.value = UiMessage(R.string.net_p2p_signal_failed)
+                return@launch
+            }
+            val own = c.database.identityDao().get()?.publicId ?: return@launch
+            val envelope = Envelope.P2pSignal(
+                UUID.randomUUID().toString(), own, target, P2pSignalKind.ANSWER, answer,
+            )
+            val outcome = c.delivery.transmit(target, EnvelopeCodec.encode(envelope))
+            message.value = UiMessage(
+                if (outcome == SendOutcome.Accepted || outcome == SendOutcome.Relayed)
+                    R.string.net_p2p_signal_sent else R.string.net_p2p_manual_fallback
+            )
+        }
+    }
+
+    fun approveIncomingInternetOffer(peerId: String) {
+        val pending = ctr().internetP2p.incomingOffers.value[peerId.trim().lowercase()] ?: return
+        acceptInternetOffer(peerId, pending.signedSignal)
+    }
+
+    fun declineIncomingInternetOffer(peerId: String) =
+        ctr().internetP2p.dismissIncomingOffer(peerId.trim().lowercase())
+
+    fun acceptInternetAnswer(peerId: String, answer: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val accepted = runCatching { ctr().internetP2p.acceptAnswer(peerId.trim(), answer.trim()) }.getOrDefault(false)
+            message.value = UiMessage(if (accepted) R.string.net_p2p_answer_accepted else R.string.net_p2p_signal_failed)
+        }
+    }
+
+    fun setInternetTurnServer(url: String, username: String, credential: String): Boolean =
+        ctr().internetP2p.setIceServers(
+            listOf(
+                IceServerConfig("stun:stun.l.google.com:19302"),
+                IceServerConfig("stun:stun.cloudflare.com:3478"),
+                IceServerConfig(url.trim(), username, credential),
+            )
+        )
+
+    fun resetInternetIceServers() {
+        ctr().internetP2p.resetIceServers()
+    }
+
+    fun closeInternetPeer(peerId: String) = ctr().internetP2p.close(peerId.trim())
+
     fun updateTorProxySettings(enabled: Boolean, strict: Boolean, port: Int): Boolean =
         ctr().network.updateTorProxySettings(enabled, strict, port)
     fun testTorProxy() = ctr().network.testTorProxy()

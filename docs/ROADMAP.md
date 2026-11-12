@@ -38,21 +38,40 @@ Acceptance criteria:
 
 ## Priority 2 — direct connectivity
 
-**Goal:** add a real direct transport without breaking the current relay route.
+**Current source status: implementation and deployable services are now present on branch phase-2-p2p-rendezvous; release gate remains open for CI and operator/device validation.**
 
-Work items:
-- Select and evaluate a maintained Android-compatible libp2p implementation. Bluetooth Classic and Wi-Fi Direct now cover nearby links only; neither provides Internet P2P or NAT traversal.
-- Define peer discovery and authenticated peer-to-identity binding.
-- Design NAT traversal using ICE/STUN/TURN where supported.
-- Add connection lifecycle, timeouts, cancellation, retry/backoff and bounded resource usage.
-- Integrate the connector behind the current Transport/Connector contract.
-- Keep Nostr as a user-controlled fallback when direct delivery is unavailable.
+Implemented in source:
+- Android WebRTC DataChannel transport using ICE connectivity checks and default STUN servers.
+- Optional user-supplied TURN URI and credentials for networks that require relay candidates.
+- Signed, recipient-bound, ten-minute offer/answer envelopes using RELYRA Ed25519 identities, with a signed random session ID to reject answers from stale connection attempts.
+- Signed offers/answers are exchanged automatically inside E2EE RELYRA control envelopes over an enabled Nostr route; manual copy/paste remains fallback. Existing known-contact checks are required.
+- Incoming offers are queued for explicit user approval; a verified signature alone does not create a WebRTC peer connection.
+- Per-peer sends are serialized; DataChannel success requires a bounded receiver ACK. Peer count, buffered bytes, SDP callback and ICE gathering waits are bounded.
+- Binary encrypted DeliveryEngine payloads pass through the DataChannel; AdaptiveRouter prefers a connected direct path and retains Nostr fallback.
+- DataChannel frame size is bounded and larger attachments remain on the Blossom path.
 
-Acceptance criteria:
-- Two independently installed devices can discover and authenticate each other with user consent.
+Implemented in this branch at source level:
+- A RELYRA-specific Kademlia DHT service in services/discovery, using libp2p Go nodes, a persistent Pebble datastore, a namespaced record validator, and HTTPS publish/lookup API.
+- Android HTTPS gateway configuration, explicit opt-in public presence, signed three-minute Ed25519 presence leases, exact-public-ID lookup and local verification before displaying a result. Lookup does not create or trust a contact.
+- A coturn service definition, bounded relay-port configuration, Caddy HTTPS gateway and short-lived TURN REST credentials. TURN credentials are issued only after a signed identity challenge and are never persisted on the Android device.
+- Automatic bounded peer-session recreation and signed offer/answer renegotiation after ICE failure or network change. Only previously approved peers can be auto-answered; the first incoming offer still requires explicit approval.
+- JVM regression coverage for DHT record verification, URL validation, bounded reconnect backoff, direct-send acknowledgement loss, Nostr fallback and receiver duplicate suppression.
+
+Remaining release gates:
+- The repository provides deployable service files, but no public RELYRA DHT/TURN infrastructure is hosted by this repository. Multiple independently reachable DHT nodes must be deployed and configured with bootstrap multiaddresses before public discovery works across operators.
+- Clean CI success on the exact final phase-2 head, including Go service tests/vet/container build and Android JVM tests.
+- Device and network verification is intentionally left to the project owner: Wi-Fi-to-mobile, carrier NAT/symmetric NAT, TURN-only, app backgrounding and network handover.
+
+The Android app uses WebRTC for its DataChannel. It does not embed a libp2p host. The distributed Kademlia overlay is provided by the separate Go service; Android clients use its HTTPS gateway.
+
+Acceptance criteria remain:
+- Two independently installed devices authenticate each other using signed signaling and the RELYRA identity, not an IP address or WebRTC transport identifier.
 - A message is delivered over a verified direct path and is not duplicated when fallback occurs.
-- Tests cover offline peer, NAT failure, disconnect mid-send, malicious peer and relay fallback.
+- Tests cover offline peer, NAT failure, disconnect mid-send, malicious peer, TURN fallback and Nostr fallback.
 - The UI reports the actual path, never a simulated connection status.
+- Tested devices, Android versions, ICE candidate pair types and exact workflow run are recorded.
+
+See INTERNET_P2P_WEBRTC.md and services/discovery/README.md for protocol workflow, consent model, service deployment, privacy implications and validation steps.
 
 ## Priority 3 — group protocol and community layer
 

@@ -67,6 +67,7 @@ dependencies {
 
     implementation(libs.tink)
     implementation(libs.okhttp)
+    implementation(libs.webrtc)
     implementation(libs.secp256k1)
     implementation(libs.secp256k1.android)
     implementation(libs.zxing.core)
@@ -81,9 +82,9 @@ dependencies {
 tasks.withType<Test>().configureEach {
     // Emit each test boundary into Actions logs so a stalled test is identifiable.
     testLogging {
-        events("started", "failed", "skipped")
+        events("started", "passed", "failed", "skipped")
         showStandardStreams = true
     }
-    maxParallelForks = 2
+    maxParallelForks = 1
     forkEvery = 1
 }

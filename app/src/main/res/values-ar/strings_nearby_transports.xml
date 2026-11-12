@@ -28,4 +28,63 @@
     <string name="net_wifi_direct_refresh">إعادة البحث</string>
     <string name="net_wifi_direct_unknown_name">جهاز أندرويد بدون اسم</string>
     <string name="net_wifi_direct_connect">اتصال</string>
+
+    <string name="net_p2p_title">اتصال مباشر عبر الإنترنت (WebRTC)</string>
+    <string name="net_p2p_desc">ينشئ قناة بيانات مباشرة باستخدام ICE وSTUN، مع TURN عند توفير خادم تديره أنت وبيانات اعتماده. يرسل RELYRA عروض الاتصال والإجابات الموقعة تلقائيًا داخل رسائل مشفرة طرفًا لطرف عبر Relay من Nostr عند توفره، ولا يقبل العروض الواردة قبل موافقتك الصريحة. يظل النسخ واللصق اليدوي متاحًا عند غياب مسار إرسال. قد تكشف بيانات SDP عناوين الشبكة، واتصال WebRTC لا يمر عبر وكيل Tor SOCKS.</string>
+    <string name="net_p2p_peer_id">معرّف جهة الاتصال RELYRA</string>
+    <string name="net_p2p_create_offer">إنشاء عرض اتصال</string>
+    <string name="net_p2p_remote_signal">الصق العرض أو الإجابة المستلمة</string>
+    <string name="net_p2p_accept_offer">قبول العرض وإنشاء إجابة</string>
+    <string name="net_p2p_accept_answer">قبول الإجابة</string>
+    <string name="net_p2p_generated">بيانات الإشارة الموقعة — انسخها وأرسلها للطرف المقصود فقط</string>
+    <string name="net_p2p_state_new">جديد</string>
+    <string name="net_p2p_state_connecting">جارٍ الاتصال</string>
+    <string name="net_p2p_state_connected">متصل مباشر</string>
+    <string name="net_p2p_state_disconnected">منقطع</string>
+    <string name="net_p2p_state_failed">فشل الاتصال</string>
+    <string name="net_p2p_close">إغلاق</string>
+    <string name="net_p2p_turn_optional">إعداد TURN اختياري للشبكات التي تمنع الاتصال المباشر</string>
+    <string name="net_p2p_turn_url">TURN URI (turn: أو turns:)</string>
+    <string name="net_p2p_turn_username">اسم مستخدم TURN</string>
+    <string name="net_p2p_turn_credential">كلمة مرور TURN</string>
+    <string name="net_p2p_turn_apply">تطبيق إعداد TURN لهذه الجلسات</string>
+    <string name="net_p2p_turn_reset">إزالة TURN</string>
+    <string name="net_p2p_turn_invalid">بيانات TURN غير صالحة؛ يجب إدخال URI واسم المستخدم وكلمة المرور.</string>
+    <string name="net_p2p_signal_failed">تعذر إنشاء/التحقق من إشارة الاتصال. تحقق من هوية جهة الاتصال وصلاحية العرض/الإجابة وإعدادات الشبكة.</string>
+    <string name="net_p2p_answer_accepted">تم قبول إجابة الاتصال؛ جارٍ التفاوض على مسار ICE.</string>
+    <string name="net_p2p_signal_sent">تم إرسال إشارة الاتصال الموقعة عبر مسار RELYRA متاح.</string>
+    <string name="net_p2p_manual_fallback">لم يقبل أي مسار مفعّل إرسال الإشارة. انسخ بيانات الإشارة الموقعة وتبادلها بشكل خاص مع جهة الاتصال.</string>
+    <string name="net_p2p_incoming_offer">جهة اتصال موثوقة تطلب إنشاء اتصال WebRTC مباشر. وافق فقط إذا كنت تتوقع هذا الطلب.</string>
+    <string name="net_p2p_approve">الموافقة على الاتصال</string>
+    <string name="net_p2p_decline">رفض</string>
+
+    <string name="net_dht_title">اكتشاف الأجهزة عبر الإنترنت (Kademlia DHT)</string>
+    <string name="net_dht_desc">أضف بوابة اكتشاف RELYRA تعمل عبر HTTPS ومتّصلة بشبكة Kademlia الموزعة. نشر الوجود العام متوقف افتراضيًا. عند تفعيله يُنشر معرّف RELYRA العام وقدرات الاتصال في سجل موقّع صالح لثلاث دقائق؛ لا يُنشر الاسم أو SDP أو عنوان IP.</string>
+    <string name="net_dht_presence_toggle">نشر حالة وجودي للعامة</string>
+    <string name="net_dht_status_disabled">نشر الوجود العام متوقف.</string>
+    <string name="net_dht_status_no_gateway">أضف بوابة اكتشاف HTTPS لاستخدام DHT.</string>
+    <string name="net_dht_status_publishing">جارٍ نشر سجل الوجود الموقّع إلى البوابات المحددة.</string>
+    <string name="net_dht_status_published">يتم تحديث سجل الوجود العام الموقّع دوريًا.</string>
+    <string name="net_dht_status_unavailable">لم تقبل أي بوابة السجل الموقّع.</string>
+    <string name="net_dht_gateway_label">عنوان بوابة اكتشاف HTTPS</string>
+    <string name="net_dht_gateway_add">إضافة بوابة</string>
+    <string name="net_dht_gateway_remove">إزالة</string>
+    <string name="net_dht_gateway_enabled">مفعّلة</string>
+    <string name="net_dht_gateway_test">اختبار البوابة</string>
+    <string name="net_dht_gateway_testing">جارٍ الاختبار</string>
+    <string name="net_dht_gateway_test_ok">واجهة البوابة متاحة</string>
+    <string name="net_dht_gateway_test_failed">فشل اختبار البوابة</string>
+    <string name="net_dht_lookup">البحث عن الوجود في DHT</string>
+    <string name="net_dht_peer_found">تم العثور على سجل وجود موقّع. ينتهي في %1$d (وقت Unix). هذا لا يضيف جهة الاتصال ولا يجعلها موثوقة.</string>
+    <string name="net_dht_peer_not_found">لم يتم العثور على سجل وجود صالح وغير منتهٍ لمعرّف RELYRA هذا.</string>
+    <string name="net_dht_turn_fetch">الحصول على بيانات TURN مؤقتة من خدمة الاكتشاف</string>
+    <string name="net_dht_turn_ready">تم قبول بيانات TURN المؤقتة للجلسات الجديدة.</string>
+    <string name="net_dht_turn_unavailable">تعذر الحصول على بيانات TURN صالحة. تحقق من البوابة وهوية الخادم ونشر خدمة TURN.</string>
+
+    <string name="net_dht_gateway_untested">لم يتم الاختبار بعد</string>
+    <string name="net_dht_gateway_invalid">أدخل عنوان بوابة اكتشاف HTTPS صالحًا.</string>
+    <string name="net_dht_gateway_duplicate">بوابة الاكتشاف هذه مضافة بالفعل.</string>
+
+    <string name="net_transport_last_path">آخر مسار نجح في تسليم رسالة: %1$s</string>
+    <string name="net_transport_no_path">لم ينجح أي ناقل في تسليم رسالة حتى الآن.</string>
 </resources>

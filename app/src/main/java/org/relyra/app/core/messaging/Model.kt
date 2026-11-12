@@ -38,6 +38,7 @@ data class StoredMessage(
 )
 
 enum class AckKind { DELIVERED, READ }
+enum class P2pSignalKind { OFFER, ANSWER }
 
 enum class GroupKind { GROUP, CHANNEL }
 enum class GroupRole { MEMBER, ADMIN, OWNER }
@@ -73,6 +74,15 @@ sealed interface Envelope {
 
     class Ack(override val messageId: String, override val from: String, override val to: String,
               val kind: AckKind) : Envelope
+
+    /** Signed WebRTC SDP signaling; the containing RELYRA envelope is E2EE-protected. */
+    class P2pSignal(
+        override val messageId: String,
+        override val from: String,
+        override val to: String,
+        val kind: P2pSignalKind,
+        val signedSignal: String,
+    ) : Envelope
 
     /**
      * A file that was encrypted on the sender's device and uploaded to a Blossom server. Only this small descriptor
@@ -112,6 +122,8 @@ object EnvelopeCodec {
     private const val T_GROUP_CHAT = 4
     private const val T_GROUP_SYNC = 5
     private const val T_GROUP_LEAVE = 6
+    private const val T_P2P_SIGNAL = 7
+    const val MAX_P2P_SIGNAL_CHARS = 48_000
 
     fun encode(e: Envelope): ByteArray {
         val bos = ByteArrayOutputStream()
@@ -127,6 +139,13 @@ object EnvelopeCodec {
                     o.writeByte(T_ACK)
                     o.writeUTF(e.messageId); o.writeUTF(e.from); o.writeUTF(e.to)
                     o.writeByte(e.kind.ordinal)
+                }
+                is Envelope.P2pSignal -> {
+                    require(e.signedSignal.isNotBlank() && e.signedSignal.length <= MAX_P2P_SIGNAL_CHARS)
+                    o.writeByte(T_P2P_SIGNAL)
+                    o.writeUTF(e.messageId); o.writeUTF(e.from); o.writeUTF(e.to)
+                    o.writeByte(e.kind.ordinal)
+                    o.writeUTF(e.signedSignal)
                 }
                 is Envelope.Attachment -> {
                     require(e.plainSha256.size == 32 && e.blobSha256.size == 32 && e.key.size == 32)
@@ -183,6 +202,12 @@ object EnvelopeCodec {
                     T_ACK -> {
                         val k = AckKind.entries.getOrNull(i.readUnsignedByte()) ?: return null
                         Envelope.Ack(id, from, to, k)
+                    }
+                    T_P2P_SIGNAL -> {
+                        val kind = P2pSignalKind.entries.getOrNull(i.readUnsignedByte()) ?: return null
+                        val signal = i.readUTF()
+                        if (signal.isBlank() || signal.length > MAX_P2P_SIGNAL_CHARS) null
+                        else Envelope.P2pSignal(id, from, to, kind, signal)
                     }
                     T_ATTACH -> {
                         val sentAt = i.readLong()
