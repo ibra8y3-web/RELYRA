@@ -74,6 +74,36 @@ data class GroupOutboxEntity(
 
 fun OutboxRow.toEntity() = GroupOutboxEntity(id, groupId, memberId, baseMessageId, payload, createdAt, attempts, nextAttemptAt, acked, failed, readAt)
 
+@Entity(tableName = "group_attachments")
+data class GroupAttachmentEntity(
+    @androidx.room.PrimaryKey val messageId: String,
+    val groupId: String,
+    val senderId: String,
+    val name: String,
+    val mime: String,
+    val size: Long,
+    val blobSize: Long,
+    val plainSha256: ByteArray,
+    val blobSha256: ByteArray,
+    val fileKey: ByteArray,
+    val serverUrl: String,
+    val localPath: String?,
+    val phase: String,
+    val createdAt: Long,
+    val outgoing: Boolean,
+) {
+    fun toModel() = org.relyra.app.core.messaging.GroupAttachmentRecord(
+        messageId, groupId, senderId, name, mime, size, blobSize, plainSha256, blobSha256,
+        fileKey, serverUrl, localPath,
+        org.relyra.app.core.messaging.GroupAttachmentPhase.valueOf(phase), createdAt, outgoing,
+    )
+}
+
+fun org.relyra.app.core.messaging.GroupAttachmentRecord.toEntity() = GroupAttachmentEntity(
+    messageId, groupId, senderId, name, mime, size, blobSize, plainSha256, blobSha256,
+    fileKey, serverUrl, localPath, phase.name, createdAt, outgoing,
+)
+
 /** How many of a group message's copies have been acknowledged. */
 data class GroupDeliveryCount(val messageId: String, val total: Int, val delivered: Int, val readCount: Int)
 
