@@ -37,6 +37,7 @@ import java.nio.ByteBuffer
 import java.util.Base64
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.UUID
 import kotlin.coroutines.resume
 import kotlin.coroutines.resumeWithException
@@ -203,6 +204,7 @@ class WebRtcP2pConnector(
     private val approvedPeers = ConcurrentHashMap.newKeySet<String>()
     private val reconnecting = ConcurrentHashMap.newKeySet<String>()
     private val reconnectJobs = ConcurrentHashMap<String, kotlinx.coroutines.Job>()
+    private val recoveryAttempts = ConcurrentHashMap<String, AtomicInteger>()
     private val states = MutableStateFlow<Map<String, InternetPeerState>>(emptyMap())
     private val _incomingOffers = MutableStateFlow<Map<String, IncomingP2pOffer>>(emptyMap())
     val peerStates: StateFlow<Map<String, InternetPeerState>> = states
@@ -331,6 +333,7 @@ class WebRtcP2pConnector(
                     else -> InternetPeerState.NEW
                 }
                 states.value = states.value + (peerId to mapped)
+                if (mapped == InternetPeerState.CONNECTED) recoveryAttempts.remove(peerId)
                 if (state == PeerConnection.IceConnectionState.DISCONNECTED ||
                     state == PeerConnection.IceConnectionState.FAILED
                 ) {
@@ -518,6 +521,7 @@ class WebRtcP2pConnector(
         approvedPeers.remove(key)
         reconnectJobs.remove(key)?.cancel()
         reconnecting.remove(key)
+        recoveryAttempts.remove(key)
         retirePeer(key)
         dismissIncomingOffer(key)
     }
@@ -526,6 +530,7 @@ class WebRtcP2pConnector(
         reconnectJobs.values.forEach { it.cancel() }
         reconnectJobs.clear()
         reconnecting.clear()
+        recoveryAttempts.clear()
         approvedPeers.clear()
         peers.keys.toList().forEach { retirePeer(it) }
         peers.clear()
@@ -558,9 +563,15 @@ class WebRtcP2pConnector(
         if (!reconnecting.add(key)) return
         val job = scope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
             var expected: Peer? = failedPeer
+            val attemptCounter = recoveryAttempts.computeIfAbsent(key) { AtomicInteger(0) }
             try {
-                repeat(WebRtcReconnectPolicy.MAX_ATTEMPTS) { attempt ->
+                repeat(WebRtcReconnectPolicy.MAX_ATTEMPTS) {
                     if (!approvedPeers.contains(key)) return@launch
+                    val attempt = attemptCounter.getAndIncrement()
+                    if (attempt >= WebRtcReconnectPolicy.MAX_ATTEMPTS) {
+                        states.value = states.value + (key to InternetPeerState.FAILED)
+                        return@launch
+                    }
                     if (expected != null) {
                         val iceState = expected!!.connection.iceConnectionState()
                         if (expected!!.channel?.state() == DataChannel.State.OPEN &&
@@ -615,7 +626,7 @@ class WebRtcP2pConnector(
                     expected = null
                     delay(WebRtcReconnectPolicy.delayMillis(attempt))
                 }
-                if (peers[key] == null) states.value = states.value + (key to InternetPeerState.FAILED)
+                states.value = states.value + (key to InternetPeerState.FAILED)
             } finally {
                 reconnectJobs.remove(key)
                 reconnecting.remove(key)
@@ -668,6 +679,12 @@ class WebRtcP2pConnector(
                     DataChannel.State.CLOSING -> InternetPeerState.DISCONNECTED
                     DataChannel.State.CLOSED -> InternetPeerState.FAILED
                 })
+                if (channel.state() == DataChannel.State.OPEN) {
+                    val ice = peer.connection.iceConnectionState()
+                    if (ice == PeerConnection.IceConnectionState.CONNECTED ||
+                        ice == PeerConnection.IceConnectionState.COMPLETED
+                    ) recoveryAttempts.remove(peerId)
+                }
             }
             override fun onMessage(buffer: DataChannel.Buffer) {
                 if (peers[peerId] !== peer) return
