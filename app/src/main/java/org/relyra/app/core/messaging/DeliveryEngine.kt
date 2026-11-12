@@ -39,6 +39,10 @@ class DeliveryEngine(
     private val onP2pSignal: suspend (String, Envelope.P2pSignal) -> Unit = { _, _ -> },
 ) {
     private val lock = Mutex()
+    // Serializes outbox workers without holding the state mutex across network I/O.
+    private val processLock = Mutex()
+    // Ratchet state must not be advanced concurrently by simultaneous send/receive operations.
+    private val cryptoLock = Mutex()
     private val uploadLock = Mutex()
 
     companion object {
@@ -89,7 +93,8 @@ class DeliveryEngine(
     suspend fun transmit(peer: String, plaintext: ByteArray): SendOutcome {
         // Do not encrypt (which advances the ratchet) when there is no route to send on anyway.
         if (transports().none { it.isReady() }) return SendOutcome.Unavailable
-        val payload = protector.protect(peer, plaintext) ?: return SendOutcome.Rejected("no encryption key for peer")
+        val payload = cryptoLock.withLock { protector.protect(peer, plaintext) }
+            ?: return SendOutcome.Rejected("no encryption key for peer")
         return transmitWire(peer, payload)
     }
 
@@ -113,88 +118,137 @@ class DeliveryEngine(
 
     private suspend fun processDirect(): Int {
         uploadPending()
-        lock.withLock {
-            val me = ownId() ?: return 0
-            val now = clock()
+        return processLock.withLock process@{
+            val me = ownId() ?: return@process 0
+            val candidates = lock.withLock { store.dueOutgoing(clock(), 50) }
             var sent = 0
-            for (m in store.dueOutgoing(now, 50)) {
-                if (now - m.createdAt > TTL_MS) {
-                    store.update(
-                        m.copy(
-                            state = if (m.state == MessageState.QUEUED) MessageState.EXPIRED else m.state,
-                            nextAttemptAt = Long.MAX_VALUE,
-                            wirePayload = null,
-                        )
-                    )
-                    protector.forget(m.messageId)
-                    if (m.state == MessageState.QUEUED) abandonAttachment(m.messageId)
-                    continue
-                }
-                val attachment = store.attachment(m.messageId)
-                val plaintext: ByteArray
-                if (attachment == null) {
-                    plaintext = EnvelopeCodec.encode(Envelope.Chat(m.messageId, me, m.chatId, m.createdAt, m.body))
-                } else when (attachment.phase) {
-                    AttachmentPhase.UPLOADED -> {
-                        plaintext = EnvelopeCodec.encode(
-                            Envelope.Attachment(
-                                m.messageId, me, m.chatId, m.createdAt, attachment.name, attachment.mime,
-                                attachment.size, attachment.blobSize, attachment.plainSha256, attachment.blobSha256,
-                                attachment.fileKey, attachment.serverUrl,
-                            )
-                        )
-                    }
-                    AttachmentPhase.AWAITING_UPLOAD -> {
-                        if (uploadLock.isLocked) continue
-                        val attempts = m.attempts + 1
-                        store.update(m.copy(attempts = attempts, nextAttemptAt = now + backoff(attempts)))
-                        continue
-                    }
-                    else -> {
-                        store.update(m.copy(state = MessageState.FAILED, nextAttemptAt = Long.MAX_VALUE, wirePayload = null))
-                        continue
-                    }
-                }
 
-                // A packet is encrypted once and persisted before transport. Retries reuse the same ciphertext,
-                // which is essential for X3DH's first packet and for all Double Ratchet chain counters.
-                if (m.wirePayload == null && transports().none { it.isReady() }) {
-                    val attempts = m.attempts + 1
-                    store.update(m.copy(attempts = attempts, nextAttemptAt = now + backoff(attempts)))
-                    continue
-                }
-                val protected = m.wirePayload ?: protector.protect(m.chatId, plaintext)
-                if (protected == null) {
-                    store.update(m.copy(state = MessageState.FAILED, nextAttemptAt = Long.MAX_VALUE))
-                    continue
-                }
-                val current = if (m.wirePayload == null) m.copy(wirePayload = protected) else m
-                if (m.wirePayload == null) store.update(current)
+            for (candidate in candidates) {
+                // Re-read and persist the ratchet ciphertext while holding the state lock, but
+                // never hold that lock while calling a transport. Test transports and in-process
+                // transports may deliver an ACK synchronously from send().
+                val prepared = lock.withLock state@{
+                    val message = store.get(candidate.messageId) ?: return@state null
+                    val now = clock()
+                    if (!message.outgoing ||
+                        message.state !in setOf(MessageState.QUEUED, MessageState.SENT, MessageState.RELAYED) ||
+                        message.nextAttemptAt > now
+                    ) return@state null
 
-                when (val r = transmitWire(m.chatId, protected)) {
-                    SendOutcome.Accepted, SendOutcome.Relayed -> {
-                        val target = if (r == SendOutcome.Relayed) MessageState.RELAYED else MessageState.SENT
-                        val attempts = current.attempts + 1
+                    if (now - message.createdAt > TTL_MS) {
                         store.update(
-                            current.copy(
-                                state = if (MessageState.canAdvance(current.state, target)) target else current.state,
-                                attempts = attempts,
-                                nextAttemptAt = now + ackWait(attempts),
+                            message.copy(
+                                state = if (message.state == MessageState.QUEUED) MessageState.EXPIRED else message.state,
+                                nextAttemptAt = Long.MAX_VALUE,
+                                wirePayload = null,
                             )
                         )
-                        sent++
+                        protector.forget(message.messageId)
+                        if (message.state == MessageState.QUEUED) abandonAttachment(message.messageId)
+                        return@state null
                     }
-                    SendOutcome.Unavailable -> {
-                        val attempts = current.attempts + 1
-                        store.update(current.copy(attempts = attempts, nextAttemptAt = now + backoff(attempts)))
+
+                    val attachment = store.attachment(message.messageId)
+                    val plaintext: ByteArray
+                    if (attachment == null) {
+                        plaintext = EnvelopeCodec.encode(
+                            Envelope.Chat(message.messageId, me, message.chatId, message.createdAt, message.body)
+                        )
+                    } else when (attachment.phase) {
+                        AttachmentPhase.UPLOADED -> {
+                            plaintext = EnvelopeCodec.encode(
+                                Envelope.Attachment(
+                                    message.messageId, me, message.chatId, message.createdAt, attachment.name, attachment.mime,
+                                    attachment.size, attachment.blobSize, attachment.plainSha256, attachment.blobSha256,
+                                    attachment.fileKey, attachment.serverUrl,
+                                )
+                            )
+                        }
+                        AttachmentPhase.AWAITING_UPLOAD -> {
+                            if (uploadLock.isLocked) return@state null
+                            val attempts = message.attempts + 1
+                            store.update(message.copy(attempts = attempts, nextAttemptAt = now + backoff(attempts)))
+                            return@state null
+                        }
+                        else -> {
+                            store.update(
+                                message.copy(
+                                    state = MessageState.FAILED,
+                                    nextAttemptAt = Long.MAX_VALUE,
+                                    wirePayload = null,
+                                )
+                            )
+                            return@state null
+                        }
                     }
-                    is SendOutcome.Rejected -> {
-                        store.update(current.copy(state = MessageState.FAILED, nextAttemptAt = Long.MAX_VALUE, wirePayload = null))
-                        protector.forget(m.messageId)
+
+                    // A packet is encrypted once and persisted before transport. Retries reuse the
+                    // exact same ciphertext so X3DH and Double Ratchet counters are never advanced twice.
+                    if (message.wirePayload == null && transports().none { it.isReady() }) {
+                        val attempts = message.attempts + 1
+                        store.update(message.copy(attempts = attempts, nextAttemptAt = now + backoff(attempts)))
+                        return@state null
+                    }
+
+                    val protected = message.wirePayload ?: cryptoLock.withLock {
+                        protector.protect(message.chatId, plaintext)
+                    }
+                    if (protected == null) {
+                        store.update(message.copy(state = MessageState.FAILED, nextAttemptAt = Long.MAX_VALUE))
+                        return@state null
+                    }
+                    val current = if (message.wirePayload == null) message.copy(wirePayload = protected) else message
+                    if (message.wirePayload == null) store.update(current)
+                    current
+                } ?: continue
+
+                val wire = prepared.wirePayload ?: continue
+                val outcome = transmitWire(prepared.chatId, wire)
+                val sentAt = clock()
+
+                lock.withLock commit@{
+                    val latest = store.get(prepared.messageId) ?: return@commit
+                    // A synchronous receiver ACK may already have advanced this row while send()
+                    // was running. Never overwrite a delivered/read/cancelled/expired state.
+                    if (latest.state in setOf(
+                            MessageState.DELIVERED,
+                            MessageState.READ,
+                            MessageState.CANCELLED,
+                            MessageState.EXPIRED,
+                        )
+                    ) return@commit
+
+                    when (outcome) {
+                        SendOutcome.Accepted, SendOutcome.Relayed -> {
+                            val target = if (outcome == SendOutcome.Relayed) MessageState.RELAYED else MessageState.SENT
+                            val attempts = latest.attempts + 1
+                            store.update(
+                                latest.copy(
+                                    state = if (MessageState.canAdvance(latest.state, target)) target else latest.state,
+                                    attempts = attempts,
+                                    nextAttemptAt = sentAt + ackWait(attempts),
+                                )
+                            )
+                            sent++
+                        }
+                        SendOutcome.Unavailable -> {
+                            val attempts = latest.attempts + 1
+                            store.update(latest.copy(attempts = attempts, nextAttemptAt = sentAt + backoff(attempts)))
+                        }
+                        is SendOutcome.Rejected -> {
+                            store.update(
+                                latest.copy(
+                                    state = MessageState.FAILED,
+                                    nextAttemptAt = Long.MAX_VALUE,
+                                    wirePayload = null,
+                                )
+                            )
+                            protector.forget(latest.messageId)
+                        }
                     }
                 }
             }
-            return sent
+            sent
         }
     }
 
@@ -249,7 +303,7 @@ class DeliveryEngine(
      * Duplicate but authentic packets return true because they are safely re-acknowledged by [onPacket].
      */
     suspend fun acceptWire(wire: ByteArray): Boolean {
-        val opened = protector.open(wire) ?: return false
+        val opened = cryptoLock.withLock { protector.open(wire) } ?: return false
         val env = EnvelopeCodec.decode(opened.plaintext) ?: return false
         if (env.from != opened.senderId) return false
         val me = ownId() ?: return false
