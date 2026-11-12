@@ -347,6 +347,7 @@ pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeProces
     _class: JClass,
     message: JByteArray,
     expected_public_id: JString,
+    allowed_target_ids: JObjectArray,
 ) -> jlong {
     let message = match input_bytes(&mut env, message) {
         Ok(value) => value,
@@ -356,7 +357,23 @@ pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeProces
         Ok(value) => value.into(),
         Err(error) => { throw(&mut env, error); return -1; }
     };
-    catch_result(&mut env, || with_database(|db| process_proposal(db, &message, &expected_public_id)))
+    let length = match env.get_array_length(&allowed_target_ids) {
+        Ok(value) if (1..=200).contains(&value) => value,
+        _ => { throw(&mut env, "invalid MLS proposal target allowlist"); return -1; }
+    };
+    let mut allowed = Vec::with_capacity(length as usize);
+    for index in 0..length {
+        let object = match env.get_object_array_element(&allowed_target_ids, index) {
+            Ok(value) => value,
+            Err(error) => { throw(&mut env, error); return -1; }
+        };
+        let target: String = match env.get_string(&JString::from(object)) {
+            Ok(value) => value.into(),
+            Err(error) => { throw(&mut env, error); return -1; }
+        };
+        allowed.push(target);
+    }
+    catch_result(&mut env, || with_database(|db| process_proposal(db, &message, &expected_public_id, &allowed)))
         .map(|epoch| epoch as jlong)
         .unwrap_or(-1)
 }
