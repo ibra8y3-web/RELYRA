@@ -402,8 +402,8 @@ class GroupEngineTest {
             transmit = { _, _ -> SendOutcome.Unavailable },
         )
 
-        assertEquals(GroupResult.NOT_ALLOWED, admin.addMembers(gid, listOf("dave")))
-        assertEquals(GroupResult.NOT_ALLOWED, admin.removeMember(gid, "carol"))
+        assertEquals(GroupResult.PROPOSAL_QUEUED, admin.addMembers(gid, listOf("dave")))
+        assertEquals(GroupResult.PROPOSAL_QUEUED, admin.removeMember(gid, "carol"))
         assertEquals(GroupResult.NOT_ALLOWED, admin.setAdmin(gid, "carol", true))
         assertEquals(setOf("alice", "bob", "carol"), store.members(gid).map { it.id }.toSet())
         assertEquals(7L, store.group(gid)!!.epoch)
@@ -414,6 +414,50 @@ class GroupEngineTest {
         assertEquals(GroupResult.OK, admin.rename(gid, "MLS team renamed"))
         assertEquals(8L, store.group(gid)!!.epoch)
         assertEquals(4L, store.group(gid)!!.mlsEpoch)
+    }
+
+    @Test fun concurrentMlsAdminMembershipProposalsAreSerializedByOwner() = runBlocking {
+        val gid = UUID.randomUUID().toString()
+        val members = listOf(
+            GroupMemberRef("alice", GroupRole.OWNER, mlsJoined = true),
+            GroupMemberRef("bob", GroupRole.ADMIN, mlsJoined = true),
+            GroupMemberRef("carol", GroupRole.ADMIN, mlsJoined = true),
+        )
+        val record = GroupRecord(gid, "MLS team", GroupKind.GROUP, "alice", 7, GroupState.ACTIVE,
+            now, "alice", mlsEnabled = true, mlsEpoch = 4)
+        listOf(alice, bob, carol).forEach { it.store.putGroup(record, members) }
+
+        // Both admins create proposals against the same group and MLS epochs while the owner is offline.
+        net.down += "alice"
+        assertEquals(GroupResult.PROPOSAL_QUEUED, bob.engine.addMembers(gid, listOf("dave")))
+        assertEquals(GroupResult.PROPOSAL_QUEUED, carol.engine.addMembers(gid, listOf("dave")))
+        net.down.clear()
+        pump()
+
+        val updated = alice.store.group(gid)!!
+        assertEquals(8L, updated.epoch)
+        assertEquals(4L, updated.mlsEpoch)
+        assertEquals(1, alice.store.members(gid).count { it.id == "dave" })
+        assertEquals(GroupRole.MEMBER, alice.store.members(gid).first { it.id == "dave" }.role)
+        assertEquals(GroupState.INVITED, dave.store.group(gid)?.state)
+
+        val acceptedProposal = bob.store.outbox.values.single { it.memberId == "alice" }
+        val acceptedEnvelope = EnvelopeCodec.decode(acceptedProposal.payload) as Envelope.GroupMls
+        alice.engine.onEnvelope(acceptedEnvelope) // duplicate delivery must not apply the proposal twice
+        assertEquals(8L, alice.store.group(gid)!!.epoch)
+        assertEquals(1, alice.store.members(gid).count { it.id == "dave" })
+        assertTrue(bob.store.outbox.values.all { it.acked })
+        assertTrue(carol.store.outbox.values.all { it.acked })
+    }
+
+    @Test fun membershipProposalCodecRejectsMalformedOrTrailingBytes() {
+        val proposal = GroupChangeProposal(
+            UUID.randomUUID().toString(), UUID.randomUUID().toString(), 3, 2, "add", listOf("alice", "bob")
+        )
+        val encoded = GroupChangeProposalCodec.encode(proposal)
+        assertEquals(proposal, GroupChangeProposalCodec.decode(encoded))
+        assertNull(GroupChangeProposalCodec.decode(encoded + byteArrayOf(0)))
+        assertNull(GroupChangeProposalCodec.decode(byteArrayOf(1, 2, 3)))
     }
 
     @Test fun mlsCommitFromAdminIsIgnoredAtReceiver() = runBlocking {
