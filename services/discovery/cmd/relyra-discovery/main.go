@@ -109,6 +109,7 @@ func main() {
 	}
 	defer node.close()
 	go node.refreshCommunityDirectory(ctx)
+	go node.refreshMailbox(ctx)
 
 	listen := env("RELYRA_HTTP_LISTEN", "0.0.0.0:8080")
 	httpServer := &http.Server{
@@ -407,6 +408,25 @@ func (s *server) deleteMailbox(w http.ResponseWriter, r *http.Request) {
 	default:
 		w.Header().Set("Cache-Control", "no-store")
 		writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
+	}
+}
+
+
+ 
+func (s *server) refreshMailbox(ctx context.Context) {
+	ticker := time.NewTicker(5 * time.Minute)
+	defer ticker.Stop()
+	for {
+		sweepCtx, cancel := context.WithTimeout(ctx, 30*time.Second)
+		if _, err := s.mailbox.Sweep(sweepCtx); err != nil && ctx.Err() == nil {
+			log.Printf("sweep expired Store-and-Forward messages: %v", err)
+		}
+		cancel()
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
 	}
 }
 

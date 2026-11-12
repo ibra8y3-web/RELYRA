@@ -48,9 +48,8 @@ func signedEnvelope(t *testing.T, senderPrivate ed25519.PrivateKey, senderID, re
 
 func TestMailboxStoresOnlyVerifiedOpaquePayloadAndAllowsRecipientAck(t *testing.T) {
 	ctx := context.Background()
-	senderPublic, senderPrivate, senderID := mailboxIdentity(t)
+	_, senderPrivate, senderID := mailboxIdentity(t)
 	_, _, recipientID := mailboxIdentity(t)
-	_ = senderPublic
 	store := NewStore(datastore.NewMapDatastore())
 	now := time.Now().UTC().Truncate(time.Second)
 	payload := []byte{0, 1, 2, 3, 250, 255}
@@ -78,6 +77,6 @@ func TestMailboxRejectsTamperingAndExpiredEnvelopes(t *testing.T) {
 	for i := range tampered { if tampered[i] == 'c' { tampered[i] = 'd'; break } }
 	if _, err := store.Put(context.Background(), tampered); err == nil { t.Fatal("tampered envelope accepted") }
 
-	expired := signedEnvelope(t, nil, senderPrivate, senderID, recipientID, now.Add(-2*MaxTTL), []byte("expired"))
+	expired := signedEnvelope(t, senderPrivate, senderID, recipientID, now.Add(-2*MaxTTL), []byte("expired"))
 	if _, err := store.Put(context.Background(), expired); err == nil { t.Fatal("expired envelope accepted") }
 }

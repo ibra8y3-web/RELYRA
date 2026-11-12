@@ -31,6 +31,8 @@ const (
 	MaxPendingBytes = 16 * 1024 * 1024
 	MaxListPage = 20
 	MaxTTL = 24 * time.Hour
+	MaxTotalMessages = 8192
+	MaxTotalBytes = 256 * 1024 * 1024
 	mailboxPrefix = "/relyra/mailbox/"
 	signingDomain = "RELYRA-STORE-FORWARD-V1"
 )
@@ -147,21 +149,32 @@ func (s *Store) Put(ctx context.Context, raw []byte) (bool, error) {
 	}
 	if !errors.Is(err, datastore.ErrNotFound) { return false, fmt.Errorf("read mailbox item: %w", err) }
 
-	results, err := s.ds.Query(ctx, queryForRecipient(envelope.RecipientPublicID))
-	if err != nil { return false, fmt.Errorf("query recipient mailbox: %w", err) }
-	count, totalBytes := 0, 0
+	results, err := s.ds.Query(ctx, query.Query{Prefix: mailboxPrefix})
+	if err != nil { return false, fmt.Errorf("query mailbox storage: %w", err) }
+	nowRecipientCount, nowRecipientBytes := 0, 0
+	totalCount, totalBytes := 0, 0
 	for entry := range results.Next() {
 		if entry.Error != nil { _ = results.Close(); return false, entry.Error }
 		prior, _, parseErr := parseAndVerify(entry.Value, now)
 		if parseErr != nil || prior.ExpiresAt <= now.Unix() {
-			_ = s.ds.Delete(ctx, entry.Key)
+			if deleteErr := s.ds.Delete(ctx, entry.Key); deleteErr != nil && !errors.Is(deleteErr, datastore.ErrNotFound) {
+				_ = results.Close()
+				return false, fmt.Errorf("remove expired mailbox item: %w", deleteErr)
+			}
 			continue
 		}
-		count++
+		totalCount++
 		totalBytes += len(entry.Value)
+		if prior.RecipientPublicID == envelope.RecipientPublicID {
+			nowRecipientCount++
+			nowRecipientBytes += len(entry.Value)
+		}
 	}
 	_ = results.Close()
-	if count >= MaxPendingMessages || totalBytes+len(raw) > MaxPendingBytes { return false, ErrQuotaExceeded }
+	if nowRecipientCount >= MaxPendingMessages || nowRecipientBytes+len(raw) > MaxPendingBytes ||
+		totalCount >= MaxTotalMessages || totalBytes+len(raw) > MaxTotalBytes {
+		return false, ErrQuotaExceeded
+	}
 	if err := s.ds.Put(ctx, key, raw); err != nil { return false, fmt.Errorf("store mailbox envelope: %w", err) }
 	return true, nil
 }
@@ -208,6 +221,31 @@ func (s *Store) Delete(ctx context.Context, recipient, messageID string) error {
 	if err != nil || envelope.RecipientPublicID != recipient { return ErrUnauthorized }
 	if err := s.ds.Delete(ctx, key); err != nil { return fmt.Errorf("delete mailbox item: %w", err) }
 	return nil
+}
+
+
+ 
+// Sweep deletes expired/corrupt envelopes so mailboxes for inactive recipients
+// cannot accumulate forever. It is safe to run concurrently with API operations.
+func (s *Store) Sweep(ctx context.Context) (int, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	results, err := s.ds.Query(ctx, query.Query{Prefix: mailboxPrefix})
+	if err != nil { return 0, fmt.Errorf("query mailbox storage: %w", err) }
+	defer results.Close()
+	now := s.clock()
+	deleted := 0
+	for entry := range results.Next() {
+		if entry.Error != nil { return deleted, entry.Error }
+		envelope, _, parseErr := parseAndVerify(entry.Value, now)
+		if parseErr != nil || envelope.ExpiresAt <= now.Unix() {
+			if err := s.ds.Delete(ctx, entry.Key); err != nil && !errors.Is(err, datastore.ErrNotFound) {
+				return deleted, fmt.Errorf("delete expired mailbox envelope: %w", err)
+			}
+			deleted++
+		}
+	}
+	return deleted, nil
 }
 
 func queryForRecipient(recipient string) query.Query {
