@@ -75,32 +75,38 @@ See INTERNET_P2P_WEBRTC.md and services/discovery/README.md for protocol workflo
 
 ## Priority 3 — group protocol and community layer
 
-**Current status: incremental group read receipts are implemented on branch `phase-3-group-protocol`; MLS, group attachments and public community services remain unfinished.**
+**Current status: implementation is present on branch `phase-3-group-protocol`; this branch is not merged and its clean CI/release gates remain open.**
 
-Implemented in this phase branch:
-- Optional, per-recipient group read receipts. Each receipt refers to the exact message-copy ID delivered to one member; the sender records it only when group, copy ID and recipient all match its durable outbox row.
-- A SQLCipher Room migration adds the read timestamp without destructive migration or loss of existing group/outbox data.
-- Read-receipt sending follows the existing user privacy preference. Local read state is saved even when sending receipts is disabled.
-- Group UI reports delivered and read counts separately. Regression tests cover member-copy binding, preference-off behavior and receipt codec validation.
-- `docs/MLS_AND_COMMUNITY_DESIGN.md` records the MLS integration decision, identity binding, epoch/removal semantics, attachment model and separate community security model.
+Implemented in the current phase branch:
+- Optional group read receipts, bound to the exact per-recipient message-copy ID and authenticated through the sender's existing one-to-one end-to-end session. Local read state is retained when receipt sending is disabled.
+- Delivered/read member counts in the group UI and a non-destructive Room migration for the `readAt` field.
+- OpenMLS 0.9.2 behind a Rust/JNI bridge. OpenMLS state is stored in a separate SQLCipher database using the app's Keystore-derived database key.
+- Signed RELYRA account/device credentials inside MLS BasicCredential. The account's existing Ed25519 key signs the account public ID and a stable per-installation device ID; KeyPackages are checked against the authenticated RELYRA sender.
+- KeyPackage, Welcome, Commit, ApplicationData, epoch persistence, member removal and local state reload after database reopen are implemented at source level.
+- MLS membership-changing commits are serialized through the group owner. Admins cannot independently issue competing MLS epoch commits; general multi-admin proposal coordination is not implemented.
+- New MLS-enabled groups can send file descriptors inside MLS application ciphertext. File bytes are encrypted before Blossom upload; download tests verify the blob digest, decrypt with the descriptor key and verify the plaintext digest. The UI hides group-file sending for legacy groups that do not have MLS.
+- Community manifests and moderator events are signed by RELYRA identities. Public discovery, private single-recipient invitations, signed access proofs, sequence/replay checks, report submission and a moderator-only report inbox are implemented in the discovery service.
+- Private-community ban/unban events update membership access. Ban records are checked when reading private community data and when creating/redeeming invitations. The moderation UI exposes only actions with implemented effects.
 
-Still required:
-- Integrate a pinned, reviewed OpenMLS implementation through a small Android native bridge; the current production group engine remains pairwise Double Ratchet fan-out and is **not MLS**.
-- Implement real MLS KeyPackage, Welcome, Proposal and Commit lifecycle, epoch persistence and restart recovery.
-- Implement group attachments through encrypted Blossom blobs; the current attachment engine is one-to-one only.
-- Implement community manifests, opt-in discovery, signed moderator events, reporting, replay protection and server-side abuse/rate controls. These are design-only, not runtime features.
-- Test membership changes, removals, restart recovery, concurrent commits, malicious proposals and member churn on independent clients.
+Remaining release gates and limitations:
+- OpenMLS proposal creation and multi-admin proposal/commit reconciliation are not implemented. The current safe policy is one MLS epoch writer: the owner.
+- Device-to-device MLS interoperability, app-process restart on Android, Android NDK libraries on every supported ABI, and removal across two independent installations still require integration/device validation.
+- A complete Android group-attachment send/download/export cycle on real devices remains to be verified; current JVM tests cover encryption, Blossom download, blob hash, and plaintext hash.
+- Community discovery currently uses the discovery service's local Pebble index. Community manifests are not yet replicated through a distributed community DHT.
+- `mute`, `slow_mode`, and `allow_post` are protocol event vocabulary only. There is no community post/feed pipeline on which to enforce them, so those actions are not exposed in the current UI.
+- Report storage/listing is bounded and signature-verified, but long-term retention, moderation workflow states and pagination need a separate design.
+- CI must pass from a clean checkout on the exact final PR head before merge. Device/network verification remains with the project owner.
 
-Acceptance criteria:
-- Removed members cannot decrypt application messages created after the committed MLS removal epoch.
-- Membership changes converge under concurrent proposals and reject forged, stale or replayed commits.
-- Group state recovers after restart without accepting a stale transcript.
-- Group attachments are encrypted before Blossom upload and verified before opening.
-- Read receipts are optional, authenticated and bound to the correct recipient/message copy.
+Acceptance criteria still required:
+- The removed MLS member cannot decrypt application data created after the committed removal epoch, including after reopening SQLCipher storage.
+- Stale, duplicate and conflicting commits are rejected; owner-serialized epoch updates converge.
+- Read receipts remain optional, signed by the existing session, and bound to the correct recipient-specific copy.
+- Group attachments are encrypted before upload and both ciphertext and plaintext hashes are checked before opening.
 - Community moderator actions are signed, authorized, replay-protected and rate limited at the service.
-- CI passes from a clean checkout and supported Android ABIs interoperate.
+- English and Arabic resources validate, Android JVM tests pass, native Rust tests pass, and the full CI workflow succeeds on the final head.
+- Two independent Android installations interoperate for group join, messaging, removal and attachment transfer.
 
-See `docs/MLS_AND_COMMUNITY_DESIGN.md` for the protocol design and explicit implementation boundaries.
+See `docs/MLS_AND_COMMUNITY_DESIGN.md` for the exact protocol boundaries and remaining limitations.
 
 ## Priority 4 — privacy network options
 
