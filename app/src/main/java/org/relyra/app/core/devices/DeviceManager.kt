@@ -16,6 +16,7 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         private const val REQUEST = "RELYRA-DEVICE-REQUEST-V1"
         private const val APPROVAL = "RELYRA-DEVICE-APPROVAL-V1"
         private const val REVOCATION = "RELYRA-DEVICE-REVOCATION-V1"
+        private const val ROTATION = "RELYRA-DEVICE-KEY-ROTATION-V1"
         private const val TTL = 300_000L
         private const val MAX = 8192
     }
@@ -158,8 +159,6 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         val account=checkNotNull(db.identityDao().get()).publicId
         require(deviceId!=secure.deviceId()) { "The active device cannot revoke itself" }
         check(db.trustedDeviceDao().revokeApproved(deviceId,account,System.currentTimeMillis())==1) { "Device is not approved" }
-        val identity = checkNotNull(db.identityDao().get())
-        val seed = checkNotNull(secure.loadSeed())
         val local=ensureLocalDevice()
         val signerSeed=checkNotNull(secure.loadDeviceSigningSeed(local.deviceId))
         val body = transcript(REVOCATION, account, deviceId, System.currentTimeMillis().toString(),
@@ -195,6 +194,55 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
             else -> error("Unknown device state")
         }
         log(EventType.DEVICE_REVOKED,target)
+    }
+    suspend fun rotateLocalDeviceKeys(): String {
+        val local=ensureLocalDevice()
+        val oldSeed=checkNotNull(secure.loadDeviceSigningSeed(local.deviceId))
+        val oldEncryption=checkNotNull(secure.loadDeviceEncryptionSecret(local.deviceId))
+        val newSigning=IdentityCrypto.generate()
+        val newEncryption=ByteArray(32).also { SecureRandom().nextBytes(it) }
+        val newVersion=local.keyVersion+1
+        val body=transcript(ROTATION,local.accountId,local.deviceId,System.currentTimeMillis().toString(),
+            local.keyVersion.toString(),newVersion.toString(),b64(local.signingPublicKey),
+            b64(newSigning.publicKey),b64(PayloadCrypto.publicKey(oldEncryption)),
+            b64(PayloadCrypto.publicKey(newEncryption)))
+        val token=envelope(ROTATION,body,IdentityCrypto.sign(oldSeed,body))
+        secure.saveDeviceSigningSeed(local.deviceId,newSigning.seed)
+        secure.saveDeviceEncryptionSecret(local.deviceId,newEncryption)
+        val changed=db.trustedDeviceDao().rotateDeviceKeys(local.deviceId,local.accountId,
+            local.keyVersion,newVersion,newSigning.publicKey,PayloadCrypto.publicKey(newEncryption))
+        if(changed!=1) {
+            secure.saveDeviceSigningSeed(local.deviceId,oldSeed)
+            secure.saveDeviceEncryptionSecret(local.deviceId,oldEncryption)
+            error("Device key rotation lost a concurrent update; previous keys were restored")
+        }
+        log(EventType.DEVICE_KEY_ROTATED,local.deviceId)
+        return token
+    }
+
+    suspend fun acceptKeyRotation(encoded: String) {
+        val identity=checkNotNull(db.identityDao().get())
+        val (body,signature)=open(encoded,ROTATION)
+        val values=DataInputStream(ByteArrayInputStream(body)).use { input ->
+            require(input.readUTF()==ROTATION)
+            List(10) { input.readUTF() }.also { require(input.available()==0) }
+        }
+        val account=values[0]; val deviceId=values[1]; val timestamp=values[2]
+        val oldVersion=values[3].toLong(); val newVersion=values[4].toLong()
+        val oldSigning=un64(values[5]); val newSigning=un64(values[6])
+        val oldEncryption=un64(values[7]); val newEncryption=un64(values[8])
+        require(values[9].isEmpty())
+        val device=checkNotNull(db.trustedDeviceDao().get(deviceId)) { "Unknown rotating device" }
+        require(account==identity.publicId && device.accountId==account &&
+            device.status==TrustedDeviceStatus.APPROVED && device.keyVersion==oldVersion &&
+            newVersion==oldVersion+1 && timestamp.toLong()<=System.currentTimeMillis()+60_000)
+        require(device.signingPublicKey.contentEquals(oldSigning) &&
+            device.encryptionPublicKey.contentEquals(oldEncryption) && oldSigning.size==32 &&
+            newSigning.size==32 && oldEncryption.size==32 && newEncryption.size==32)
+        require(IdentityCrypto.verify(oldSigning,signature,body)) { "Invalid device key rotation signature" }
+        check(db.trustedDeviceDao().rotateDeviceKeys(deviceId,account,oldVersion,newVersion,
+            newSigning,newEncryption)==1) { "Device key rotation is stale or already applied" }
+        log(EventType.DEVICE_KEY_ROTATED,deviceId)
     }
     fun observeTrustedDevices(accountId: String) = db.trustedDeviceDao().observeForAccount(accountId)
 
