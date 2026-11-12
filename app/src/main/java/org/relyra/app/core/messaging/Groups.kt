@@ -317,7 +317,9 @@ class GroupEngine(
         decide: suspend (GroupRecord, List<GroupMemberRef>, String) -> Verdict,
     ): GroupResult = lock.withLock {
         val me = ownId() ?: return@withLock GroupResult.NO_IDENTITY
-        val g = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
+        var g = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
+        if (!recoverPendingMlsCommitLocked(g)) return@withLock GroupResult.INVALID
+        g = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
         if (g.state != GroupState.ACTIVE) return@withLock GroupResult.NOT_ACTIVE
         val previousMembers = store.members(groupId)
         when (val v = decide(g, previousMembers, me)) {
