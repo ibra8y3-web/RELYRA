@@ -201,7 +201,11 @@ class AppContainer(context: Context) {
                 when (signal.kind) {
                     P2pSignalKind.OFFER -> internetP2p.requestIncomingOffer(peerId, signal.signedSignal)
                     P2pSignalKind.ANSWER -> internetP2p.acceptAnswer(peerId, signal.signedSignal)
-                    P2pSignalKind.CALL_OFFER -> calls.receiveOffer(peerId, signal.signedSignal)
+                    P2pSignalKind.CALL_OFFER -> {
+                        calls.receiveOffer(peerId, signal.signedSignal)
+                        val display = database.contactDao().get(peerId)?.displayName ?: peerId.take(16)
+                        notifier.postCall(peerId, display)
+                    }
                     P2pSignalKind.CALL_ANSWER -> calls.receiveAnswer(peerId, signal.signedSignal)
                     P2pSignalKind.CALL_DECLINE -> calls.receiveDecline(peerId, signal.signedSignal)
                     P2pSignalKind.CALL_END -> calls.receiveEnd(peerId, signal.signedSignal)
