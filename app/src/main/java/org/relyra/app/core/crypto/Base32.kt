@@ -24,10 +24,14 @@ object Base32 {
     }
 
     fun decode(text: String): ByteArray? {
+        val normalized = text.trim().uppercase()
+        // RELYRA encodings are unpadded Base32. Reject '=' and non-canonical
+        // trailing bits so two different strings cannot decode to the same bytes.
+        if (normalized.isEmpty() || '=' in normalized) return null
         val out = ByteArrayOutputStream()
         var buffer = 0
         var bits = 0
-        for (c in text.trimEnd('=').uppercase()) {
+        for (c in normalized) {
             val v = ALPHABET.indexOf(c)
             if (v < 0) return null
             buffer = (buffer shl 5) or v
@@ -38,6 +42,8 @@ object Base32 {
                 buffer = buffer and ((1 shl bits) - 1)
             }
         }
+        // Valid unpadded Base32 tails leave at most four bits, all of which must be zero.
+        if (bits > 4 || buffer != 0) return null
         return out.toByteArray()
     }
 }
