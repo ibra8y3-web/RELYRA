@@ -64,7 +64,7 @@ object EventType {
  * A device known to an account. Public keys are device-scoped; private keys must remain
  * in the Android Keystore and are never persisted in this row or synchronized as plaintext.
  */
-@Entity(tableName = "trusted_devices", indices = [Index("accountId"), Index("status")])
+@Entity(tableName = "trusted_devices", indices = [Index(value = ["accountId"]), Index(value = ["status"])])
 data class TrustedDeviceEntity(
     @PrimaryKey val deviceId: String,
     val accountId: String,
