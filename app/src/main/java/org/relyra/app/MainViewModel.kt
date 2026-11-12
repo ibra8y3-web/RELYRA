@@ -50,6 +50,7 @@ import org.relyra.app.core.messaging.GroupKind
 import org.relyra.app.core.messaging.GroupOutcome
 import org.relyra.app.core.messaging.GroupResult
 import org.relyra.app.core.messaging.GroupAttachmentData
+import org.relyra.app.core.messaging.GroupAttachmentRecord
 import org.relyra.app.core.messaging.GroupAttachmentPhase
 import org.relyra.app.background.ConnectionService
 import org.relyra.app.core.database.ChatPrefEntity
