@@ -203,12 +203,14 @@ class AppContainer(context: Context) {
                     P2pSignalKind.ANSWER -> internetP2p.acceptAnswer(peerId, signal.signedSignal)
                     P2pSignalKind.CALL_OFFER -> {
                         calls.receiveOffer(peerId, signal.signedSignal)
-                        val display = database.contactDao().get(peerId)?.displayName ?: peerId.take(16)
-                        notifier.postCall(peerId, display)
+                        if (calls.state.value.peerId == peerId && calls.state.value.phase == org.relyra.app.core.network.CallPhase.INCOMING) {
+                            val display = database.contactDao().get(peerId)?.displayName ?: peerId.take(16)
+                            notifier.postCall(peerId, display)
+                        }
                     }
                     P2pSignalKind.CALL_ANSWER -> calls.receiveAnswer(peerId, signal.signedSignal)
-                    P2pSignalKind.CALL_DECLINE -> calls.receiveDecline(peerId, signal.signedSignal)
-                    P2pSignalKind.CALL_END -> calls.receiveEnd(peerId, signal.signedSignal)
+                    P2pSignalKind.CALL_DECLINE -> { calls.receiveDecline(peerId, signal.signedSignal); notifier.cancelCall(peerId) }
+                    P2pSignalKind.CALL_END -> { calls.receiveEnd(peerId, signal.signedSignal); notifier.cancelCall(peerId) }
                 }
             },
         )
