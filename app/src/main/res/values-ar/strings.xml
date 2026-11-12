@@ -302,4 +302,24 @@
     <string name="settings_cat_notifications_desc">سلوك الإشعارات وتفضيلات الاتصال في الخلفية.</string>
     <string name="settings_cat_diagnostics">التشخيص والنظام</string>
     <string name="settings_cat_diagnostics_desc">تشخيص الاتصال وحالة التطبيق والسجلات التقنية.</string>
+
+    <string name="communities_posts_title">منشورات المجتمع</string>
+    <string name="communities_post_hint">اكتب منشورًا للمجتمع</string>
+    <string name="communities_post_publish">نشر المنشور الموقّع</string>
+    <string name="communities_post_published">تم نشر المنشور الموقّع.</string>
+    <string name="communities_post_empty">لا توجد منشورات موثّقة حتى الآن.</string>
+    <string name="communities_action_mute">كتم النشر</string>
+    <string name="communities_action_slow_mode">تفعيل وضع البطء لمدة 30 ثانية</string>
+    <string name="communities_action_allow_post">السماح بالنشر</string>
+    <string name="communities_review_note">ملاحظة مراجعة البلاغ</string>
+    <string name="communities_review_take">استلام المراجعة</string>
+    <string name="communities_review_resolve">حل البلاغ</string>
+    <string name="communities_review_dismiss">رفض البلاغ</string>
+    <string name="communities_review_audit">عرض سجل التدقيق</string>
+    <string name="communities_review_saved">تم حفظ مراجعة البلاغ وسجل التدقيق.</string>
+    <string name="communities_report_status_open">مفتوح</string>
+    <string name="communities_report_status_in_review">قيد المراجعة</string>
+    <string name="communities_report_status_resolved">تم الحل</string>
+    <string name="communities_report_status_dismissed">مرفوض</string>
+
 </resources>
