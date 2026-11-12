@@ -314,7 +314,7 @@ class CommunityClient(
     fun verifyReport(report: CommunityReport, manifest: CommunityManifest): Boolean {
         if (!report.communityId.equals(manifest.communityId, true) ||
             !validCommunityId(report.reportId) ||
-            report.category !in setOf("spam", "harassment", "impersonation", "illegal_content", "other") ||
+            !report.category.matches(Regex("[a-z0-9_-]{1,48}")) ||
             report.summary.isBlank() || report.summary.length > 512 ||
             report.summary.contains('\u0000') || report.createdAt <= 0
         ) return false
