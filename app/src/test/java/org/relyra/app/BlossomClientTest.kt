@@ -26,10 +26,15 @@ import kotlin.random.Random
 
 class BlossomClientTest {
     private val server = MockWebServer()
-    private val client = BlossomClient(OkHttpClient())
+    private val testHttp = OkHttpClient()
+    private val client = BlossomClient(testHttp)
 
     @Before fun start() = server.start()
-    @After fun stop() = server.shutdown()
+    @After fun stop() {
+        server.shutdown()
+        testHttp.dispatcher.executorService.shutdown()
+        testHttp.connectionPool.evictAll()
+    }
 
     private fun base() = server.url("/").toString().trimEnd('/')
     private fun tmp(): File = File.createTempFile("relyra", ".bin").also { it.deleteOnExit() }
