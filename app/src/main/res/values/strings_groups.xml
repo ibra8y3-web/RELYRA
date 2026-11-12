@@ -36,6 +36,12 @@
     <string name="groups_you">You</string>
     <string name="groups_delivered">Delivered to %1$d of %2$d</string>
     <string name="groups_read">Read by %1$d of %2$d</string>
+    <string name="groups_attach_file">Attach file</string>
+    <string name="groups_file_download">Download encrypted attachment</string>
+    <string name="groups_file_downloading">Downloading and verifying file…</string>
+    <string name="groups_file_save">Save file</string>
+    <string name="groups_file_uploaded">Encrypted file attached</string>
+    <string name="err_group_file_upload">The encrypted file could not be uploaded. Check your Blossom server and try again.</string>
     <string name="groups_add_members">Add members</string>
     <string name="groups_add_none">All your usable contacts are already in this group.</string>
     <string name="groups_rename">Rename</string>
