@@ -262,7 +262,6 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
     private val negotiatedMtu = ConcurrentHashMap<String, Int>()
     private val flushLock = Mutex()
     @Volatile private var ownId: String? = null
-    @Volatile private var lastAccountId: String? = null
     @Volatile private var signer: ((ByteArray) -> ByteArray?)? = null
     @Volatile private var enabled = false
     @Volatile private var relayEnabled = false
@@ -284,8 +283,6 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
         quotaBytes = quotaMb.coerceIn(5, 100) * 1024L * 1024L
         if (publicId != null) {
             store.bindAccount(publicId)
-            if (lastAccountId != null && lastAccountId != publicId) store.clearAll()
-            lastAccountId = publicId
             if (!allowRelay) store.removeThirdParty(publicId)
             store.enforceQuota(quotaBytes)
         }
