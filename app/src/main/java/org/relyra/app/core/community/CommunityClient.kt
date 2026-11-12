@@ -297,6 +297,36 @@ class CommunityClient(
         request("POST", path, reportJson(signed)).getString("reportId")
     }
 
+    suspend fun reports(manifest: CommunityManifest, limit: Int = 50): List<CommunityReport> =
+        withContext(Dispatchers.IO) {
+            require(limit in 1..100)
+            val path = "/v1/communities/" + manifest.communityId + "/reports?limit=" + limit
+            // The report inbox always requires a signed RELYRA identity, including for public communities.
+            val array = request("GET", path, privateAccess = true).getJSONArray("reports")
+            buildList {
+                for (index in 0 until array.length()) {
+                    val report = parseReport(array.getJSONObject(index))
+                    if (verifyReport(report, manifest)) add(report)
+                }
+            }
+        }
+
+    fun verifyReport(report: CommunityReport, manifest: CommunityManifest): Boolean {
+        if (!report.communityId.equals(manifest.communityId, true) ||
+            !validCommunityId(report.reportId) ||
+            report.category !in setOf("spam", "harassment", "impersonation", "illegal_content", "other") ||
+            report.summary.isBlank() || report.summary.length > 512 ||
+            report.summary.contains('\u0000') || report.createdAt <= 0
+        ) return false
+        val now = System.currentTimeMillis()
+        if (report.createdAt > now + 5 * 60 * 1000 || now - report.createdAt > 30L * 24 * 60 * 60 * 1000) {
+            return false
+        }
+        val publicKey = IdentityCrypto.parsePublicId(report.reporterPublicId) ?: return false
+        val signature = decodeSignature(report.signature) ?: return false
+        return IdentityCrypto.verify(publicKey, signature, canonicalReport(report))
+    }
+
     fun verifyManifest(manifest: CommunityManifest): Boolean {
         if (!validCommunityId(manifest.communityId) || manifest.name.isBlank() ||
             manifest.name.length > 80 || manifest.description.length > 1000 ||
@@ -470,6 +500,11 @@ class CommunityClient(
         j.optString("description"), j.getString("visibility"),
         j.optJSONArray("moderatorPublicIds").toStringList(), j.getLong("policyVersion"),
         j.getLong("createdAt"), j.getLong("updatedAt"), j.getString("signature"),
+    )
+
+    private fun parseReport(j: JSONObject) = CommunityReport(
+        j.getString("reportId"), j.getString("communityId"), j.getString("reporterPublicId"),
+        j.getString("category"), j.getString("summary"), j.getLong("createdAt"), j.getString("signature"),
     )
 
     private fun parseEvent(j: JSONObject) = CommunityEvent(
