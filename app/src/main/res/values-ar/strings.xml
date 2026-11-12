@@ -356,4 +356,26 @@
     <string name="call_connection_interrupted">انقطع الاتصال. جارٍ محاولة استعادة المكالمة.</string>
     <string name="call_connection_failed">فشل اتصال المكالمة.</string>
     <string name="call_no_answer">لا يوجد رد أو انتهت مهلة اتصال الوسائط.</string>
+
+    <string name="devices_title">الأجهزة الموثوقة</string>
+    <string name="devices_intro">اربط تثبيتًا آخر، واعتمده من جهاز موثوق، وراجع الأجهزة، وتبادل نسخة مشفرة يدويًا.</string>
+    <string name="devices_pair_title">تسجيل هذا التثبيت</string>
+    <string name="devices_name">اسم الجهاز</string>
+    <string name="devices_create_request">إنشاء طلب اقتران موقّع</string>
+    <string name="devices_request_code">رمز طلب الاقتران</string>
+    <string name="devices_approve_title">اعتماد جهاز جديد</string>
+    <string name="devices_approve">التحقق من الطلب واعتماده</string>
+    <string name="devices_approval_code">رمز الموافقة من الجهاز الموثوق</string>
+    <string name="devices_accept_approval">قبول الموافقة الموقّعة</string>
+    <string name="devices_output_code">رمز الموافقة أو التصدير المشفر</string>
+    <string name="devices_sync_title">مزامنة مشفرة يدوية</string>
+    <string name="devices_sync_warning">تحتوي رموز المزامنة على بيانات محادثات خاصة. شاركها مع جهازك المعتمد فقط. لا تُنقل أسرار Ratchet أو MLS.</string>
+    <string name="devices_export">تصدير</string>
+    <string name="devices_sync_code">رمز المزامنة المشفر</string>
+    <string name="devices_import">فك التشفير ودمج النسخة</string>
+    <string name="devices_list_title">أجهزة هذا الحساب</string>
+    <string name="devices_empty">لا توجد أجهزة مسجلة.</string>
+    <string name="devices_last_seen">آخر ظهور (توقيت محلي)</string>
+    <string name="devices_revoke">إلغاء الثقة</string>
+
 </resources>
