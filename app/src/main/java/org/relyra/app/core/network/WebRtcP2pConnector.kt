@@ -578,6 +578,7 @@ class WebRtcP2pConnector(
                             (iceState == PeerConnection.IceConnectionState.CONNECTED ||
                                 iceState == PeerConnection.IceConnectionState.COMPLETED)
                         ) {
+                            recoveryAttempts.remove(key)
                             states.value = states.value + (key to InternetPeerState.CONNECTED)
                             return@launch
                         }
