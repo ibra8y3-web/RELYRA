@@ -5,6 +5,7 @@ import kotlinx.coroutines.sync.withLock
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.security.MessageDigest
+import java.util.Base64
 import java.util.UUID
 
 data class GroupRecord(
@@ -505,6 +506,8 @@ class GroupEngine(
                 if (sender.mlsJoined) { ack(me, env.from, env.messageId); return }
                 val acknowledgedEpoch = env.payload.toString(Charsets.UTF_8).toLongOrNull() ?: return
                 if (acknowledgedEpoch != group.mlsEpoch) return
+                val activeCredentials = mlsCredentialIds(env.groupId) ?: return
+                if (env.from.lowercase() !in activeCredentials) return
                 if (!store.recordControlMessage(env.messageId, clock())) { ack(me, env.from, env.messageId); return }
                 val updatedMembers = members.map { if (it.id == env.from) it.copy(mlsJoined = true) else it }
                 store.putGroup(group.copy(mlsEpoch = acknowledgedEpoch), updatedMembers)
@@ -572,6 +575,20 @@ class GroupEngine(
         ack(me, env.from, env.messageId)
     }
 
+    /** Reads and validates the RELYRA-signed account/device credentials in the local MLS tree. */
+    private suspend fun mlsCredentialIds(groupId: String): Set<String>? {
+        val engine = mls ?: return null
+        val encoded = runCatching { engine.members(groupId) }.getOrNull() ?: return null
+        val ids = linkedSetOf<String>()
+        for (value in encoded) {
+            val credential = runCatching { Base64.getDecoder().decode(value) }.getOrNull() ?: return null
+            val parsed = MlsCredentialCodec.decode(credential) ?: return null
+            if (!MlsCredentialCodec.verify(credential, parsed.relyraPublicId)) return null
+            if (!ids.add(parsed.relyraPublicId.lowercase())) return null
+        }
+        return ids
+    }
+
     private fun validSnapshot(env: Envelope.GroupSync): Boolean {
         if (env.epoch < 1 || env.owner.isBlank() || env.owner.length > 100 || env.mlsEpoch < 0) return false
         if (GroupLimits.sanitizeName(env.name).isBlank() || env.members.size !in 1..GroupLimits.MAX_MEMBERS) return false
@@ -620,6 +637,14 @@ class GroupEngine(
         }
         if (env.epoch < local.epoch || env.mlsEpoch < local.mlsEpoch) { ack(me, env.from, env.messageId); return }
         if (env.mlsEnabled != local.mlsEnabled) return
+        if (env.mlsEnabled && local.state == GroupState.ACTIVE) {
+            val nativeEpoch = runCatching { mls?.epoch(env.groupId) }.getOrNull() ?: return
+            if (nativeEpoch != env.mlsEpoch) return
+            val nativeMembers = mlsCredentialIds(env.groupId) ?: return
+            val declaredMembers = env.members.filter { it.mlsJoined }
+                .map { it.id.lowercase() }.toSet()
+            if (nativeMembers != declaredMembers) return
+        }
 
         val localMembers = store.members(env.groupId)
         val senderRole = roleOf(localMembers, env.from)
