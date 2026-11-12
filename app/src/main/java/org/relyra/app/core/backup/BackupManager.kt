@@ -10,6 +10,8 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.OutputStream
+import android.content.SharedPreferences
+import java.util.Properties
 
 /**
  * Encrypted database backup. The database snapshot is checkpointed and copied while a Room transaction
@@ -23,13 +25,43 @@ class BackupManager(
     private val secure: SecureStore,
     private val dbFile: File,
     private val stageDir: File,
+    private val filesDir: File,
+    private val preferenceStores: Map<String, SharedPreferences>,
 ) {
+    private val backupRoots = mapOf("vault" to File(filesDir, "vault"), "inbox" to File(filesDir, "inbox"), "outbox" to File(filesDir, "outbox"))
+
+    private fun encodePreferences(): Map<String, Map<String, String>> = preferenceStores.mapValues { (_, prefs) ->
+        prefs.all.mapNotNull { (key, value) ->
+            val encoded = when (value) {
+                is String -> "s:$value"
+                is Boolean -> "b:$value"
+                is Int -> "i:$value"
+                is Long -> "l:$value"
+                is Float -> "f:$value"
+                else -> null
+            }
+            encoded?.let { key to it }
+        }.toMap()
+    }
+
+    private fun writePendingPreferences(values: Map<String, Map<String, String>>) {
+        val dir = File(stageDir, "pending-prefs")
+        dir.deleteRecursively()
+        check(dir.mkdirs() || dir.isDirectory)
+        values.forEach { (name, entries) ->
+            val props = Properties()
+            entries.forEach { (key, value) -> props.setProperty(key, value) }
+            FileOutputStream(File(dir, "$name.properties")).use { out -> props.store(out, "RELYRA restore preferences"); out.fd.sync() }
+        }
+    }
     fun export(out: OutputStream, passphrase: CharArray): Long {
         require(BackupCrypto.passphraseAcceptable(passphrase)) { "passphrase too short" }
         check(dbFile.isFile && dbFile.length() > 0L) { "database file is missing or empty" }
         check(stageDir.mkdirs() || stageDir.isDirectory) { "could not create backup staging directory" }
         val snapshot = File(stageDir, "export.tmp")
+        val bundle = File(stageDir, "export.bundle")
         check(snapshot.delete() || !snapshot.exists()) { "could not clear old backup snapshot" }
+        check(bundle.delete() || !bundle.exists()) { "could not clear old backup bundle" }
         val sdb = db.openHelper.writableDatabase
         var version = 0
         try {
@@ -51,14 +83,14 @@ class BackupManager(
             } finally {
                 sdb.endTransaction()
             }
+            BackupArchive.pack(snapshot, backupRoots, encodePreferences(), bundle)
             val seed = secure.loadSeed()
             val key = secure.databaseKey()
-            BackupCrypto.seal(out, passphrase).use { sealed ->
-                BackupPayload.write(sealed, seed, key, version, snapshot)
-            }
-            return snapshot.length()
+            BackupCrypto.seal(out, passphrase).use { sealed -> BackupPayload.write(sealed, seed, key, version, bundle) }
+            return bundle.length()
         } finally {
             snapshot.delete()
+            bundle.delete()
         }
     }
 
@@ -67,10 +99,14 @@ class BackupManager(
         check(stageDir.mkdirs() || stageDir.isDirectory) { "could not create restore staging directory" }
         RestoreApplier.clear(stageDir)
         val part = File(stageDir, RestoreApplier.DB_PART)
+        val bundle = File(stageDir, "restore.bundle")
+        val restoredFiles = File(stageDir, "restored-files")
         try {
-            val restored = input.use { source ->
-                BackupCrypto.open(source, passphrase).use { BackupPayload.read(it, part) }
-            }
+            val restored = input.use { source -> BackupCrypto.open(source, passphrase).use { BackupPayload.read(it, bundle) } }
+            restoredFiles.deleteRecursively()
+            val restoredPrefs = BackupArchive.unpack(bundle, part, restoredFiles, File(stageDir, "pending-prefs"))
+            writePendingPreferences(restoredPrefs)
+            bundle.delete()
             if (restored.dbVersion < 1 || restored.dbVersion > db.openHelper.readableDatabase.version) {
                 throw BackupException("this backup was made by a newer version of RELYRA")
             }
@@ -114,14 +150,16 @@ object RestoreApplier {
     val AAD = "relyra-restore-v1".toByteArray(Charsets.UTF_8)
 
     fun clear(stageDir: File) {
-        listOf(DB_PART, DB_READY, KEYS, MARKER, "export.tmp").forEach { File(stageDir, it).delete() }
+        listOf(DB_PART, DB_READY, KEYS, MARKER, "export.tmp", "export.bundle", "restore.bundle").forEach { File(stageDir, it).delete() }
+        File(stageDir, "restored-files").deleteRecursively()
+        File(stageDir, "pending-prefs").deleteRecursively()
     }
 
     /**
      * Replaces the database using same-filesystem renames and keeps rollback copies until key restoration
      * succeeds. Sidecar WAL/journal files are moved aside as part of the same guarded operation.
      */
-    fun applyIfPending(stageDir: File, dbFile: File, secure: SecureStore): Boolean {
+    fun applyIfPending(stageDir: File, dbFile: File, secure: SecureStore, filesDir: File, preferenceStores: Map<String, SharedPreferences>): Boolean {
         if (!File(stageDir, MARKER).isFile) return false
         val stagedDb = File(stageDir, DB_READY)
         val keysFile = File(stageDir, KEYS)
@@ -170,6 +208,8 @@ object RestoreApplier {
             installed = true
 
             secure.restoreKeys(if (seed.isEmpty()) null else seed, key)
+            applyRestoredFiles(stageDir, filesDir)
+            applyRestoredPreferences(stageDir, preferenceStores)
             previous.delete()
             sidecarBackups.values.forEach { it.delete() }
             clear(stageDir)
@@ -189,4 +229,56 @@ object RestoreApplier {
             throw t
         }
     }
+    private fun applyRestoredFiles(stageDir: File, filesDir: File) {
+        val stagedRoot = File(stageDir, "restored-files")
+        val names = listOf("vault", "inbox", "outbox")
+        val old = linkedMapOf<String, File>()
+        val installed = mutableListOf<String>()
+        try {
+            names.forEach { name ->
+                val target = File(filesDir, name)
+                val backup = File(filesDir, "$name.restore-old")
+                backup.deleteRecursively()
+                if (target.exists()) {
+                    if (!target.renameTo(backup)) throw java.io.IOException("could not preserve existing $name data")
+                    old[name] = backup
+                }
+                val source = File(stagedRoot, name)
+                if (source.exists()) {
+                    if (!source.renameTo(target)) throw java.io.IOException("could not install restored $name data")
+                } else if (!target.mkdirs() && !target.isDirectory) throw java.io.IOException("could not create restored $name directory")
+                installed += name
+            }
+            old.values.forEach { it.deleteRecursively() }
+        } catch (t: Throwable) {
+            installed.asReversed().forEach { File(filesDir, it).deleteRecursively() }
+            old.forEach { (name, backup) ->
+                if (backup.exists() && !backup.renameTo(File(filesDir, name))) throw java.io.IOException("restore failed and $name files could not be recovered", t)
+            }
+            throw t
+        }
+    }
+
+    private fun applyRestoredPreferences(stageDir: File, stores: Map<String, SharedPreferences>) {
+        val dir = File(stageDir, "pending-prefs")
+        stores.forEach { (name, prefs) ->
+            val file = File(dir, "$name.properties")
+            if (!file.isFile) return@forEach
+            val props = Properties().also { file.inputStream().use(it::load) }
+            val editor = prefs.edit().clear()
+            props.stringPropertyNames().forEach { key ->
+                val encoded = props.getProperty(key)
+                when {
+                    encoded.startsWith("s:") -> editor.putString(key, encoded.substring(2))
+                    encoded.startsWith("b:") -> editor.putBoolean(key, encoded.substring(2).toBooleanStrict())
+                    encoded.startsWith("i:") -> editor.putInt(key, encoded.substring(2).toInt())
+                    encoded.startsWith("l:") -> editor.putLong(key, encoded.substring(2).toLong())
+                    encoded.startsWith("f:") -> editor.putFloat(key, encoded.substring(2).toFloat())
+                    else -> throw BackupException("invalid backed up preference")
+                }
+            }
+            check(editor.commit()) { "could not restore $name preferences" }
+        }
+    }
+
 }
