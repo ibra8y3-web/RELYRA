@@ -674,6 +674,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun saveDiscoveredCommunity(manifest: CommunityManifest) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { saveCommunity(manifest, "FOLLOWER") }.onFailure { fail(it) }
+        }
+    }
+
     fun removeSavedCommunity(communityId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { ctr().database.communityDao().delete(communityId) }
