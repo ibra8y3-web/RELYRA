@@ -323,4 +323,9 @@
     <string name="communities_report_status_resolved">تم الحل</string>
     <string name="communities_report_status_dismissed">مرفوض</string>
 
+
+    <string name="groups_mls_pending_title">تغييرات MLS المعلقة: %1$d</string>
+    <string name="groups_mls_pending_hint">يمكن لمالك المجموعة اعتماد مقترحات المشرفين التي تم التحقق منها معًا في حقبة MLS واحدة.</string>
+    <string name="groups_mls_commit_pending">اعتماد التغييرات المعلقة</string>
+
 </resources>
