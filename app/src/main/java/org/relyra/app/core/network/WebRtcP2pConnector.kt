@@ -1,23 +1,29 @@
 package org.relyra.app.core.network
 
 import android.content.Context
+import android.net.ConnectivityManager
+import android.net.Network
+import android.net.NetworkCapabilities
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.TimeoutCancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import org.json.JSONObject
 import org.relyra.app.core.crypto.IdentityCrypto
 import org.relyra.app.core.messaging.SendOutcome
+import org.relyra.app.core.messaging.P2pSignalKind
 import org.webrtc.DataChannel
 import org.webrtc.IceCandidate
 import org.webrtc.MediaConstraints
@@ -184,12 +190,18 @@ class WebRtcP2pConnector(
     private val knownPeer: suspend (String) -> Boolean,
     private val onWire: suspend (ByteArray) -> Boolean,
     private val scope: CoroutineScope,
+    private val sendSignal: suspend (String, P2pSignalKind, String) -> SendOutcome = { _, _, _ -> SendOutcome.Unavailable },
 ) : Connector {
     override val name: String = "Internet P2P (WebRTC)"
 
     private val appContext = context.applicationContext
+    private val connectivityManager =
+        appContext.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
     private val peers = ConcurrentHashMap<String, Peer>()
     private val pendingAcks = ConcurrentHashMap<String, CompletableDeferred<Boolean>>()
+    private val approvedPeers = ConcurrentHashMap.newKeySet<String>()
+    private val reconnecting = ConcurrentHashMap.newKeySet<String>()
+    private val reconnectJobs = ConcurrentHashMap<String, kotlinx.coroutines.Job>()
     private val states = MutableStateFlow<Map<String, InternetPeerState>>(emptyMap())
     private val _incomingOffers = MutableStateFlow<Map<String, IncomingP2pOffer>>(emptyMap())
     val peerStates: StateFlow<Map<String, InternetPeerState>> = states
