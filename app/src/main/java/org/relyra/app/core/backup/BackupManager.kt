@@ -78,7 +78,7 @@ class BackupManager(
             try {
                 validateReferencedFiles(sdb)
                 val privatePrekeys = secure.exportPreKeys()
-                sdb.query("SELECT keyId FROM prekeys").use { cursor ->
+                sdb.query("SELECT keyId FROM prekeys WHERE kind = 'SIGNED' OR (kind = 'ONE_TIME' AND consumed = 0)").use { cursor ->
                     while (cursor.moveToNext()) {
                         val keyId = cursor.getString(0)
                         if (keyId !in privatePrekeys) throw java.io.IOException("private prekey $keyId is missing; refusing an incomplete backup")
