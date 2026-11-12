@@ -1,3 +1,4 @@
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use crate::{
     add_members, create_group, encrypt, epoch, generate_key_package, join_group, members,
     open_database, process_message, provider_with_signer, remove_member, MlsError, OpenDatabase,
