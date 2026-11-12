@@ -352,4 +352,5 @@
     <string name="call_notification_channel">Calls</string>
     <string name="call_notification_channel_desc">Incoming RELYRA calls</string>
     <string name="call_incoming_notification">Incoming RELYRA call</string>
+    <string name="call_return">Return to call</string>
 </resources>
