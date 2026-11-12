@@ -134,6 +134,7 @@
     <string name="err_add_self">This is your own identity.</string>
     <string name="err_add_exists">This contact is already in your list.</string>
     <string name="err_add_name">Enter a name for this contact.</string>
+    <string name="err_add_fresh_card">After backup restore, import a fresh signed v3 contact card with X3DH prekeys.</string>
     <string name="identity_qr_hint">Your signed contact card. Show it to someone in person so they can scan it.</string>
     <string name="identity_share">Share contact link</string>
     <string name="identity_rename">Change display name</string>

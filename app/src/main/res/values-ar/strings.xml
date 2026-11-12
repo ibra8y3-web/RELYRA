@@ -134,6 +134,7 @@
     <string name="err_add_self">هذه هويتك أنت.</string>
     <string name="err_add_exists">جهة الاتصال هذه موجودة بالفعل في قائمتك.</string>
     <string name="err_add_name">أدخل اسمًا لجهة الاتصال.</string>
+    <string name="err_add_fresh_card">بعد استعادة النسخة، استورد بطاقة اتصال موقعة جديدة من الإصدار 3 تحتوي على مفاتيح X3DH.</string>
     <string name="identity_qr_hint">بطاقة اتصالك الموقّعة. اعرضها على شخص بجوارك ليمسحها.</string>
     <string name="identity_share">مشاركة رابط الاتصال</string>
     <string name="identity_rename">تغيير الاسم المعروض</string>
