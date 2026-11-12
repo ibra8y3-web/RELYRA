@@ -2,6 +2,7 @@ package org.relyra.app.core.database
 
 import androidx.room.ColumnInfo
 import androidx.room.Entity
+import androidx.room.Index
 import androidx.room.PrimaryKey
 import org.relyra.app.core.messaging.GroupKind
 import org.relyra.app.core.messaging.GroupMemberRef
@@ -74,7 +75,7 @@ data class GroupOutboxEntity(
 
 fun OutboxRow.toEntity() = GroupOutboxEntity(id, groupId, memberId, baseMessageId, payload, createdAt, attempts, nextAttemptAt, acked, failed, readAt)
 
-@Entity(tableName = "group_attachments")
+@Entity(tableName = "group_attachments", indices = [Index(value = ["groupId", "createdAt"])])
 data class GroupAttachmentEntity(
     @androidx.room.PrimaryKey val messageId: String,
     val groupId: String,
