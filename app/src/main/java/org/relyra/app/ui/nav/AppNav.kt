@@ -18,6 +18,7 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -146,6 +147,7 @@ fun AppNav(
     val snackbar = rememberMessageHost(vm)
     val allContacts by vm.contacts.collectAsStateWithLifecycle()
     val allGroups by vm.groups.collectAsStateWithLifecycle()
+    val callState by vm.callState.collectAsStateWithLifecycle()
     val chatName = when (route) {
         Routes.CHAT -> {
             val id = backStack?.arguments?.getString("id")
@@ -195,6 +197,11 @@ fun AppNav(
                     }
                 },
                 actions = {
+                    if (callState.peerId != null && callState.phase !in listOf(org.relyra.app.core.network.CallPhase.IDLE, org.relyra.app.core.network.CallPhase.ENDED)) {
+                        TextButton(onClick = { nav.navigate("chat/${callState.peerId}") { launchSingleTop = true } }) {
+                            Text(stringResource(R.string.call_return))
+                        }
+                    }
                     if (route == Routes.GROUP) {
                         val gid = backStack?.arguments?.getString("id")
                         IconButton(onClick = { nav.navigate("group/$gid/info") }) {
