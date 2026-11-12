@@ -288,9 +288,17 @@ class GroupEngine(
         val me = ownId() ?: return@withLock GroupResult.NO_IDENTITY
         val g = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
         if (g.state != GroupState.ACTIVE) return@withLock GroupResult.NOT_ACTIVE
-        when (val v = decide(g, store.members(groupId), me)) {
+        val previousMembers = store.members(groupId)
+        when (val v = decide(g, previousMembers, me)) {
             is Verdict.Deny -> v.result
             is Verdict.Apply -> {
+                val needsMlsCommit = v.removed.any { removedId ->
+                    previousMembers.any { it.id == removedId && it.mlsJoined }
+                }
+                // Keep the MLS epoch chain single-writer until a distributed proposal coordinator exists.
+                if (g.mlsEnabled && needsMlsCommit && roleOf(previousMembers, me) != GroupRole.OWNER) {
+                    return@withLock GroupResult.NOT_ALLOWED
+                }
                 var nextMlsEpoch = g.mlsEpoch
                 if (g.mlsEnabled && v.removed.isNotEmpty()) {
                     val engine = mls ?: return@withLock GroupResult.MLS_UNAVAILABLE
@@ -466,7 +474,7 @@ class GroupEngine(
 
         when (env.kind) {
             GroupMlsKind.KEY_PACKAGE -> {
-                if (!isStaff(localRole) || sender.mlsJoined || env.from == group.owner) return
+                if (localRole != GroupRole.OWNER || sender.mlsJoined || env.from == group.owner) return
                 val engine = mls ?: return
                 val credential = engine.keyPackageIdentity(env.payload)
                 if (!MlsCredentialCodec.verify(credential, env.from)) return
@@ -503,7 +511,7 @@ class GroupEngine(
                 ack(me, env.from, env.messageId)
             }
             GroupMlsKind.JOIN_ACK -> {
-                if (!isStaff(localRole) || env.from == group.owner) return
+                if (localRole != GroupRole.OWNER || env.from == group.owner) return
                 if (sender.mlsJoined) { ack(me, env.from, env.messageId); return }
                 val acknowledgedEpoch = env.payload.toString(Charsets.UTF_8).toLongOrNull() ?: return
                 if (acknowledgedEpoch != group.mlsEpoch) return
@@ -516,7 +524,7 @@ class GroupEngine(
                 ack(me, env.from, env.messageId)
             }
             GroupMlsKind.COMMIT -> {
-                if (!sender.mlsJoined || !isStaff(sender.role)) return
+                if (!sender.mlsJoined || sender.role != GroupRole.OWNER) return
                 val engine = mls ?: return
                 if (store.hasControlMessage(env.messageId)) { ack(me, env.from, env.messageId); return }
                 val result = engine.processMessage(env.payload)
