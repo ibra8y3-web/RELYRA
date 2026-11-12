@@ -14,6 +14,7 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"sort"
 	"strconv"
 	"strings"
 	"sync"
@@ -32,6 +33,8 @@ import (
 
 	presence "github.com/ibra8y3-web/RELYRA/services/discovery/internal/protocol"
 	communities "github.com/ibra8y3-web/RELYRA/services/discovery/internal/community"
+	dhtdirectory "github.com/ibra8y3-web/RELYRA/services/discovery/internal/dhtdirectory"
+	dhtvalidation "github.com/ibra8y3-web/RELYRA/services/discovery/internal/dhtvalidation"
 )
 
 const (
@@ -79,6 +82,7 @@ func (l *limiter) allow(key string, limit int, window time.Duration) bool {
 type server struct {
 	dht          *dht.IpfsDHT
 	host         host.Host
+	nodeKey      crypto.PrivKey
 	datastore    *pebbleds.Datastore
 	communities  *communities.Store
 	turnSecret   string
@@ -101,6 +105,7 @@ func main() {
 		log.Fatalf("start discovery node: %v", err)
 	}
 	defer node.close()
+	go node.refreshCommunityDirectory(ctx)
 
 	listen := env("RELYRA_HTTP_LISTEN", "0.0.0.0:8080")
 	httpServer := &http.Server{
@@ -178,7 +183,7 @@ func newServer(ctx context.Context) (*server, error) {
 		p2pHost,
 		dht.Mode(dht.ModeServer),
 		dht.ProtocolPrefix(libp2pprotocol.ID("/relyra")),
-		dht.NamespacedValidator("rlyra", presence.NewValidator(datastore)),
+		dht.NamespacedValidator("rlyra", dhtvalidation.New(datastore)),
 		dht.Datastore(datastore),
 		dht.MaxRecordAge(5*time.Minute),
 		dht.ValueGCInterval(time.Minute),
@@ -229,7 +234,7 @@ func newServer(ctx context.Context) (*server, error) {
 	}
 
 	return &server{
-		dht: router, host: p2pHost, datastore: datastore,
+		dht: router, host: p2pHost, nodeKey: privateKey, datastore: datastore,
 		communities: communities.NewStore(datastore),
 		turnSecret: os.Getenv("RELYRA_TURN_SHARED_SECRET"),
 		turnRealm: env("RELYRA_TURN_REALM", "turn.relyra.invalid"),
@@ -405,13 +410,104 @@ func (s *server) discoverCommunities(w http.ResponseWriter, r *http.Request) {
 	}
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	result, err := s.communities.Discover(ctx, limit)
+	result, err := s.distributedCommunities(ctx, limit)
 	if err != nil {
 		writeError(w, http.StatusServiceUnavailable, "community discovery unavailable")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, map[string]any{"communities": result})
+}
+
+func (s *server) publishCommunityDirectory(ctx context.Context) error {
+	manifests, err := s.communities.Discover(ctx, communities.MaxDiscoverPage)
+	if err != nil { return err }
+	raw, err := dhtdirectory.Encode(s.host.ID(), s.nodeKey, manifests, time.Now())
+	if err != nil { return err }
+	key, err := dhtdirectory.KeyForPeerID(s.host.ID().String())
+	if err != nil { return err }
+	return s.dht.PutValue(ctx, key, raw)
+}
+
+func (s *server) refreshCommunityDirectory(ctx context.Context) {
+	ticker := time.NewTicker(time.Minute)
+	defer ticker.Stop()
+	for {
+		publishCtx, cancel := context.WithTimeout(ctx, 20*time.Second)
+		if err := s.publishCommunityDirectory(publishCtx); err != nil && ctx.Err() == nil {
+			log.Printf("refresh public community DHT directory: %v", err)
+		}
+		cancel()
+		select {
+		case <-ctx.Done():
+			return
+		case <-ticker.C:
+		}
+	}
+}
+
+func (s *server) distributedCommunities(ctx context.Context, limit int) ([]communities.Manifest, error) {
+	merged := make(map[string]communities.Manifest)
+	local, err := s.communities.Discover(ctx, communities.MaxDiscoverPage)
+	if err != nil { return nil, err }
+	for _, manifest := range local { merged[strings.ToLower(manifest.CommunityID)] = manifest }
+
+	peerIDs := append([]peer.ID(nil), s.dht.RoutingTable().ListPeers()...)
+	peerIDs = append(peerIDs, s.host.ID())
+	seenPeers := make(map[peer.ID]struct{}, len(peerIDs))
+	unique := make([]peer.ID, 0, len(peerIDs))
+	for _, id := range peerIDs {
+		if _, exists := seenPeers[id]; exists { continue }
+		seenPeers[id] = struct{}{}
+		unique = append(unique, id)
+	}
+	if len(unique) > 32 { unique = unique[:32] }
+
+	var mu sync.Mutex
+	var wait sync.WaitGroup
+	semaphore := make(chan struct{}, 8)
+	for _, peerID := range unique {
+		peerID := peerID
+		wait.Add(1)
+		go func() {
+			defer wait.Done()
+			select {
+			case semaphore <- struct{}{}:
+			case <-ctx.Done():
+				return
+			}
+			defer func() { <-semaphore }()
+			key, keyErr := dhtdirectory.KeyForPeerID(peerID.String())
+			if keyErr != nil { return }
+			lookupCtx, cancel := context.WithTimeout(ctx, 4*time.Second)
+			defer cancel()
+			raw, getErr := s.dht.GetValue(lookupCtx, key)
+			if getErr != nil { return }
+			record, parseErr := dhtdirectory.Parse(raw, peerID.String(), time.Now())
+			if parseErr != nil { return }
+			mu.Lock()
+			defer mu.Unlock()
+			for _, manifest := range record.Communities {
+				id := strings.ToLower(manifest.CommunityID)
+				current, exists := merged[id]
+				if !exists || manifest.PolicyVersion > current.PolicyVersion ||
+					(manifest.PolicyVersion == current.PolicyVersion && manifest.UpdatedAt > current.UpdatedAt) {
+					merged[id] = manifest
+				}
+			}
+		}()
+	}
+	wait.Wait()
+	result := make([]communities.Manifest, 0, len(merged))
+	for _, manifest := range merged { result = append(result, manifest) }
+	sort.Slice(result, func(i, j int) bool {
+		if result[i].UpdatedAt == result[j].UpdatedAt {
+			return strings.ToLower(result[i].CommunityID) < strings.ToLower(result[j].CommunityID)
+		}
+		return result[i].UpdatedAt > result[j].UpdatedAt
+	})
+	if len(result) > limit { result = result[:limit] }
+	return result, nil
 }
 
 func (s *server) publishCommunity(w http.ResponseWriter, r *http.Request) {
@@ -428,8 +524,15 @@ func (s *server) publishCommunity(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusBadRequest, err.Error())
 		return
 	}
+	directoryCtx, directoryCancel := context.WithTimeout(r.Context(), 12*time.Second)
+	directoryErr := s.publishCommunityDirectory(directoryCtx)
+	directoryCancel()
 	w.Header().Set("Cache-Control", "no-store")
-	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "community": manifest})
+	writeJSON(w, http.StatusAccepted, map[string]any{
+		"accepted": true,
+		"community": manifest,
+		"distributed": directoryErr == nil,
+	})
 }
 
 func (s *server) communityActorFromRequest(r *http.Request) (string, error) {
