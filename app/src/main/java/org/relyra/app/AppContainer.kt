@@ -26,6 +26,7 @@ import org.relyra.app.core.network.NetworkManager
 import org.relyra.app.core.network.NostrConnector
 import org.relyra.app.core.network.NearbyLanConnector
 import org.relyra.app.core.network.BluetoothConnector
+import org.relyra.app.core.network.BleMeshConnector
 import org.relyra.app.core.network.WifiDirectConnector
 import org.relyra.app.core.network.WebRtcP2pConnector
 import org.relyra.app.core.network.CallEngine
@@ -130,6 +131,7 @@ class AppContainer(context: Context) {
             scope = netScope,
         )
     }
+    val mesh by lazy { BleMeshConnector(appContext, { delivery.acceptWire(it) }, netScope) }
     val bluetooth by lazy {
         BluetoothConnector(
             context = appContext,
@@ -189,7 +191,7 @@ class AppContainer(context: Context) {
     }
     val blossom by lazy { BlossomServers(appContext) }
     val transfers: TransferEngine by lazy { TransferEngine(appContext, blossom, messages, { identities.nostrSecret() }) }
-    val router by lazy { AdaptiveRouter { listOf(internetP2p, wifiDirect, bluetooth, nearby, nostr) } }
+    val router by lazy { AdaptiveRouter { listOf(mesh, internetP2p, wifiDirect, bluetooth, nearby, nostr) } }
     val transports: List<Transport> by lazy { listOf(router) }
 
     val delivery: DeliveryEngine by lazy {
