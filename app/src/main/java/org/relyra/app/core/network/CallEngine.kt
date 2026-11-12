@@ -53,7 +53,8 @@ class CallEngine(
     }
 
     private data class Session(
-        val id: String, val connection: PeerConnection, val video: Boolean, val gathering: CompletableDeferred<Unit> = CompletableDeferred(), val gathering: CompletableDeferred<Unit> = CompletableDeferred(),
+        val id: String, val connection: PeerConnection, val video: Boolean, var gathering: CompletableDeferred<Unit> = CompletableDeferred(),
+        var recoveryAttempts: Int = 0, val gathering: CompletableDeferred<Unit> = CompletableDeferred(),
         var audioSource: AudioSource? = null, var audioTrack: AudioTrack? = null,
         var videoSource: VideoSource? = null, var videoTrack: VideoTrack? = null,
         var capturer: CameraVideoCapturer? = null, var texture: SurfaceTextureHelper? = null,
@@ -93,6 +94,24 @@ class CallEngine(
         if (!knownPeer(peer) || mutableState.value.phase !in setOf(CallPhase.IDLE, CallPhase.ENDED, CallPhase.FAILED)) return
         val signal = InternetSignalCodec.decode(encoded, ownId() ?: return, peer) ?: return
         if (signal.type != "call_offer") return
+        val active = sessions[peer]
+        if (active != null && active.id == signal.sessionId && mutableState.value.peerId == peer) {
+            try {
+                active.gathering = CompletableDeferred()
+                setDescription(active.connection, false, SessionDescription(SessionDescription.Type.OFFER, signal.sdp))
+                val answer = createDescription(active.connection, false)
+                setDescription(active.connection, true, answer)
+                withTimeout(25_000) { active.gathering.await() }
+                val local = active.connection.localDescription?.description ?: return
+                val response = signed(peer, "call_answer", local, active.id) ?: return
+                requireDelivered(sendSignal(peer, P2pSignalKind.CALL_ANSWER, response))
+                mutableState.value = mutableState.value.copy(phase = CallPhase.CONNECTING)
+            } catch (_: Exception) {
+                mutableState.value = mutableState.value.copy(phase = CallPhase.CONNECTING, detail = "connection_interrupted")
+            }
+            return
+        }
+        if (mutableState.value.phase !in setOf(CallPhase.IDLE, CallPhase.ENDED, CallPhase.FAILED)) return
         mutableState.value = CallUiState(peerId = peer, phase = CallPhase.INCOMING,
             video = signal.sdp.contains("m=video"), incomingSignal = encoded)
     }
@@ -193,6 +212,44 @@ class CallEngine(
     fun switchCamera() { sessions[mutableState.value.peerId]?.capturer?.switchCamera(null) }
 
 
+
+    /** One deterministic peer initiates ICE restarts, preventing simultaneous-offer glare. */
+    private fun scheduleCallRecovery(peer: String, session: Session) {
+        if (session.recoveryAttempts >= 3) return
+        if (sessions[peer] !== session) return
+        scope.launch(Dispatchers.IO) {
+            val localId = ownId() ?: return@launch
+            if (localId >= peer) return@launch
+            while (sessions[peer] === session && session.recoveryAttempts < 3) {
+                val attempt = session.recoveryAttempts++
+                delay(1_500L * (attempt + 1))
+                val ice = session.connection.iceConnectionState()
+                if (ice == PeerConnection.IceConnectionState.CONNECTED ||
+                    ice == PeerConnection.IceConnectionState.COMPLETED
+                ) return@launch
+                try {
+                    session.gathering = CompletableDeferred()
+                    session.connection.restartIce()
+                    val offer = createDescription(session.connection, true)
+                    setDescription(session.connection, true, offer)
+                    withTimeout(25_000) { session.gathering.await() }
+                    val sdp = session.connection.localDescription?.description ?: error("Missing ICE restart SDP")
+                    val signal = signed(peer, "call_offer", sdp, session.id) ?: error("Could not sign ICE restart")
+                    requireDelivered(sendSignal(peer, P2pSignalKind.CALL_OFFER, signal))
+                    delay(7_000)
+                } catch (_: Exception) {
+                    delay(1_000)
+                }
+            }
+            if (sessions[peer] === session && session.connection.iceConnectionState() != PeerConnection.IceConnectionState.CONNECTED &&
+                session.connection.iceConnectionState() != PeerConnection.IceConnectionState.COMPLETED
+            ) {
+                close(peer)
+                mutableState.value = CallUiState(peerId = peer, phase = CallPhase.FAILED, detail = "connection_failed")
+            }
+        }
+    }
+
     private fun watchCallTimeout(peer: String, sessionId: String) {
         scope.launch(Dispatchers.IO) {
             delay(45_000)
@@ -223,14 +280,15 @@ class CallEngine(
             override fun onIceConnectionChange(s: PeerConnection.IceConnectionState) {
                 if (mutableState.value.peerId != peer) return
                 when (s) {
-                    PeerConnection.IceConnectionState.CONNECTED, PeerConnection.IceConnectionState.COMPLETED ->
+                    PeerConnection.IceConnectionState.CONNECTED, PeerConnection.IceConnectionState.COMPLETED -> {
+                        session.recoveryAttempts = 0
                         mutableState.value = mutableState.value.copy(phase = CallPhase.ACTIVE, detail = null)
-                    PeerConnection.IceConnectionState.DISCONNECTED ->
-                        mutableState.value = mutableState.value.copy(phase = CallPhase.CONNECTING, detail = "connection_interrupted")
-                    PeerConnection.IceConnectionState.FAILED, PeerConnection.IceConnectionState.CLOSED -> {
-                        mutableState.value = mutableState.value.copy(phase = CallPhase.FAILED, detail = "connection_failed")
-                        close(peer)
                     }
+                    PeerConnection.IceConnectionState.DISCONNECTED, PeerConnection.IceConnectionState.FAILED -> {
+                        mutableState.value = mutableState.value.copy(phase = CallPhase.CONNECTING, detail = "connection_interrupted")
+                        scheduleCallRecovery(peer, session)
+                    }
+                    PeerConnection.IceConnectionState.CLOSED -> Unit
                     else -> Unit
                 }
             }
