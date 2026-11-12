@@ -1,7 +1,9 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use crate::{
-    add_members, create_group, encrypt, epoch, generate_key_package, join_group, members,
-    key_package_identity, open_database, process_message, provider_with_signer, remove_member, MlsError, OpenDatabase,
+    add_members, commit_pending_proposals, create_group, encrypt, epoch, generate_key_package,
+    join_group, members, key_package_identity, open_database, process_message, process_proposal,
+    propose_add_member, propose_remove_member, pending_proposal_count, provider_with_signer,
+    remove_member, MlsError, OpenDatabase,
 };
 use jni::{
     objects::{JByteArray, JClass, JObjectArray, JString},
@@ -298,6 +300,94 @@ pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeMember
         })
     });
     result.map(|value| output_json(&mut env, &value)).unwrap_or(ptr::null_mut())
+}
+
+
+#[no_mangle]
+pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeProposeAddMember(
+    mut env: JNIEnv,
+    _class: JClass,
+    group_id: JByteArray,
+    key_package: JByteArray,
+) -> jbyteArray {
+    let group_id = match input_bytes(&mut env, group_id) {
+        Ok(value) => value,
+        Err(error) => { throw(&mut env, error); return ptr::null_mut(); }
+    };
+    let key_package = match input_bytes(&mut env, key_package) {
+        Ok(value) => value,
+        Err(error) => { throw(&mut env, error); return ptr::null_mut(); }
+    };
+    let result = catch_result(&mut env, || with_database(|db| propose_add_member(db, &group_id, &key_package)));
+    result.map(|value| output_bytes(&mut env, &value)).unwrap_or(ptr::null_mut())
+}
+
+#[no_mangle]
+pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeProposeRemoveMember(
+    mut env: JNIEnv,
+    _class: JClass,
+    group_id: JByteArray,
+    credential_identity: JByteArray,
+) -> jbyteArray {
+    let group_id = match input_bytes(&mut env, group_id) {
+        Ok(value) => value,
+        Err(error) => { throw(&mut env, error); return ptr::null_mut(); }
+    };
+    let credential_identity = match input_bytes(&mut env, credential_identity) {
+        Ok(value) => value,
+        Err(error) => { throw(&mut env, error); return ptr::null_mut(); }
+    };
+    let result = catch_result(&mut env, || with_database(|db| propose_remove_member(db, &group_id, &credential_identity)));
+    result.map(|value| output_bytes(&mut env, &value)).unwrap_or(ptr::null_mut())
+}
+
+#[no_mangle]
+pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeProcessProposal(
+    mut env: JNIEnv,
+    _class: JClass,
+    message: JByteArray,
+    expected_public_id: JString,
+) -> jlong {
+    let message = match input_bytes(&mut env, message) {
+        Ok(value) => value,
+        Err(error) => { throw(&mut env, error); return -1; }
+    };
+    let expected_public_id: String = match env.get_string(&expected_public_id) {
+        Ok(value) => value.into(),
+        Err(error) => { throw(&mut env, error); return -1; }
+    };
+    catch_result(&mut env, || with_database(|db| process_proposal(db, &message, &expected_public_id)))
+        .map(|epoch| epoch as jlong)
+        .unwrap_or(-1)
+}
+
+#[no_mangle]
+pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeCommitPendingProposals(
+    mut env: JNIEnv,
+    _class: JClass,
+    group_id: JByteArray,
+) -> jstring {
+    let group_id = match input_bytes(&mut env, group_id) {
+        Ok(value) => value,
+        Err(error) => { throw(&mut env, error); return ptr::null_mut(); }
+    };
+    let result = catch_result(&mut env, || with_database(|db| commit_pending_proposals(db, &group_id)));
+    result.map(|value| output_json(&mut env, &value)).unwrap_or(ptr::null_mut())
+}
+
+#[no_mangle]
+pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativePendingProposalCount(
+    mut env: JNIEnv,
+    _class: JClass,
+    group_id: JByteArray,
+) -> jlong {
+    let group_id = match input_bytes(&mut env, group_id) {
+        Ok(value) => value,
+        Err(error) => { throw(&mut env, error); return -1; }
+    };
+    catch_result(&mut env, || with_database(|db| pending_proposal_count(db, &group_id)))
+        .map(|count| count as jlong)
+        .unwrap_or(-1)
 }
 
 #[no_mangle]
