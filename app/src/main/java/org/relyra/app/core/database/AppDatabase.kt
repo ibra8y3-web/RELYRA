@@ -13,10 +13,10 @@ import net.zetetic.database.sqlcipher.SupportOpenHelperFactory
         IdentityEntity::class, ContactEntity::class, SecurityEventEntity::class,
         MessageEntity::class, ProcessedIdEntity::class, AttachmentEntity::class,
         RatchetEntity::class,
-        GroupEntity::class, GroupMemberEntity::class, GroupMessageEntity::class, GroupOutboxEntity::class, GroupAttachmentEntity::class, CommunityEntity::class,
+        GroupEntity::class, GroupMemberEntity::class, GroupMessageEntity::class, GroupOutboxEntity::class, GroupAttachmentEntity::class, CommunityEntity::class, TrustedDeviceEntity::class,
         ChatPrefEntity::class, VaultItemEntity::class, PreKeyEntity::class, EncryptedPacketEntity::class,
     ],
-    version = 16,
+    version = 17,
     exportSchema = true,
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -196,6 +196,21 @@ abstract class AppDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_16_17 = object : Migration(16, 17) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "CREATE TABLE IF NOT EXISTS `trusted_devices` (" +
+                        "`deviceId` TEXT NOT NULL, `accountId` TEXT NOT NULL, `displayName` TEXT NOT NULL, " +
+                        "`platform` TEXT NOT NULL, `signingPublicKey` BLOB NOT NULL, `encryptionPublicKey` BLOB NOT NULL, " +
+                        "`status` TEXT NOT NULL, `createdAt` INTEGER NOT NULL, `lastSeenAt` INTEGER NOT NULL, " +
+                        "`approvedAt` INTEGER, `revokedAt` INTEGER, `keyVersion` INTEGER NOT NULL, " +
+                        "`syncCursor` INTEGER NOT NULL, PRIMARY KEY(`deviceId`))"
+                )
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_trusted_devices_accountId` ON `trusted_devices` (`accountId`)")
+                db.execSQL("CREATE INDEX IF NOT EXISTS `index_trusted_devices_status` ON `trusted_devices` (`status`)")
+            }
+        }
+
         /** SQLCipher-encrypted. Never uses destructive migration: user data must survive updates. */
         fun build(context: Context, passphrase: ByteArray): AppDatabase =
             buildNamed(context, passphrase, "relyra.db")
@@ -205,7 +220,7 @@ abstract class AppDatabase : RoomDatabase() {
             require(databaseName.isNotBlank() && !databaseName.contains('/') && !databaseName.contains('\\'))
             return Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, databaseName)
                 .openHelperFactory(SupportOpenHelperFactory(passphrase))
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10, MIGRATION_10_11, MIGRATION_11_12, MIGRATION_12_13, MIGRATION_13_14, MIGRATION_14_15, MIGRATION_15_16, MIGRATION_16_17)
                 .build()
         }
     }
