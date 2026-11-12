@@ -52,6 +52,36 @@ class SecureStore(context: Context) {
         return created
     }
 
+
+    /** Device-scoped Ed25519 seed. Wrapped by this installation's non-exportable Keystore key. */
+    fun saveDeviceSigningSeed(deviceId: String, seed: ByteArray) {
+        require(java.util.UUID.fromString(deviceId).toString() == deviceId && seed.size == 32)
+        write("device_sign_" + deviceId, seed)
+    }
+
+    fun loadDeviceSigningSeed(deviceId: String): ByteArray? {
+        if (runCatching { java.util.UUID.fromString(deviceId).toString() == deviceId }.getOrDefault(false).not()) return null
+        return read("device_sign_" + deviceId)?.takeIf { it.size == 32 }
+    }
+
+    /** Device-scoped X25519 private key. It is never exported or written to Room. */
+    fun saveDeviceEncryptionSecret(deviceId: String, secret: ByteArray) {
+        require(java.util.UUID.fromString(deviceId).toString() == deviceId && secret.size == 32)
+        write("device_enc_" + deviceId, secret)
+    }
+
+    fun loadDeviceEncryptionSecret(deviceId: String): ByteArray? {
+        if (!runCatching { java.util.UUID.fromString(deviceId).toString() == deviceId }.getOrDefault(false)) return null
+        return read("device_enc_" + deviceId)?.takeIf { it.size == 32 }
+    }
+
+    fun deleteDeviceSecrets(deviceId: String) {
+        if (!runCatching { java.util.UUID.fromString(deviceId).toString() == deviceId }.getOrDefault(false)) return
+        check(prefs.edit().remove("device_sign_" + deviceId).remove("device_enc_" + deviceId).commit()) {
+            "device key cleanup failed"
+        }
+    }
+
     fun saveSeed(seed: ByteArray) = write(SEED, seed)
     fun loadSeed(): ByteArray? = read(SEED)
     fun clearSeed() { prefs.edit().remove(SEED).commit() }
