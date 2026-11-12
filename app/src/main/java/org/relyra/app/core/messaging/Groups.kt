@@ -292,11 +292,10 @@ class GroupEngine(
         when (val v = decide(g, previousMembers, me)) {
             is Verdict.Deny -> v.result
             is Verdict.Apply -> {
-                val needsMlsCommit = v.removed.any { removedId ->
-                    previousMembers.any { it.id == removedId && it.mlsJoined }
-                }
-                // Keep the MLS epoch chain single-writer until a distributed proposal coordinator exists.
-                if (g.mlsEnabled && needsMlsCommit && roleOf(previousMembers, me) != GroupRole.OWNER) {
+                val changesMlsMembership = v.members != previousMembers
+                // Keep MLS membership and epoch changes single-writer until a distributed proposal
+                // coordinator can reconcile concurrent proposals and commits from multiple admins.
+                if (g.mlsEnabled && changesMlsMembership && roleOf(previousMembers, me) != GroupRole.OWNER) {
                     return@withLock GroupResult.NOT_ALLOWED
                 }
                 var nextMlsEpoch = g.mlsEpoch
@@ -658,6 +657,7 @@ class GroupEngine(
         val localMembers = store.members(env.groupId)
         val senderRole = roleOf(localMembers, env.from)
         if (!isStaff(senderRole) || env.kind != local.kind) return
+        if (local.mlsEnabled && senderRole == GroupRole.ADMIN && env.members != localMembers) return
         if (senderRole == GroupRole.ADMIN) {
             // Admins may only change plain members and the name: owner and admin set must stay identical.
             val before = localMembers.filter { it.role != GroupRole.MEMBER }.associate { it.id to it.role }
