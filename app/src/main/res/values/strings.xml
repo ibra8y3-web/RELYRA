@@ -27,6 +27,9 @@
     <string name="communities_moderators_help">Only the owner can change the signed moderator policy. IDs must belong to known contacts.</string>
     <string name="communities_moderators_updated">Moderator policy updated and signed.</string>
     <string name="communities_moderate">Moderation action</string>
+    <string name="communities_view_reports">View reports</string>
+    <string name="communities_recent_reports">Recent reports</string>
+    <string name="communities_no_reports">There are no verified reports for this community.</string>
     <string name="communities_subject_id">Target RELYRA public ID</string>
     <string name="communities_reason_code">Reason code (letters, digits, _ or -)</string>
     <string name="communities_apply_action">Apply signed action</string>
