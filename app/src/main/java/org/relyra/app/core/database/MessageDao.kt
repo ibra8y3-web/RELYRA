@@ -93,6 +93,9 @@ interface ChatPrefDao {
 
 @Dao
 interface AttachmentDao {
+    @Query("SELECT messageId FROM attachments")
+    suspend fun allMessageIdsForDeviceSync(): List<String>
+
     @Query("SELECT a.* FROM attachments a INNER JOIN messages m ON m.messageId = a.messageId WHERE m.chatId = :chatId")
     fun observeChat(chatId: String): Flow<List<AttachmentEntity>>
 
