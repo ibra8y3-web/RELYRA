@@ -34,6 +34,7 @@ internal class FakeGroupStore : GroupStore {
     override suspend fun dueOutbox(now: Long, limit: Int) =
         outbox.values.filter { !it.acked && !it.failed && it.nextAttemptAt <= now }.sortedBy { it.createdAt }.take(limit)
     override suspend fun updateOutbox(row: OutboxRow) { outbox[row.id] = row }
+    override suspend fun outbox(id: String): OutboxRow? = outbox[id]
     override suspend fun markAcked(id: String, memberId: String): Boolean {
         val r = outbox[id] ?: return false
         if (r.memberId != memberId) return false
