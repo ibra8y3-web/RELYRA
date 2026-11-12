@@ -161,7 +161,18 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         require(account == identity.publicId && un64(signer).contentEquals(identity.publicKey))
         require(timestamp.toLong() <= System.currentTimeMillis() + 60_000)
         require(IdentityCrypto.verify(identity.publicKey, signature, body)) { "Invalid revocation signature" }
-        check(db.trustedDeviceDao().revokeApproved(target, account, System.currentTimeMillis()) == 1) { "Device is not currently approved" }
+        val now = System.currentTimeMillis()
+        val existing = db.trustedDeviceDao().get(target)
+        when (existing?.status) {
+            TrustedDeviceStatus.APPROVED -> check(db.trustedDeviceDao().revokeApproved(target, account, now) == 1)
+            TrustedDeviceStatus.REVOKED -> return
+            TrustedDeviceStatus.PENDING -> error("Pending device cannot be revoked with an approval token")
+            null -> db.trustedDeviceDao().insertPending(TrustedDeviceEntity(
+                target, account, "Revoked device", "Unknown", ByteArray(0), ByteArray(0),
+                TrustedDeviceStatus.REVOKED, now, now, null, now, 1, 0
+            ))
+            else -> error("Unknown device state")
+        }
         log(EventType.DEVICE_REVOKED,target)
     }
     fun observeTrustedDevices(accountId: String) = db.trustedDeviceDao().observeForAccount(accountId)
