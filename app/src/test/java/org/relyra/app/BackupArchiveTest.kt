@@ -22,10 +22,11 @@ class BackupArchiveTest {
             File(sourceFiles, "inbox/message/file.bin").apply { parentFile?.mkdirs(); writeBytes(byteArrayOf(9, 8, 7)) }
             File(sourceFiles, "vault/item.enc").apply { parentFile?.mkdirs(); writeBytes(byteArrayOf(6, 5, 4, 3)) }
             File(sourceFiles, "outbox/pending.enc").apply { parentFile?.mkdirs(); writeBytes(byteArrayOf(2, 1)) }
+            File(sourceFiles, "secure-prekeys/signed_42").apply { parentFile?.mkdirs(); writeBytes(ByteArray(32) { 42 }) }
             val bundle = File(root, "bundle.zip")
             BackupArchive.pack(
                 db,
-                mapOf("inbox" to File(sourceFiles, "inbox"), "vault" to File(sourceFiles, "vault"), "outbox" to File(sourceFiles, "outbox")),
+                mapOf("inbox" to File(sourceFiles, "inbox"), "vault" to File(sourceFiles, "vault"), "outbox" to File(sourceFiles, "outbox"), "secure-prekeys" to File(sourceFiles, "secure-prekeys")),
                 mapOf("relyra_settings" to mapOf("theme_mode" to "i:2", "notifications_on" to "b:true")),
                 bundle,
             )
@@ -36,6 +37,7 @@ class BackupArchiveTest {
             assertArrayEquals(File(sourceFiles, "inbox/message/file.bin").readBytes(), File(restoredFiles, "inbox/message/file.bin").readBytes())
             assertArrayEquals(File(sourceFiles, "vault/item.enc").readBytes(), File(restoredFiles, "vault/item.enc").readBytes())
             assertArrayEquals(File(sourceFiles, "outbox/pending.enc").readBytes(), File(restoredFiles, "outbox/pending.enc").readBytes())
+            assertArrayEquals(File(sourceFiles, "secure-prekeys/signed_42").readBytes(), File(restoredFiles, "secure-prekeys/signed_42").readBytes())
             assertEquals("i:2", prefs["relyra_settings"]?.get("theme_mode"))
             assertEquals("b:true", prefs["relyra_settings"]?.get("notifications_on"))
         } finally {
