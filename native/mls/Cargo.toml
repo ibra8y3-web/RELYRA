@@ -1,0 +1,28 @@
+[package]
+name = "relyra-mls-native"
+version = "0.1.0"
+edition = "2021"
+rust-version = "1.91"
+publish = false
+
+[lib]
+name = "relyra_mls"
+crate-type = ["cdylib", "rlib"]
+
+[dependencies]
+base64 = "0.22.1"
+jni = "0.21.1"
+openmls = "=0.9.2"
+openmls_basic_credential = "=0.6.0"
+openmls_rust_crypto = "=0.6.0"
+openmls_sqlite_storage = "=0.3.0"
+openmls_traits = "=0.6.0"
+rusqlite = { version = "=0.37.0", features = ["bundled-sqlcipher-vendored-openssl"] }
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+thiserror = "2.0"
+tls_codec = { version = "0.5.0", features = ["derive"] }
+zeroize = "1.8"
+
+[dev-dependencies]
+tempfile = "3.23"

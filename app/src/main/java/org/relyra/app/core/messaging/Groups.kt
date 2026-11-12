@@ -5,6 +5,7 @@ import kotlinx.coroutines.sync.withLock
 import java.io.ByteArrayOutputStream
 import java.io.DataOutputStream
 import java.security.MessageDigest
+import java.util.Base64
 import java.util.UUID
 
 data class GroupRecord(
@@ -17,6 +18,8 @@ data class GroupRecord(
     val state: GroupState,
     val createdAt: Long,
     val invitedBy: String,
+    val mlsEnabled: Boolean = false,
+    val mlsEpoch: Long = 0,
 )
 
 data class GroupMessage(
@@ -42,6 +45,7 @@ data class OutboxRow(
     val nextAttemptAt: Long,
     val acked: Boolean,
     val failed: Boolean,
+    val readAt: Long? = null,
 )
 
 interface GroupStore {
@@ -51,6 +55,12 @@ interface GroupStore {
     suspend fun putGroup(g: GroupRecord, members: List<GroupMemberRef>)
     suspend fun setState(groupId: String, state: GroupState)
     suspend fun insertOutgoingMessage(m: GroupMessage, copies: List<OutboxRow>)
+    /** Stores the encrypted group-file descriptor, message and per-member ciphertext outbox atomically. */
+    suspend fun insertOutgoingGroupAttachment(m: GroupMessage, attachment: GroupAttachmentRecord, copies: List<OutboxRow>)
+    /** Atomically remembers the copy ID, group message and encrypted file descriptor. */
+    suspend fun recordIncomingGroupAttachment(m: GroupMessage, attachment: GroupAttachmentRecord): Boolean
+    suspend fun groupAttachment(messageId: String): GroupAttachmentRecord?
+    suspend fun updateGroupAttachment(attachment: GroupAttachmentRecord)
     /** Atomically remembers the copy's ID and stores the message. False if that ID was already processed. */
     suspend fun recordIncomingMessage(m: GroupMessage): Boolean
     suspend fun enqueue(rows: List<OutboxRow>)
@@ -59,6 +69,13 @@ interface GroupStore {
     suspend fun outbox(id: String): OutboxRow?
     /** True when [id] is one of our packets addressed to [memberId]. */
     suspend fun markAcked(id: String, memberId: String): Boolean
+    /** Atomically returns unread inbound messages and marks them locally read. */
+    suspend fun markMessagesRead(groupId: String): List<GroupMessage>
+    /** Accepts a read receipt only for the exact per-member copy stored in this outbox. */
+    suspend fun markReadReceipt(copyId: String, groupId: String, memberId: String, readAt: Long): Boolean
+    /** Atomically records a one-time group control packet (MLS handshake/commit). */
+    suspend fun recordControlMessage(id: String, receivedAt: Long): Boolean
+    suspend fun hasControlMessage(id: String): Boolean
     suspend fun deleteGroup(groupId: String)
 }
 
@@ -70,7 +87,7 @@ interface GroupInbound {
 }
 
 enum class GroupResult {
-    OK, NO_IDENTITY, NOT_FOUND, NOT_ALLOWED, NOT_ACTIVE, INVALID, EMPTY, TOO_LONG, NO_RECIPIENTS, UNKNOWN_CONTACT,
+    OK, NO_IDENTITY, NOT_FOUND, NOT_ALLOWED, NOT_ACTIVE, INVALID, EMPTY, TOO_LONG, NO_RECIPIENTS, UNKNOWN_CONTACT, MLS_UNAVAILABLE,
 }
 
 class GroupOutcome(val result: GroupResult, val groupId: String? = null)
@@ -98,6 +115,7 @@ class GroupEngine(
     private val clock: () -> Long = { System.currentTimeMillis() },
     private val newId: () -> String = { UUID.randomUUID().toString() },
     private val incoming: IncomingListener? = null,
+    private val mls: GroupMlsProvider? = null,
 ) : GroupInbound {
     private val lock = Mutex()
 
@@ -111,8 +129,14 @@ class GroupEngine(
         if (ids.size + 1 > GroupLimits.MAX_MEMBERS) return@withLock GroupOutcome(GroupResult.INVALID)
         if (ids.any { peers.status(it) != PeerStatus.Known }) return@withLock GroupOutcome(GroupResult.UNKNOWN_CONTACT)
         val gid = newId()
-        val members = listOf(GroupMemberRef(me, GroupRole.OWNER)) + ids.map { GroupMemberRef(it, GroupRole.MEMBER) }
-        store.putGroup(GroupRecord(gid, clean, kind, me, 1, GroupState.ACTIVE, clock(), me), members)
+        val mlsEpoch = mls?.createGroup(gid, me)
+        val mlsEnabled = mls != null
+        val members = listOf(GroupMemberRef(me, GroupRole.OWNER, mlsJoined = mlsEnabled)) +
+            ids.map { GroupMemberRef(it, GroupRole.MEMBER, mlsJoined = false) }
+        store.putGroup(
+            GroupRecord(gid, clean, kind, me, 1, GroupState.ACTIVE, clock(), me, mlsEnabled, mlsEpoch ?: 0),
+            members,
+        )
         broadcastSnapshot(gid, emptySet())
         GroupOutcome(GroupResult.OK, gid)
     }
@@ -126,17 +150,80 @@ class GroupEngine(
         val members = store.members(groupId)
         val mine = members.find { it.id == me } ?: return@withLock GroupResult.NOT_ALLOWED
         if (g.kind == GroupKind.CHANNEL && mine.role == GroupRole.MEMBER) return@withLock GroupResult.NOT_ALLOWED
-        val now = clock()
-        val others = members.filter { it.id != me && peers.status(it.id) == PeerStatus.Known }
-        if (others.isEmpty() && members.size > 1) return@withLock GroupResult.NO_RECIPIENTS
+        val now = clock().coerceAtLeast(1L)
         val baseId = newId()
-        val copies = others.map { m ->
-            val copyId = newId()
-            OutboxRow(copyId, groupId, m.id, baseId,
-                EnvelopeCodec.encode(Envelope.GroupChat(copyId, me, m.id, groupId, now, body)),
-                now, 0, now, acked = false, failed = false)
+        val copies = if (g.mlsEnabled) {
+            val engine = mls ?: return@withLock GroupResult.MLS_UNAVAILABLE
+            val recipients = members.filter { it.id != me && it.mlsJoined && peers.status(it.id) == PeerStatus.Known }
+            if (recipients.isEmpty()) return@withLock GroupResult.NO_RECIPIENTS
+            val appFrame = GroupPayloadCodec.encodeText(baseId, now, body)
+            val ciphertext = engine.encrypt(groupId, appFrame)
+            recipients.map { member ->
+                val copyId = newId()
+                OutboxRow(
+                    copyId, groupId, member.id, baseId,
+                    EnvelopeCodec.encode(Envelope.GroupMls(copyId, me, member.id, groupId, GroupMlsKind.APPLICATION, ciphertext)),
+                    now, 0, now, acked = false, failed = false,
+                )
+            }
+        } else {
+            val recipients = members.filter { it.id != me && peers.status(it.id) == PeerStatus.Known }
+            if (recipients.isEmpty() && members.size > 1) return@withLock GroupResult.NO_RECIPIENTS
+            recipients.map { member ->
+                val copyId = newId()
+                OutboxRow(copyId, groupId, member.id, baseId,
+                    EnvelopeCodec.encode(Envelope.GroupChat(copyId, me, member.id, groupId, now, body)),
+                    now, 0, now, acked = false, failed = false)
+            }
         }
         store.insertOutgoingMessage(GroupMessage(baseId, groupId, me, true, body, now, true), copies)
+        GroupResult.OK
+    }
+
+    /** Encrypts the file descriptor with the MLS group epoch and fans out only the MLS ciphertext. */
+    suspend fun sendAttachment(groupId: String, file: GroupAttachmentData): GroupResult = lock.withLock {
+        val me = ownId() ?: return@withLock GroupResult.NO_IDENTITY
+        val group = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
+        if (group.state != GroupState.ACTIVE) return@withLock GroupResult.NOT_ACTIVE
+        if (!group.mlsEnabled) return@withLock GroupResult.MLS_UNAVAILABLE
+        val engine = mls ?: return@withLock GroupResult.MLS_UNAVAILABLE
+        val members = store.members(groupId)
+        val mine = members.find { it.id == me } ?: return@withLock GroupResult.NOT_ALLOWED
+        if (!mine.mlsJoined || (group.kind == GroupKind.CHANNEL && mine.role == GroupRole.MEMBER)) {
+            return@withLock GroupResult.NOT_ALLOWED
+        }
+        val normalizedUrl = org.relyra.app.core.transfer.BlossomUrl.normalize(file.serverUrl, allowPrivate = false)
+            ?: return@withLock GroupResult.INVALID
+        if (file.name.isBlank() || file.name.length > AttachmentLimits.MAX_NAME ||
+            file.mime.length > AttachmentLimits.MAX_MIME ||
+            file.plainSha256.size != 32 || file.blobSha256.size != 32 || file.fileKey.size != 32 ||
+            !AttachmentLimits.validSizes(file.size, file.blobSize)
+        ) return@withLock GroupResult.INVALID
+
+        val recipients = members.filter { it.id != me && it.mlsJoined && peers.status(it.id) == PeerStatus.Known }
+        if (recipients.isEmpty()) return@withLock GroupResult.NO_RECIPIENTS
+        val messageId = newId()
+        val now = clock().coerceAtLeast(1L)
+        val payload = GroupPayloadCodec.encodeFile(messageId, now, file.copy(serverUrl = normalizedUrl))
+        val ciphertext = engine.encrypt(groupId, payload)
+        val copies = recipients.map { recipient ->
+            val copyId = newId()
+            OutboxRow(
+                copyId, groupId, recipient.id, messageId,
+                EnvelopeCodec.encode(Envelope.GroupMls(copyId, me, recipient.id, groupId, GroupMlsKind.APPLICATION, ciphertext)),
+                now, 0, now, acked = false, failed = false,
+            )
+        }
+        val attachment = GroupAttachmentRecord(
+            messageId, groupId, me, org.relyra.app.core.transfer.FileNames.sanitize(file.name), file.mime,
+            file.size, file.blobSize, file.plainSha256, file.blobSha256, file.fileKey,
+            normalizedUrl, null, GroupAttachmentPhase.UPLOADED, now, true,
+        )
+        store.insertOutgoingGroupAttachment(
+            GroupMessage(messageId, groupId, me, true, attachment.name, now, true),
+            attachment,
+            copies,
+        )
         GroupResult.OK
     }
 
@@ -165,7 +252,7 @@ class GroupEngine(
         val target = roleOf(members, memberId) ?: return@manage Verdict.Deny(GroupResult.NOT_FOUND)
         if (target == GroupRole.OWNER) return@manage Verdict.Deny(GroupResult.NOT_ALLOWED)
         val role = if (admin) GroupRole.ADMIN else GroupRole.MEMBER
-        Verdict.Apply(g.name, g.owner, members.map { if (it.id == memberId) GroupMemberRef(it.id, role) else it }, emptySet())
+        Verdict.Apply(g.name, g.owner, members.map { if (it.id == memberId) it.copy(role = role) else it }, emptySet())
     }
 
     suspend fun rename(groupId: String, name: String): GroupResult = manage(groupId) { g, members, me ->
@@ -180,7 +267,11 @@ class GroupEngine(
         if (roleOf(members, me) != GroupRole.OWNER || newOwner == me) return@manage Verdict.Deny(GroupResult.NOT_ALLOWED)
         if (roleOf(members, newOwner) == null) return@manage Verdict.Deny(GroupResult.NOT_FOUND)
         val updated = members.map {
-            when (it.id) { me -> GroupMemberRef(me, GroupRole.ADMIN); newOwner -> GroupMemberRef(newOwner, GroupRole.OWNER); else -> it }
+            when (it.id) {
+                me -> it.copy(role = GroupRole.ADMIN)
+                newOwner -> it.copy(role = GroupRole.OWNER)
+                else -> it
+            }
         }
         Verdict.Apply(g.name, newOwner, updated, emptySet())
     }
@@ -197,20 +288,65 @@ class GroupEngine(
         val me = ownId() ?: return@withLock GroupResult.NO_IDENTITY
         val g = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
         if (g.state != GroupState.ACTIVE) return@withLock GroupResult.NOT_ACTIVE
-        when (val v = decide(g, store.members(groupId), me)) {
+        val previousMembers = store.members(groupId)
+        when (val v = decide(g, previousMembers, me)) {
             is Verdict.Deny -> v.result
             is Verdict.Apply -> {
-                store.putGroup(g.copy(name = v.name, owner = v.owner, epoch = g.epoch + 1), v.members)
+                val changesMlsMembership = v.members != previousMembers
+                // Keep MLS membership and epoch changes single-writer until a distributed proposal
+                // coordinator can reconcile concurrent proposals and commits from multiple admins.
+                if (g.mlsEnabled && changesMlsMembership && roleOf(previousMembers, me) != GroupRole.OWNER) {
+                    return@withLock GroupResult.NOT_ALLOWED
+                }
+                var nextMlsEpoch = g.mlsEpoch
+                if (g.mlsEnabled && v.removed.isNotEmpty()) {
+                    val engine = mls ?: return@withLock GroupResult.MLS_UNAVAILABLE
+                    var epochMembers = store.members(groupId)
+                    for (removedId in v.removed) {
+                        val target = epochMembers.firstOrNull { it.id == removedId && it.mlsJoined } ?: continue
+                        val commit = engine.removeMember(groupId, target.id)
+                        val recipients = epochMembers.filter { it.mlsJoined && it.id != me && it.id != target.id && peers.status(it.id) == PeerStatus.Known }
+                        val now = clock().coerceAtLeast(1L)
+                        store.enqueue(recipients.map { recipient ->
+                            val id = newId()
+                            OutboxRow(
+                                id, groupId, recipient.id, null,
+                                EnvelopeCodec.encode(Envelope.GroupMls(id, me, recipient.id, groupId, GroupMlsKind.COMMIT, commit.commit)),
+                                now, 0, now, acked = false, failed = false,
+                            )
+                        })
+                        nextMlsEpoch = commit.epoch
+                        epochMembers = epochMembers.map { if (it.id == target.id) it.copy(mlsJoined = false) else it }
+                    }
+                }
+                store.putGroup(g.copy(name = v.name, owner = v.owner, epoch = g.epoch + 1, mlsEpoch = nextMlsEpoch), v.members)
                 broadcastSnapshot(groupId, v.removed)
                 GroupResult.OK
             }
         }
     }
 
-    /** Accepts an invitation. Nothing is sent: the group simply becomes active here. */
+    /**
+     * Accepting an MLS invitation is a real handshake: send a signed KeyPackage,
+     * wait for Welcome, install the epoch state, then acknowledge to the owner.
+     */
     suspend fun accept(groupId: String): GroupResult = lock.withLock {
+        val me = ownId() ?: return@withLock GroupResult.NO_IDENTITY
         val g = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
         if (g.state != GroupState.INVITED) return@withLock GroupResult.NOT_ACTIVE
+        if (g.mlsEnabled) {
+            val engine = mls ?: return@withLock GroupResult.MLS_UNAVAILABLE
+            val keyPackage = engine.generateKeyPackage(me)
+            val id = newId()
+            val now = clock().coerceAtLeast(1L)
+            store.setState(groupId, GroupState.JOINING)
+            store.enqueue(listOf(OutboxRow(
+                id, groupId, g.owner, null,
+                EnvelopeCodec.encode(Envelope.GroupMls(id, me, g.owner, groupId, GroupMlsKind.KEY_PACKAGE, keyPackage)),
+                now, 0, now, acked = false, failed = false,
+            )))
+            return@withLock GroupResult.OK
+        }
         store.setState(groupId, GroupState.ACTIVE)
         GroupResult.OK
     }
@@ -219,7 +355,7 @@ class GroupEngine(
     suspend fun leave(groupId: String): GroupResult = lock.withLock {
         val me = ownId() ?: return@withLock GroupResult.NO_IDENTITY
         val g = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
-        if (g.state != GroupState.ACTIVE && g.state != GroupState.INVITED) return@withLock GroupResult.NOT_ACTIVE
+        if (g.state != GroupState.ACTIVE && g.state != GroupState.INVITED && g.state != GroupState.JOINING) return@withLock GroupResult.NOT_ACTIVE
         if (g.owner == me) return@withLock GroupResult.NOT_ALLOWED
         val id = newId()
         val now = clock()
@@ -232,7 +368,7 @@ class GroupEngine(
     /** Deletes the local copy (messages included) of a group this device is no longer part of. */
     suspend fun deleteLocal(groupId: String): GroupResult = lock.withLock {
         val g = store.group(groupId) ?: return@withLock GroupResult.NOT_FOUND
-        if (g.state == GroupState.ACTIVE || g.state == GroupState.INVITED) return@withLock GroupResult.NOT_ALLOWED
+        if (g.state == GroupState.ACTIVE || g.state == GroupState.INVITED || g.state == GroupState.JOINING) return@withLock GroupResult.NOT_ALLOWED
         store.deleteGroup(groupId)
         GroupResult.OK
     }
@@ -248,7 +384,7 @@ class GroupEngine(
         val rows = ((members.map { it.id } + extraTargets).toSet() - me).map { target ->
             val id = newId()
             OutboxRow(id, groupId, target, null,
-                EnvelopeCodec.encode(Envelope.GroupSync(id, me, target, groupId, g.name, g.kind, g.epoch, g.owner, members)),
+                EnvelopeCodec.encode(Envelope.GroupSync(id, me, target, groupId, g.name, g.kind, g.epoch, g.owner, members, g.mlsEnabled, g.mlsEpoch)),
                 now, 0, now, acked = false, failed = false)
         }
         store.enqueue(rows)
@@ -265,6 +401,8 @@ class GroupEngine(
                 is Envelope.GroupChat -> onChat(me, env)
                 is Envelope.GroupSync -> onSync(me, env)
                 is Envelope.GroupLeave -> onLeave(me, env)
+                is Envelope.GroupReadReceipt -> onReadReceipt(me, env)
+                is Envelope.GroupMls -> onMlsEnvelope(me, env)
                 else -> Unit
             }
         }
@@ -274,6 +412,164 @@ class GroupEngine(
         transmit(to, EnvelopeCodec.encode(Envelope.Ack(id, me, to, AckKind.DELIVERED)))
     }
 
+    /**
+     * Marks unread group messages locally and queues one authenticated receipt per sender/copy.
+     * Local read state is saved even when the user disabled outgoing read receipts.
+     */
+    suspend fun markRead(groupId: String, sendReceipts: Boolean) = lock.withLock {
+        val me = ownId() ?: return@withLock
+        val group = store.group(groupId) ?: return@withLock
+        if (group.state != GroupState.ACTIVE) return@withLock
+        val unread = store.markMessagesRead(groupId)
+        if (!sendReceipts || unread.isEmpty()) return@withLock
+        val members = store.members(groupId).map { it.id }.toSet()
+        val now = clock().coerceAtLeast(1L)
+        val rows = unread.mapNotNull { message ->
+            val sender = message.senderId
+            if (message.outgoing || sender == me || sender !in members || peers.status(sender) != PeerStatus.Known) {
+                null
+            } else {
+                val id = newId()
+                OutboxRow(
+                    id, groupId, sender, null,
+                    EnvelopeCodec.encode(Envelope.GroupReadReceipt(id, me, sender, groupId, message.messageId, now)),
+                    now, 0, now, acked = false, failed = false,
+                )
+            }
+        }
+        if (rows.isNotEmpty()) store.enqueue(rows)
+    }
+
+    private suspend fun onReadReceipt(me: String, env: Envelope.GroupReadReceipt) {
+        if (env.to != me || env.from == me) return
+        val group = store.group(env.groupId) ?: return
+        if (group.state != GroupState.ACTIVE) return
+        // The database binds the original copy ID to its intended recipient and group.
+        if (store.markReadReceipt(env.originalMessageId, env.groupId, env.from, env.readAt)) {
+            ack(me, env.from, env.messageId)
+        }
+    }
+
+    private suspend fun enqueueMlsControl(groupId: String, from: String, to: String, kind: GroupMlsKind, payload: ByteArray) {
+        require(payload.isNotEmpty() && payload.size <= 48 * 1024)
+        val id = newId()
+        val now = clock().coerceAtLeast(1L)
+        store.enqueue(listOf(OutboxRow(
+            id, groupId, to, null,
+            EnvelopeCodec.encode(Envelope.GroupMls(id, from, to, groupId, kind, payload)),
+            now, 0, now, acked = false, failed = false,
+        )))
+    }
+
+    /** Handles authenticated MLS handshake, commit and application packets. */
+    private suspend fun onMlsEnvelope(me: String, env: Envelope.GroupMls) {
+        if (env.to != me || env.from == me || env.payload.isEmpty() || env.payload.size > 48 * 1024) return
+        if (peers.status(env.from) != PeerStatus.Known) return
+        val group = store.group(env.groupId) ?: return
+        if (!group.mlsEnabled) return
+        val members = store.members(env.groupId)
+        val sender = members.firstOrNull { it.id == env.from } ?: return
+        val localRole = roleOf(members, me)
+
+        when (env.kind) {
+            GroupMlsKind.KEY_PACKAGE -> {
+                if (localRole != GroupRole.OWNER || sender.mlsJoined || env.from == group.owner) return
+                val engine = mls ?: return
+                val credential = engine.keyPackageIdentity(env.payload)
+                if (!MlsCredentialCodec.verify(credential, env.from)) return
+                if (store.hasControlMessage(env.messageId)) { ack(me, env.from, env.messageId); return }
+                val bundle = engine.addMembers(env.groupId, listOf(env.payload))
+                val now = clock().coerceAtLeast(1L)
+                val currentJoined = members.filter { it.mlsJoined && it.id != me && peers.status(it.id) == PeerStatus.Known }
+                store.enqueue(currentJoined.map { recipient ->
+                    val id = newId()
+                    OutboxRow(id, env.groupId, recipient.id, null,
+                        EnvelopeCodec.encode(Envelope.GroupMls(id, me, recipient.id, env.groupId, GroupMlsKind.COMMIT, bundle.commit)),
+                        now, 0, now, acked = false, failed = false)
+                })
+                val welcome = bundle.welcome ?: return
+                enqueueMlsControl(env.groupId, me, env.from, GroupMlsKind.WELCOME, welcome)
+                store.putGroup(group.copy(mlsEpoch = bundle.epoch), members)
+                store.recordControlMessage(env.messageId, clock())
+                broadcastSnapshot(env.groupId, emptySet())
+                ack(me, env.from, env.messageId)
+            }
+            GroupMlsKind.WELCOME -> {
+                if (env.from != group.owner || sender.role != GroupRole.OWNER) return
+                if (group.state == GroupState.ACTIVE && members.any { it.id == me && it.mlsJoined }) {
+                    ack(me, env.from, env.messageId)
+                    return
+                }
+                if (group.state != GroupState.JOINING) return
+                val engine = mls ?: return
+                val joinedEpoch = engine.joinGroup(env.groupId, env.payload, me)
+                if (!store.recordControlMessage(env.messageId, clock())) { ack(me, env.from, env.messageId); return }
+                val updatedMembers = members.map { if (it.id == me) it.copy(mlsJoined = true) else it }
+                store.putGroup(group.copy(state = GroupState.ACTIVE, mlsEpoch = joinedEpoch), updatedMembers)
+                enqueueMlsControl(env.groupId, me, group.owner, GroupMlsKind.JOIN_ACK, joinedEpoch.toString().toByteArray())
+                ack(me, env.from, env.messageId)
+            }
+            GroupMlsKind.JOIN_ACK -> {
+                if (localRole != GroupRole.OWNER || env.from == group.owner) return
+                if (sender.mlsJoined) { ack(me, env.from, env.messageId); return }
+                val acknowledgedEpoch = env.payload.toString(Charsets.UTF_8).toLongOrNull() ?: return
+                if (acknowledgedEpoch != group.mlsEpoch) return
+                val activeCredentials = mlsCredentialIds(env.groupId) ?: return
+                if (env.from.lowercase() !in activeCredentials) return
+                if (!store.recordControlMessage(env.messageId, clock())) { ack(me, env.from, env.messageId); return }
+                val updatedMembers = members.map { if (it.id == env.from) it.copy(mlsJoined = true) else it }
+                store.putGroup(group.copy(mlsEpoch = acknowledgedEpoch), updatedMembers)
+                broadcastSnapshot(env.groupId, emptySet())
+                ack(me, env.from, env.messageId)
+            }
+            GroupMlsKind.COMMIT -> {
+                if (!sender.mlsJoined || sender.role != GroupRole.OWNER) return
+                val engine = mls ?: return
+                if (store.hasControlMessage(env.messageId)) { ack(me, env.from, env.messageId); return }
+                val result = engine.processMessage(env.payload)
+                if (result.groupId != env.groupId || result.kind !in setOf("commit", "own_commit")) return
+                store.putGroup(group.copy(mlsEpoch = result.epoch), members)
+                store.recordControlMessage(env.messageId, clock())
+                ack(me, env.from, env.messageId)
+            }
+            GroupMlsKind.APPLICATION -> {
+                if (group.state != GroupState.ACTIVE || !sender.mlsJoined) return
+                if (group.kind == GroupKind.CHANNEL && sender.role == GroupRole.MEMBER) return
+                if (store.hasControlMessage(env.messageId)) { ack(me, env.from, env.messageId); return }
+                val engine = mls ?: return
+                val result = engine.processMessage(env.payload)
+                if (result.groupId != env.groupId || result.kind != "application") return
+                when (val app = GroupPayloadCodec.decode(result.application ?: return) ?: return) {
+                    is GroupTextPayload -> {
+                        val fresh = store.recordIncomingMessage(
+                            // The outer authenticated message ID is the sender's durable per-recipient
+                            // outbox copy ID. Receipts must reference this exact ID, not the shared app ID.
+                            GroupMessage(env.messageId, env.groupId, env.from, false, app.body, app.sentAt, false)
+                        )
+                        if (fresh) runCatching { incoming?.onMessage(env.groupId, true, env.from, app.body) }
+                    }
+                    is GroupFilePayload -> {
+                        val safeUrl = org.relyra.app.core.transfer.BlossomUrl.normalize(
+                            app.file.serverUrl, allowPrivate = false,
+                        ) ?: return
+                        val attachment = GroupAttachmentRecord(
+                            env.messageId, env.groupId, env.from, org.relyra.app.core.transfer.FileNames.sanitize(app.file.name),
+                            app.file.mime, app.file.size, app.file.blobSize, app.file.plainSha256,
+                            app.file.blobSha256, app.file.fileKey, safeUrl, null,
+                            GroupAttachmentPhase.REMOTE, app.sentAt, false,
+                        )
+                        val fresh = store.recordIncomingGroupAttachment(
+                            GroupMessage(env.messageId, env.groupId, env.from, false, attachment.name, app.sentAt, false),
+                            attachment,
+                        )
+                        if (fresh) runCatching { incoming?.onMessage(env.groupId, true, env.from, null) }
+                    }
+                }
+                store.recordControlMessage(env.messageId, clock())
+                ack(me, env.from, env.messageId)
+            }
+        }
+    }
     private suspend fun onChat(me: String, env: Envelope.GroupChat) {
         val g = store.group(env.groupId) ?: return
         if (g.state != GroupState.ACTIVE) return
@@ -287,8 +583,22 @@ class GroupEngine(
         ack(me, env.from, env.messageId)
     }
 
+    /** Reads and validates the RELYRA-signed account/device credentials in the local MLS tree. */
+    private suspend fun mlsCredentialIds(groupId: String): Set<String>? {
+        val engine = mls ?: return null
+        val encoded = runCatching { engine.members(groupId) }.getOrNull() ?: return null
+        val ids = linkedSetOf<String>()
+        for (value in encoded) {
+            val credential = runCatching { Base64.getDecoder().decode(value) }.getOrNull() ?: return null
+            val parsed = MlsCredentialCodec.decode(credential) ?: return null
+            if (!MlsCredentialCodec.verify(credential, parsed.relyraPublicId)) return null
+            if (!ids.add(parsed.relyraPublicId.lowercase())) return null
+        }
+        return ids
+    }
+
     private fun validSnapshot(env: Envelope.GroupSync): Boolean {
-        if (env.epoch < 1 || env.owner.isBlank() || env.owner.length > 100) return false
+        if (env.epoch < 1 || env.owner.isBlank() || env.owner.length > 100 || env.mlsEpoch < 0) return false
         if (GroupLimits.sanitizeName(env.name).isBlank() || env.members.size !in 1..GroupLimits.MAX_MEMBERS) return false
         if (env.members.any { it.id.isBlank() || it.id.length > 100 }) return false
         if (env.members.map { it.id }.toSet().size != env.members.size) return false
@@ -297,17 +607,20 @@ class GroupEngine(
             env.members.any { it.id == env.from && (it.role == GroupRole.OWNER || it.role == GroupRole.ADMIN) }
     }
 
-    private fun snapshotFingerprint(name: String, kind: GroupKind, owner: String, members: List<GroupMemberRef>): String {
+    private fun snapshotFingerprint(name: String, kind: GroupKind, owner: String, members: List<GroupMemberRef>, mlsEnabled: Boolean, mlsEpoch: Long): String {
         val bytes = ByteArrayOutputStream()
         DataOutputStream(bytes).use { out ->
             out.writeUTF(name)
             out.writeInt(kind.ordinal)
             out.writeUTF(owner)
+            out.writeBoolean(mlsEnabled)
+            out.writeLong(mlsEpoch)
             val ordered = members.sortedBy { it.id }
             out.writeInt(ordered.size)
             ordered.forEach { member ->
                 out.writeUTF(member.id)
                 out.writeInt(member.role.ordinal)
+                out.writeBoolean(member.mlsJoined)
             }
         }
         return MessageDigest.getInstance("SHA-256").digest(bytes.toByteArray())
@@ -325,16 +638,26 @@ class GroupEngine(
             if (!iAmIn) { ack(me, env.from, env.messageId); return }
             val senderRole = env.members.find { it.id == env.from }?.role
             if (!isStaff(senderRole)) return
-            store.putGroup(GroupRecord(env.groupId, name, env.kind, env.owner, env.epoch, GroupState.INVITED, clock(), env.from), env.members)
+            store.putGroup(GroupRecord(env.groupId, name, env.kind, env.owner, env.epoch, GroupState.INVITED, clock(), env.from, env.mlsEnabled, env.mlsEpoch), env.members)
             runCatching { incoming?.onInvited(env.groupId, name, env.from) }
             ack(me, env.from, env.messageId)
             return
         }
-        if (env.epoch < local.epoch) { ack(me, env.from, env.messageId); return }
+        if (env.epoch < local.epoch || env.mlsEpoch < local.mlsEpoch) { ack(me, env.from, env.messageId); return }
+        if (env.mlsEnabled != local.mlsEnabled) return
+        if (env.mlsEnabled && local.state == GroupState.ACTIVE) {
+            val nativeEpoch = runCatching { mls?.epoch(env.groupId) }.getOrNull() ?: return
+            if (nativeEpoch != env.mlsEpoch) return
+            val nativeMembers = mlsCredentialIds(env.groupId) ?: return
+            val declaredMembers = env.members.filter { it.mlsJoined }
+                .map { it.id.lowercase() }.toSet()
+            if (nativeMembers != declaredMembers) return
+        }
 
         val localMembers = store.members(env.groupId)
         val senderRole = roleOf(localMembers, env.from)
         if (!isStaff(senderRole) || env.kind != local.kind) return
+        if (local.mlsEnabled && senderRole == GroupRole.ADMIN && env.members != localMembers) return
         if (senderRole == GroupRole.ADMIN) {
             // Admins may only change plain members and the name: owner and admin set must stay identical.
             val before = localMembers.filter { it.role != GroupRole.MEMBER }.associate { it.id to it.role }
@@ -342,8 +665,8 @@ class GroupEngine(
             if (before != after || env.owner != local.owner) return
         }
         if (env.epoch == local.epoch) {
-            val incoming = snapshotFingerprint(name, env.kind, env.owner, env.members)
-            val current = snapshotFingerprint(local.name, local.kind, local.owner, localMembers)
+            val incoming = snapshotFingerprint(name, env.kind, env.owner, env.members, env.mlsEnabled, env.mlsEpoch)
+            val current = snapshotFingerprint(local.name, local.kind, local.owner, localMembers, local.mlsEnabled, local.mlsEpoch)
             // All replicas choose the same winner for concurrent edits based on identical canonical bytes.
             if (incoming <= current) { ack(me, env.from, env.messageId); return }
         }
@@ -352,7 +675,7 @@ class GroupEngine(
             local.state == GroupState.LEFT || local.state == GroupState.REMOVED -> GroupState.INVITED
             else -> local.state
         }
-        store.putGroup(local.copy(name = name, owner = env.owner, epoch = env.epoch, state = state), env.members)
+        store.putGroup(local.copy(name = name, owner = env.owner, epoch = env.epoch, state = state, mlsEpoch = env.mlsEpoch), env.members)
         ack(me, env.from, env.messageId)
     }
 
@@ -362,7 +685,23 @@ class GroupEngine(
         val leaver = members.find { it.id == env.from }
         // Only the owner publishes the new membership, so that several admins never publish the same change twice.
         if (leaver != null && leaver.role != GroupRole.OWNER && roleOf(members, me) == GroupRole.OWNER && g.state == GroupState.ACTIVE) {
-            store.putGroup(g.copy(epoch = g.epoch + 1), members.filter { it.id != env.from })
+            var nextMlsEpoch = g.mlsEpoch
+            if (g.mlsEnabled && leaver.mlsJoined) {
+                val engine = mls ?: return
+                val commit = engine.removeMember(g.groupId, env.from)
+                val now = clock().coerceAtLeast(1L)
+                val recipients = members.filter { it.mlsJoined && it.id != me && it.id != env.from && peers.status(it.id) == PeerStatus.Known }
+                store.enqueue(recipients.map { recipient ->
+                    val id = newId()
+                    OutboxRow(
+                        id, g.groupId, recipient.id, null,
+                        EnvelopeCodec.encode(Envelope.GroupMls(id, me, recipient.id, g.groupId, GroupMlsKind.COMMIT, commit.commit)),
+                        now, 0, now, acked = false, failed = false,
+                    )
+                })
+                nextMlsEpoch = commit.epoch
+            }
+            store.putGroup(g.copy(epoch = g.epoch + 1, mlsEpoch = nextMlsEpoch), members.filter { it.id != env.from })
             broadcastSnapshot(g.groupId, setOf(env.from))
         }
         ack(me, env.from, env.messageId)

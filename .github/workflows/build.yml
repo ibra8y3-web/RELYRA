@@ -36,6 +36,23 @@ jobs:
       - name: Build discovery container
         run: docker build -f services/discovery/Dockerfile -t relyra-discovery:ci services/discovery
 
+  mls-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native/mls -> target
+      - name: Run OpenMLS and SQLCipher integration tests
+        working-directory: native/mls
+        run: cargo test
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
@@ -55,11 +72,18 @@ jobs:
       - name: Install Android SDK components
         run: |
           yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
-          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --channel=3 "platforms;android-37.0" "build-tools;37.0.0" > /dev/null
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --channel=3 "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.2.12479018" > /dev/null
 
       - uses: gradle/actions/setup-gradle@v6
         with:
           gradle-version: 9.6.0
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-linux-android
+
+      - name: Build OpenMLS native Android libraries
+        run: bash scripts/build_mls_android.sh
 
       - name: Build debug APK
         run: gradle --no-daemon assembleDebug

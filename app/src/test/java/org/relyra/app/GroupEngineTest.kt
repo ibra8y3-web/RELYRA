@@ -14,6 +14,7 @@ internal class FakeGroupStore : GroupStore {
     val groups = HashMap<String, GroupRecord>()
     val memberMap = HashMap<String, List<GroupMemberRef>>()
     val messages = LinkedHashMap<String, GroupMessage>()
+    val attachments = LinkedHashMap<String, GroupAttachmentRecord>()
     val outbox = LinkedHashMap<String, OutboxRow>()
     private val processed = HashSet<String>()
 
@@ -25,6 +26,19 @@ internal class FakeGroupStore : GroupStore {
         messages[m.messageId] = m
         copies.forEach { outbox[it.id] = it }
     }
+    override suspend fun insertOutgoingGroupAttachment(m: GroupMessage, attachment: GroupAttachmentRecord, copies: List<OutboxRow>) {
+        messages[m.messageId] = m
+        attachments[attachment.messageId] = attachment
+        copies.forEach { outbox[it.id] = it }
+    }
+    override suspend fun recordIncomingGroupAttachment(m: GroupMessage, attachment: GroupAttachmentRecord): Boolean {
+        if (!processed.add(m.messageId)) return false
+        messages[m.messageId] = m
+        attachments[attachment.messageId] = attachment
+        return true
+    }
+    override suspend fun groupAttachment(messageId: String) = attachments[messageId]
+    override suspend fun updateGroupAttachment(attachment: GroupAttachmentRecord) { attachments[attachment.messageId] = attachment }
     override suspend fun recordIncomingMessage(m: GroupMessage): Boolean {
         if (!processed.add(m.messageId)) return false
         messages[m.messageId] = m
@@ -41,9 +55,24 @@ internal class FakeGroupStore : GroupStore {
         outbox[id] = r.copy(acked = true)
         return true
     }
+    override suspend fun markMessagesRead(groupId: String): List<GroupMessage> {
+        val unread = messages.values.filter { it.groupId == groupId && !it.outgoing && !it.readLocally }
+        unread.forEach { messages[it.messageId] = it.copy(readLocally = true) }
+        return unread
+    }
+    override suspend fun markReadReceipt(copyId: String, groupId: String, memberId: String, readAt: Long): Boolean {
+        val row = outbox[copyId] ?: return false
+        if (row.groupId != groupId || row.memberId != memberId || row.baseMessageId == null) return false
+        outbox[copyId] = row.copy(acked = true, readAt = row.readAt ?: readAt)
+        return true
+    }
+    override suspend fun recordControlMessage(id: String, receivedAt: Long): Boolean = processed.add(id)
+    override suspend fun hasControlMessage(id: String): Boolean = id in processed
+
     override suspend fun deleteGroup(groupId: String) {
         groups.remove(groupId); memberMap.remove(groupId)
         messages.values.removeAll { it.groupId == groupId }
+        attachments.values.removeAll { it.groupId == groupId }
         outbox.values.removeAll { it.groupId == groupId }
     }
 }
@@ -262,6 +291,77 @@ class GroupEngineTest {
         assertTrue(names.single() == "Bob's edit" || names.single() == "Carol's edit")
         val epochs = listOf(alice, bob, carol, dave).map { it.store.group(gid)!!.epoch }.toSet()
         assertEquals(setOf(4L), epochs)
+    }
+
+    @Test fun groupReadReceiptsAreBoundToTheExactMemberCopyAndRespectPreference() = runBlocking {
+        val gid = groupWith(GroupKind.GROUP, bob, carol)
+        alice.engine.send(gid, "read me")
+        pump()
+
+        val bobCopy = alice.store.outbox.values.single { it.baseMessageId != null && it.memberId == "bob" }
+        val carolCopy = alice.store.outbox.values.single { it.baseMessageId != null && it.memberId == "carol" }
+
+        val forged = Envelope.GroupReadReceipt(
+            UUID.randomUUID().toString(), "carol", "alice", gid, bobCopy.id, now + 1
+        )
+        alice.engine.onEnvelope(forged)
+        assertNull(alice.store.outbox[bobCopy.id]!!.readAt)
+
+        bob.engine.markRead(gid, sendReceipts = true)
+        pump()
+        assertNotNull(alice.store.outbox[bobCopy.id]!!.readAt)
+        assertNull(alice.store.outbox[carolCopy.id]!!.readAt)
+
+        // Local read state is saved, but no receipt leaves the device when the preference is off.
+        carol.engine.markRead(gid, sendReceipts = false)
+        pump()
+        assertTrue(carol.store.messages.values.all { it.readLocally })
+        assertNull(alice.store.outbox[carolCopy.id]!!.readAt)
+    }
+
+    @Test fun readReceiptCodecRoundTripsAndRejectsTruncatedFrames() {
+        val receipt = Envelope.GroupReadReceipt(
+            UUID.randomUUID().toString(), "alice", "bob", UUID.randomUUID().toString(),
+            UUID.randomUUID().toString(), 1234L
+        )
+        val encoded = EnvelopeCodec.encode(receipt)
+        val decoded = EnvelopeCodec.decode(encoded) as Envelope.GroupReadReceipt
+        assertEquals(receipt.groupId, decoded.groupId)
+        assertEquals(receipt.originalMessageId, decoded.originalMessageId)
+        assertEquals(1234L, decoded.readAt)
+        assertNull(EnvelopeCodec.decode(encoded.copyOf(encoded.size - 1)))
+    }
+
+    @Test fun groupMlsEnvelopeAndV2MembershipSnapshotRoundTrip() {
+        val gid = UUID.randomUUID().toString()
+        val id = UUID.randomUUID().toString()
+        val memberId = UUID.randomUUID().toString()
+        val sync = Envelope.GroupSync(
+            id, "owner", "member", gid, "MLS team", GroupKind.GROUP, 3, "owner",
+            listOf(GroupMemberRef("owner", GroupRole.OWNER, true), GroupMemberRef("member", GroupRole.MEMBER, false)),
+            mlsEnabled = true, mlsEpoch = 2,
+        )
+        val back = EnvelopeCodec.decode(EnvelopeCodec.encode(sync)) as Envelope.GroupSync
+        assertTrue(back.mlsEnabled)
+        assertEquals(2L, back.mlsEpoch)
+        assertTrue(back.members.first().mlsJoined)
+        assertFalse(back.members.last().mlsJoined)
+
+        val packet = Envelope.GroupMls(id, "owner", "member", gid, GroupMlsKind.WELCOME, byteArrayOf(1, 2, 3))
+        val decoded = EnvelopeCodec.decode(EnvelopeCodec.encode(packet)) as Envelope.GroupMls
+        assertEquals(GroupMlsKind.WELCOME, decoded.kind)
+        assertTrue(decoded.payload.contentEquals(byteArrayOf(1, 2, 3)))
+        assertNull(EnvelopeCodec.decode(EnvelopeCodec.encode(packet).copyOf(EnvelopeCodec.encode(packet).size - 1)))
+    }
+
+    @Test fun mlsGroupTextPayloadCodecRejectsMalformedFrames() {
+        val id = UUID.randomUUID().toString()
+        val encoded = GroupPayloadCodec.encodeText(id, 1234L, "مرحبا MLS")
+        val decoded = GroupPayloadCodec.decodeText(encoded)!!
+        assertEquals(id, decoded.messageId)
+        assertEquals(1234L, decoded.sentAt)
+        assertEquals("مرحبا MLS", decoded.body)
+        assertNull(GroupPayloadCodec.decodeText(encoded.copyOf(encoded.size - 1)))
     }
 
     @Test fun codecRoundTripAndMalformedInput() {
