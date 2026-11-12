@@ -217,6 +217,13 @@ fun CommunitiesScreen(vm: MainViewModel) {
             }
             if (selectedManifest.visibility == "public" || isOwner || selectedEntity?.localRole == "MEMBER") {
                 Text(stringResource(R.string.communities_posts_title), style = MaterialTheme.typography.titleMedium)
+                if (selectedManifest.visibility == "private") {
+                    Text(
+                        stringResource(R.string.communities_private_feed_notice),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
                 OutlinedTextField(
                     value = postBody,
                     onValueChange = { postBody = it.take(4_000) },
