@@ -33,6 +33,12 @@ class Notifier(context: Context, private val settings: AppSettings) {
             }
         )
         nm.createNotificationChannel(
+            NotificationChannel(CH_CALLS, ctx.getString(R.string.call_notification_channel), NotificationManager.IMPORTANCE_HIGH).apply {
+                description = ctx.getString(R.string.call_notification_channel_desc)
+                lockscreenVisibility = Notification.VISIBILITY_PRIVATE
+            }
+        )
+        nm.createNotificationChannel(
             NotificationChannel(CH_SERVICE, ctx.getString(R.string.notif_channel_service), NotificationManager.IMPORTANCE_LOW).apply {
                 description = ctx.getString(R.string.notif_channel_service_desc)
                 setShowBadge(false)
@@ -83,6 +89,30 @@ class Notifier(context: Context, private val settings: AppSettings) {
         }
     }
 
+
+    fun postCall(peerId: String, title: String) {
+        if (!settings.notifications.value || !systemAllows() || Foreground.visible) return
+        val text = ctx.getString(R.string.call_incoming_notification)
+        val notification = NotificationCompat.Builder(ctx, CH_CALLS)
+            .setSmallIcon(R.drawable.ic_stat_relyra)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setCategory(NotificationCompat.CATEGORY_CALL)
+            .setPriority(NotificationCompat.PRIORITY_MAX)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setOngoing(true)
+            .setAutoCancel(false)
+            .setContentIntent(openIntent(peerId, false))
+            .build()
+        runCatching { NotificationManagerCompat.from(ctx).notify(callNotificationId(peerId), notification) }
+    }
+
+    fun cancelCall(peerId: String) {
+        NotificationManagerCompat.from(ctx).cancel(callNotificationId(peerId))
+    }
+
+    private fun callNotificationId(peerId: String) = peerId.hashCode() xor 0x43414C4C
+
     fun cancel(key: String) {
         NotificationManagerCompat.from(ctx).cancel(key.hashCode())
     }
@@ -110,6 +140,7 @@ class Notifier(context: Context, private val settings: AppSettings) {
 
     companion object {
         const val CH_MESSAGES = "relyra_messages"
+        const val CH_CALLS = "relyra_calls"
         const val CH_SERVICE = "relyra_service"
         const val ACTION_OPEN_CHAT = "org.relyra.app.OPEN_CHAT"
         const val EXTRA_CHAT = "chat"
