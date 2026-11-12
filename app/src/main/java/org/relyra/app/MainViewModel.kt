@@ -133,6 +133,11 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val bluetoothEnabled get() = rely.container.network.bluetoothEnabled
     val bluetoothPeers get() = rely.container.bluetooth.peers
     val bluetoothStatus get() = rely.container.bluetooth.status
+    val meshEnabled get() = rely.container.network.meshEnabled
+    val meshRelayEnabled get() = rely.container.network.meshRelayEnabled
+    val meshQuotaMb get() = rely.container.network.meshQuotaMb
+    val meshStatus get() = rely.container.mesh.status
+    val meshStats get() = rely.container.mesh.stats
     val wifiDirectEnabled get() = rely.container.network.wifiDirectEnabled
     val wifiDirectPeers get() = rely.container.wifiDirect.discovered
     val wifiDirectVerifiedPeers get() = rely.container.wifiDirect.verified
@@ -189,6 +194,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                         sign = signer,
                         shouldEnable = container.network.bluetoothEnabled.value,
                     )
+                    container.mesh.configure(
+                        publicId = e?.publicId,
+                        sign = signer,
+                        shouldEnable = container.network.meshEnabled.value,
+                        allowRelay = container.network.meshRelayEnabled.value,
+                        quotaMb = container.network.meshQuotaMb.value,
+                    )
                     container.wifiDirect.configure(e?.publicId, container.network.wifiDirectEnabled.value)
                 }
             }
@@ -204,6 +216,18 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     val signer: ((ByteArray) -> ByteArray?)? =
                         if (identity == null) null else { bytes -> container.identities.sign(bytes) }
                     container.bluetooth.configure(identity?.publicId, signer, enabled)
+                }
+            }
+            launch {
+                kotlinx.coroutines.flow.combine(
+                    container.network.meshEnabled,
+                    container.network.meshRelayEnabled,
+                    container.network.meshQuotaMb,
+                ) { enabled, relay, quota -> Triple(enabled, relay, quota) }.collect { (enabled, relay, quota) ->
+                    val identity = container.database.identityDao().get()
+                    val signer: ((ByteArray) -> ByteArray?)? =
+                        if (identity == null) null else { bytes -> container.identities.sign(bytes) }
+                    container.mesh.configure(identity?.publicId, signer, enabled, relay, quota)
                 }
             }
             launch {
@@ -567,6 +591,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun setWifiDirectEnabled(enabled: Boolean) = ctr().network.setWifiDirectEnabled(enabled)
     fun refreshWifiDirectPeers() = ctr().wifiDirect.refreshPeers()
     fun connectWifiDirect(deviceAddress: String) = ctr().wifiDirect.connect(deviceAddress)
+    fun setMeshEnabled(enabled: Boolean) = ctr().network.setMeshEnabled(enabled)
+    fun setMeshRelayEnabled(enabled: Boolean) = ctr().network.setMeshRelayEnabled(enabled)
+    fun setMeshQuotaMb(value: Int) = ctr().network.setMeshQuotaMb(value)
+
 
     fun addDiscoveryGateway(url: String): AddRelayResult = ctr().network.addDiscoveryGateway(url)
     fun removeDiscoveryGateway(url: String) = ctr().network.removeDiscoveryGateway(url)
