@@ -1,5 +1,6 @@
 package org.relyra.app.core.messaging
 
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import java.io.ByteArrayOutputStream
@@ -120,6 +121,7 @@ class GroupEngine(
     private val mls: GroupMlsProvider? = null,
 ) : GroupInbound {
     private val lock = Mutex()
+    val pendingMlsProposals = MutableStateFlow<Map<String, Int>>(emptyMap())
 
     /**
      * Holds the same lock used by every group state transition while a cross-store
@@ -313,17 +315,32 @@ class GroupEngine(
                     return@withLock GroupResult.NOT_ALLOWED
                 }
                 val proposalId = newId()
-                val payload = GroupChangeProposalCodec.encode(
-                    GroupChangeProposal(proposalId, groupId, g.epoch, g.mlsEpoch, v.action, v.targets)
-                )
                 val now = clock().coerceAtLeast(1L)
-                store.enqueue(listOf(OutboxRow(
-                    proposalId, groupId, g.owner, null,
-                    EnvelopeCodec.encode(Envelope.GroupMls(
-                        proposalId, me, g.owner, groupId, GroupMlsKind.MEMBERSHIP_PROPOSAL, payload
-                    )),
-                    now, 0, now, acked = false, failed = false,
-                )))
+                if (v.action == "remove") {
+                    if (v.targets.size != 1) return@withLock GroupResult.INVALID
+                    val engine = mls ?: return@withLock GroupResult.MLS_UNAVAILABLE
+                    val payload = runCatching { engine.proposeRemoveMember(groupId, v.targets.single()) }
+                        .getOrElse { return@withLock GroupResult.INVALID }
+                    store.enqueue(listOf(OutboxRow(
+                        proposalId, groupId, g.owner, null,
+                        EnvelopeCodec.encode(Envelope.GroupMls(
+                            proposalId, me, g.owner, groupId, GroupMlsKind.PROPOSAL, payload
+                        )),
+                        now, 0, now, acked = false, failed = false,
+                    )))
+                } else {
+                    // Additions still require the invited device to deliver a KeyPackage to the owner.
+                    val payload = GroupChangeProposalCodec.encode(
+                        GroupChangeProposal(proposalId, groupId, g.epoch, g.mlsEpoch, v.action, v.targets)
+                    )
+                    store.enqueue(listOf(OutboxRow(
+                        proposalId, groupId, g.owner, null,
+                        EnvelopeCodec.encode(Envelope.GroupMls(
+                            proposalId, me, g.owner, groupId, GroupMlsKind.MEMBERSHIP_PROPOSAL, payload
+                        )),
+                        now, 0, now, acked = false, failed = false,
+                    )))
+                }
                 GroupResult.PROPOSAL_QUEUED
             }
             is Verdict.Apply -> {
@@ -507,6 +524,24 @@ class GroupEngine(
         val localRole = roleOf(members, me)
 
         when (env.kind) {
+            GroupMlsKind.PROPOSAL -> {
+                if (group.state != GroupState.ACTIVE || localRole != GroupRole.OWNER ||
+                    sender.role != GroupRole.ADMIN || !sender.mlsJoined) return
+                if (store.hasControlMessage(env.messageId)) { ack(me, env.from, env.messageId); return }
+                val engine = mls ?: return
+                if (engine.epoch(env.groupId) != group.mlsEpoch) return
+                val allowedTargets = members.filter {
+                    it.mlsJoined && it.role == GroupRole.MEMBER
+                }.map { it.id }.toSet()
+                if (allowedTargets.isEmpty()) return
+                val acceptedEpoch = runCatching {
+                    engine.processProposal(env.payload, env.from, allowedTargets)
+                }.getOrNull() ?: return
+                if (acceptedEpoch != group.mlsEpoch) return
+                if (!store.recordControlMessage(env.messageId, clock())) { ack(me, env.from, env.messageId); return }
+                refreshPendingMlsProposalsLocked(env.groupId)
+                ack(me, env.from, env.messageId)
+            }
             GroupMlsKind.MEMBERSHIP_PROPOSAL -> {
                 if (group.state != GroupState.ACTIVE || localRole != GroupRole.OWNER ||
                     sender.role != GroupRole.ADMIN || !sender.mlsJoined) return
@@ -590,7 +625,19 @@ class GroupEngine(
                 val credential = engine.keyPackageIdentity(env.payload)
                 if (!MlsCredentialCodec.verify(credential, env.from)) return
                 if (store.hasControlMessage(env.messageId)) { ack(me, env.from, env.messageId); return }
-                val bundle = engine.addMembers(env.groupId, listOf(env.payload))
+                // Convert the accepted KeyPackage into a standards-based Add Proposal,
+                // store it through OpenMLS, then commit all currently accepted proposals.
+                val addProposal = engine.proposeAddMember(env.groupId, env.payload)
+                engine.processProposal(addProposal, me, setOf(env.from))
+                val bundle = engine.commitPendingProposals(env.groupId)
+                val welcome = bundle.welcome ?: return
+                val activeCredentials = mlsCredentialIds(env.groupId) ?: return
+                val updatedMembers = members
+                    .filter { !it.mlsJoined || it.id.lowercase() in activeCredentials }
+                    .map { it.copy(mlsJoined = it.id.lowercase() in activeCredentials) }
+                val removedIds = members.filter {
+                    it.mlsJoined && it.id.lowercase() !in activeCredentials
+                }.map { it.id }.toSet()
                 val now = clock().coerceAtLeast(1L)
                 val currentJoined = members.filter { it.mlsJoined && it.id != me && peers.status(it.id) == PeerStatus.Known }
                 store.enqueue(currentJoined.map { recipient ->
@@ -599,11 +646,11 @@ class GroupEngine(
                         EnvelopeCodec.encode(Envelope.GroupMls(id, me, recipient.id, env.groupId, GroupMlsKind.COMMIT, bundle.commit)),
                         now, 0, now, acked = false, failed = false)
                 })
-                val welcome = bundle.welcome ?: return
                 enqueueMlsControl(env.groupId, me, env.from, GroupMlsKind.WELCOME, welcome)
-                store.putGroup(group.copy(mlsEpoch = bundle.epoch), members)
+                store.putGroup(group.copy(epoch = group.epoch + 1, mlsEpoch = bundle.epoch), updatedMembers)
                 store.recordControlMessage(env.messageId, clock())
-                broadcastSnapshot(env.groupId, emptySet())
+                broadcastSnapshot(env.groupId, removedIds)
+                refreshPendingMlsProposalsLocked(env.groupId)
                 ack(me, env.from, env.messageId)
             }
             GroupMlsKind.WELCOME -> {
