@@ -915,6 +915,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val callState get() = rely.container.calls.state
     val localCallVideo get() = rely.container.calls.localVideo
     val remoteCallVideo get() = rely.container.calls.remoteVideo
+    fun callEglContext() = rely.container.calls.eglContext()
 
     fun startCall(peerId: String, video: Boolean) {
         viewModelScope.launch(Dispatchers.IO) {
