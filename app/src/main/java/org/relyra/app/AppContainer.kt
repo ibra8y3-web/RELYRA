@@ -20,6 +20,7 @@ import org.relyra.app.core.storage.AppSettings
 import org.relyra.app.core.storage.DataManager
 import org.relyra.app.core.messaging.Transport
 import org.relyra.app.core.network.AdaptiveRouter
+import org.relyra.app.core.network.DhtDiscoveryManager
 import org.relyra.app.core.network.NetworkManager
 import org.relyra.app.core.network.NostrConnector
 import org.relyra.app.core.network.NearbyLanConnector
@@ -86,6 +87,14 @@ class AppContainer(context: Context) {
     }
 
     val network by lazy { NetworkManager(appContext) }
+    val discovery by lazy {
+        DhtDiscoveryManager(
+            network = network,
+            ownId = { database.identityDao().get()?.publicId },
+            sign = { bytes -> identities.sign(bytes) },
+            scope = netScope,
+        )
+    }
     private val netScope = kotlinx.coroutines.CoroutineScope(kotlinx.coroutines.SupervisorJob() + kotlinx.coroutines.Dispatchers.IO)
     val protector by lazy { org.relyra.app.core.identity.E2eeProtector(database, secure) }
     val nostr by lazy {
