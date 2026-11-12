@@ -1,34 +1,53 @@
 # Phase 5 — Multi-Device
 
-## Goal
-Allow one RELYRA account to use multiple independent devices with device-scoped keys, explicit approval, immediate trust revocation, and synchronization that never reuses stale cryptographic state.
+## Implemented in the repository
 
-## Added to source in this increment
-- SQLCipher `trusted_devices` table for account device inventory.
-- Separate public signing and encryption key fields per device; no private-key field.
-- Explicit `PENDING`, `APPROVED`, and `REVOKED` states.
-- DAO operations to observe/list devices, insert enrollment requests, conditionally approve/revoke, update last-seen time, advance sync cursors monotonically, and rotate key versions using compare-and-set.
-- Non-destructive database migration from version 16 to 17.
-- Security event types for enrollment, approval, revocation, key rotation, and synchronization conflicts.
+### 1. Device identity and keys
+- Each Android installation has an independent device ID.
+- Each device generates its own Ed25519 signing key and X25519 encryption key.
+- Private device keys are wrapped by the non-exportable Android Keystore master key. They are not stored in Room or included in sync bundles.
+- SQLCipher table `trusted_devices` stores public keys, trust state, timestamps, key version and sync cursor.
+- Database schema is version 18 with non-destructive migrations.
 
-## Not complete — do not mark Phase 5 done
-1. A real pairing protocol: short-lived random challenge, proof of possession of the new device key, and approval signed by an existing trusted device.
-2. Independent per-device signing/encryption key generation with private keys held only in Android Keystore.
-3. Encrypted account-secret transfer/derivation without sending the seed or session keys in plaintext, plus replay protection for pairing requests.
-4. Device-management service connected to existing network paths, rejecting revoked devices before accepting messages or signals.
-5. Key rotation and invalidation of old sessions/tokens on revocation, including a policy for revoking the last trusted device.
-6. Encrypted synchronization with durable cursors, deduplication, size limits, resumability, and user-selected data scope.
-7. Conflict resolution for messages/settings/contacts without overwriting newer state or reusing nonce/ratchet state.
-8. Arabic/English settings UI for pairing, approval, inventory, labels, last-seen, rotation, and revocation.
-9. Security notifications and a reviewable local audit trail.
-10. Protocol, unit and integration tests, followed by physical-device verification in Phase 10.
+### 2. Pairing and approval
+- A new device creates a bounded five-minute pairing request signed with its device signing key.
+- An existing device verifies the signature, account identity and request age, then issues an approval signed by the account identity key.
+- The approval receipt includes the approving device's public keys so the new device can authenticate the encrypted sync channel.
+- The new device checks its locally stored random challenge and the approval signature before becoming APPROVED.
+- Pairing request and approval codes are currently copied and pasted manually through the Devices screen.
 
-## Security invariants
-- Never copy Ratchet, MLS, or private Keystore keys between devices.
-- A database row is not proof of trust; state transitions and signatures must be checked.
-- Revocation must prevent subsequent message/sync acceptance after the revocation state is distributed. It cannot retract data already received by the revoked device.
-- Last-seen is not proof that a device is online or safe.
-- A full backup restore is not a substitute for a multi-device protocol.
+### 3. Sync and conflict handling
+- A bounded JSON snapshot is encrypted for one approved device using the existing `PayloadCrypto` X25519/HKDF/AES-GCM implementation.
+- Included data: contacts, direct text-message history, per-chat preferences, and three non-secret global preferences (notifications, notification preview, conversation-list preview).
+- Import verifies the RELYRA account and each contact's public identity key.
+- Message merge is idempotent by message ID, rejects a conflicting ID with different message content, and advances delivery/read state monotonically.
+- A sync packet cannot unblock or change local contact verification decisions.
+- Chat preferences and selected global preferences use timestamp-based last-writer-wins merging.
+- Imported incoming message IDs are recorded to prevent replay as new incoming messages.
+
+### 4. Revocation and alerts
+- Revoking a device changes its local trust state and creates a signed revocation code using the account identity.
+- The signed code can be applied on other devices; a revocation tombstone is created even when the target was not previously in that device's roster.
+- Pairing, approval and revocation events are written to the security log.
+- Local Android notifications are available for selected approval/revocation actions.
+
+## Current manual workflow
+1. On the new device, restore the same RELYRA identity using the existing recovery flow, then open Settings → Trusted devices and create a pairing request.
+2. Transfer the request code to the existing device.
+3. On the existing device, paste and approve the request, then send the approval code back.
+4. On the new device, paste and accept the signed approval.
+5. From the existing device, export an encrypted snapshot for the new device and import it there.
+6. When revoking a device, distribute the signed revocation code to the remaining devices and apply it on each.
+
+## Explicit limitations — Phase 5 is not fully complete
+- The same account identity must currently be restored on the new device. The existing shared account identity key is still used; a root-key/delegated-device architecture that avoids cloning the account signing secret is not implemented.
+- Pairing, sync and revocation currently rely on manual code transfer. Automatic sync over Nostr, WebRTC or nearby networking is not implemented.
+- Revocation codes must be manually applied to remaining devices; there is no guaranteed immediate broadcast or delivery to offline devices.
+- Current sync excludes file attachments, group/channel messages, group membership, MLS state or keys, Ratchet state, and outgoing messages still awaiting delivery.
+- Keep Connected, Wi-Fi-only, screenshot protection, theme and app lock remain device-local.
+- Device key rotation and distribution of updated keys to other devices are not connected to a complete lifecycle.
+- Notifications are local to actions performed on the current device; remote security push notifications are not implemented.
+- No build, protocol tests, emulator tests or two-phone tests were run. Runtime success is not claimed.
 
 ## Status
-**Only the persistence foundation has started.** Pairing, synchronization, and device-management UI are not implemented; Phase 5 is not complete.
+**A practical foundation for signed pairing, device-scoped keys, manual encrypted sync, direct text history/contact/selected-preference merge, and signed revocation has been added and wired into the app UI. Phase 5 remains in progress because of the limitations above.**
