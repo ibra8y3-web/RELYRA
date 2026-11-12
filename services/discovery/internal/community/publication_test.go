@@ -128,13 +128,18 @@ func TestPostingPolicyIsEnforcedAtPublication(t *testing.T) {
 		t.Fatal("slow mode did not block an early post")
 	}
 
-	now = now.Add(31 * time.Second)
+	// Retrying an already accepted post must not restart the slow-mode cooldown.
+	now = now.Add(25 * time.Second)
+	if _, err := store.PublishPost(context.Background(), mustJSON(t, first)); err != nil {
+		t.Fatalf("idempotent retry after slow mode was enabled failed: %v", err)
+	}
+	now = time.Unix(1_800_000_031, 0)
 	second.CreatedAt = now.UnixMilli()
 	second.Signature = ""
 	payload, _ = CanonicalPost(second)
 	second.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(member.private, payload))
 	if _, err := store.PublishPost(context.Background(), mustJSON(t, second)); err != nil {
-		t.Fatalf("slow mode did not release after its interval: %v", err)
+		t.Fatalf("slow mode did not release 30 seconds after the original accepted post: %v", err)
 	}
 }
 
