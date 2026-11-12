@@ -2,6 +2,7 @@ package org.relyra.app
 
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.async
+import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -569,6 +570,7 @@ class GroupEngineTest {
     }
 
     @Test fun backupBarrierBlocksRoomGroupMutationsUntilSnapshotCompletes() = runBlocking {
+    kotlinx.coroutines.coroutineScope {
         val gid = groupWith(GroupKind.GROUP, bob)
         val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
         val release = kotlinx.coroutines.CompletableDeferred<Unit>()
@@ -588,6 +590,7 @@ class GroupEngineTest {
         snapshot.await()
         assertEquals(GroupResult.OK, mutation.await())
         assertEquals("after snapshot", alice.store.group(gid)?.name)
+    }
     }
 
 }
