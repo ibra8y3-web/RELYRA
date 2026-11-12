@@ -455,10 +455,13 @@ pub fn process_proposal(
     message: &[u8],
     expected_public_id: &str,
     allowed_target_public_ids: &[String],
+    allow_add: bool,
+    allow_remove: bool,
 ) -> Result<u64, MlsError> {
     if message.is_empty() || message.len() > 1024 * 1024 ||
         expected_public_id.is_empty() || expected_public_id.len() > 256 ||
-        allowed_target_public_ids.is_empty() || allowed_target_public_ids.len() > 200 {
+        allowed_target_public_ids.is_empty() || allowed_target_public_ids.len() > 200 ||
+        allow_add == allow_remove {
         return Err(MlsError::InvalidMessage);
     }
     let (provider, _signer) = provider_with_signer(database)?;
@@ -483,10 +486,10 @@ pub fn process_proposal(
     match processed.into_content() {
         ProcessedMessageContent::ProposalMessage(proposal) => {
             let target_id = match proposal.proposal() {
-                Proposal::Add(add) => credential_public_id(
+                Proposal::Add(add) if allow_add => credential_public_id(
                     add.key_package().leaf_node().credential().serialized_content()
                 ),
-                Proposal::Remove(remove) => group.member(remove.removed())
+                Proposal::Remove(remove) if allow_remove => group.member(remove.removed())
                     .and_then(|credential| credential_public_id(credential.serialized_content())),
                 _ => None,
             }.ok_or(MlsError::InvalidMessage)?;
@@ -714,7 +717,7 @@ mod tests {
         create_group(&mut owner, gid, &owner_credential).unwrap();
         let key_package = generate_key_package(&mut invitee, &invitee_credential).unwrap();
         let proposal = propose_add_member(&mut owner, gid, &key_package).unwrap();
-        assert_eq!(process_proposal(&mut owner, &proposal, "alice", &["bob".to_owned()]).unwrap(), 0);
+        assert_eq!(process_proposal(&mut owner, &proposal, "alice", &["bob".to_owned()], true, false).unwrap(), 0);
         assert_eq!(pending_proposal_count(&mut owner, gid).unwrap(), 1);
 
         let committed = commit_pending_proposals(&mut owner, gid).unwrap();
@@ -758,8 +761,8 @@ mod tests {
 
         let remove_c = propose_remove_member(&mut admin_b, gid, &admin_c_credential).unwrap();
         let remove_b = propose_remove_member(&mut admin_c, gid, &admin_b_credential).unwrap();
-        assert_eq!(process_proposal(&mut owner, &remove_c, "bob", &["carol".to_owned()]).unwrap(), 2);
-        assert_eq!(process_proposal(&mut owner, &remove_b, "carol", &["bob".to_owned()]).unwrap(), 2);
+        assert_eq!(process_proposal(&mut owner, &remove_c, "bob", &["carol".to_owned()], false, true).unwrap(), 2);
+        assert_eq!(process_proposal(&mut owner, &remove_b, "carol", &["bob".to_owned()], false, true).unwrap(), 2);
         assert_eq!(pending_proposal_count(&mut owner, gid).unwrap(), 2);
 
         let committed = commit_pending_proposals(&mut owner, gid).unwrap();
