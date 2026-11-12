@@ -63,6 +63,7 @@ import org.relyra.app.ui.screens.StorageSettingsScreen
 import org.relyra.app.ui.screens.NotificationsSettingsScreen
 import org.relyra.app.ui.screens.BrowserDocumentsSettingsScreen
 import org.relyra.app.ui.screens.CommunitiesScreen
+import org.relyra.app.ui.screens.DevicesScreen
 
 private object Routes {
     const val HOME = "home"
@@ -75,6 +76,7 @@ private object Routes {
     const val CONTACTS = "contacts"
     const val IDENTITY = "identity"
     const val SETTINGS = "settings"
+    const val DEVICES = "settings/devices"
     const val ADD = "contacts/add"
     const val RECOVERY = "identity/recovery"
     const val LOG = "settings/log"
@@ -281,9 +283,11 @@ fun AppNav(
                     onOpenTools = { nav.navigate(Routes.TOOLS) },
                     onOpenNotifications = { nav.navigate(Routes.SETTINGS_NOTIFICATIONS) },
                     onOpenDiagnostics = { nav.navigate(Routes.DIAG) },
+                    onOpenDevices = { nav.navigate(Routes.DEVICES) },
                     onOpenHome = { nav.navigate(Routes.HOME) },
                 )
             }
+            composable(Routes.DEVICES) { DevicesScreen(vm) }
             composable(Routes.SETTINGS_PRIVACY) {
                 PrivacySecuritySettingsScreen(vm, authenticate, onOpenLog = { nav.navigate(Routes.LOG) })
             }
