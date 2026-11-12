@@ -136,6 +136,16 @@ func TestTurnCredentialsAreTimeLimitedAndIdentityBound(t *testing.T) {
 	if issued.TTLSeconds != 300 || issued.Username == "" || issued.Credential == "" {
 		t.Fatal("incomplete TURN credentials")
 	}
+	for _, valid := range []string{"turn:turn.example:3478?transport=udp", "turns:turn.example:5349", "turn:[2001:db8::10]:3478?transport=tcp"} {
+		if err := ValidateTurnURL(valid); err != nil {
+			t.Fatalf("valid TURN URL rejected: %s: %v", valid, err)
+		}
+	}
+	for _, invalid := range []string{"http://turn.example", "turn:user:pass@turn.example:3478", "turn:turn.example:99999", "turn:turn.example:3478?transport=ws"} {
+		if err := ValidateTurnURL(invalid); err == nil {
+			t.Fatalf("invalid TURN URL accepted: %s", invalid)
+		}
+	}
 	if err := VerifyTurnChallenge(challenge, now.Add(2*time.Minute)); err == nil {
 		t.Fatal("stale challenge accepted")
 	}
