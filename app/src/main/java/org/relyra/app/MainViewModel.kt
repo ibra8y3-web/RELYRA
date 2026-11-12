@@ -137,6 +137,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val internetSignal = MutableStateFlow("")
     val discoveryGateways get() = rely.container.network.discoveryGateways
     val publicDiscoveryEnabled get() = rely.container.network.publicDiscoveryEnabled
+    val storeForwardGateways get() = rely.container.network.storeForwardGateways
+    val storeForwardEnabled get() = rely.container.network.storeForwardEnabled
     val discoveryStatus get() = rely.container.discovery.status
     val discoveredPeer get() = rely.container.discovery.foundPresence
     val discoveryGatewayTests = MutableStateFlow<Map<String, Boolean?>>(emptyMap())
@@ -560,6 +562,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ctr().network.setDiscoveryGatewayEnabled(url, enabled)
     fun setPublicDiscoveryEnabled(enabled: Boolean) =
         ctr().network.setPublicDiscoveryEnabled(enabled)
+
+    fun addStoreForwardGateway(url: String): AddRelayResult = ctr().network.addStoreForwardGateway(url)
+    fun removeStoreForwardGateway(url: String) = ctr().network.removeStoreForwardGateway(url)
+    fun setStoreForwardGatewayEnabled(url: String, enabled: Boolean) =
+        ctr().network.setStoreForwardGatewayEnabled(url, enabled)
+    fun setStoreForwardEnabled(enabled: Boolean) = ctr().network.setStoreForwardEnabled(enabled)
 
     fun testDiscoveryGateway(url: String) {
         discoveryGatewayTests.value = discoveryGatewayTests.value + (url to null)

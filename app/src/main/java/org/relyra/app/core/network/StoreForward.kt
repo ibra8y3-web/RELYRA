@@ -178,13 +178,14 @@ class StoreForwardClient(
         acceptWire: suspend (ByteArray) -> Boolean,
     ): Int = withContext(Dispatchers.IO) {
         val path = "/v1/mailbox?limit=20"
+        val now = System.currentTimeMillis()
         val signature = StoreForwardEnvelopeCodec.accessProof(
-            "GET", path, ownId, System.currentTimeMillis(), sign,
+            "GET", path, ownId, now, sign,
         ) ?: return@withContext 0
         val request = Request.Builder()
             .url(baseUrl.trimEnd('/') + path)
             .header("X-RELYRA-Public-ID", ownId)
-            .header("X-RELYRA-Timestamp", System.currentTimeMillis().toString())
+            .header("X-RELYRA-Timestamp", now.toString())
             .header("X-RELYRA-Signature", signature)
             .get()
             .build()

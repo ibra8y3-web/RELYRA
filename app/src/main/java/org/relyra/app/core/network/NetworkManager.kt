@@ -46,6 +46,7 @@ object DiscoveryGatewayUrl {
 }
 
 data class DiscoveryGatewayConfig(val url: String, val enabled: Boolean)
+data class StoreForwardGatewayConfig(val url: String, val enabled: Boolean)
 
 sealed interface RelayStatus {
     data object Untested : RelayStatus
@@ -146,6 +147,54 @@ class NetworkManager(context: Context, private val client: RelayClient = RelayCl
 
     fun setDiscoveryGatewayEnabled(url: String, enabled: Boolean) {
         saveDiscoveryGateways(_discoveryGateways.value.map {
+            if (it.url == url) it.copy(enabled = enabled) else it
+        })
+    }
+
+    private val _storeForwardGateways = MutableStateFlow(loadStoreForwardGateways())
+    val storeForwardGateways: StateFlow<List<StoreForwardGatewayConfig>> = _storeForwardGateways
+    private val _storeForwardEnabled = MutableStateFlow(prefs.getBoolean("store_forward_enabled", false))
+    val storeForwardEnabled: StateFlow<Boolean> = _storeForwardEnabled
+
+    fun setStoreForwardEnabled(enabled: Boolean) {
+        prefs.edit { putBoolean("store_forward_enabled", enabled) }
+        _storeForwardEnabled.value = enabled
+    }
+
+    private fun loadStoreForwardGateways(): List<StoreForwardGatewayConfig> =
+        prefs.getString("store_forward_gateways", "").orEmpty().lines()
+            .filter { it.isNotBlank() }
+            .mapNotNull { line ->
+                val parts = line.split('\t')
+                DiscoveryGatewayUrl.normalize(parts[0])?.let {
+                    StoreForwardGatewayConfig(it, parts.getOrNull(1) != "0")
+                }
+            }
+            .distinctBy { it.url }
+
+    private fun saveStoreForwardGateways(values: List<StoreForwardGatewayConfig>) {
+        val normalized = values.distinctBy { it.url }
+        _storeForwardGateways.value = normalized
+        prefs.edit {
+            putString("store_forward_gateways", normalized.joinToString("\n") {
+                "${it.url}\t${if (it.enabled) 1 else 0}"
+            })
+        }
+    }
+
+    fun addStoreForwardGateway(input: String): AddRelayResult {
+        val url = DiscoveryGatewayUrl.normalize(input) ?: return AddRelayResult.Invalid
+        if (_storeForwardGateways.value.any { it.url == url }) return AddRelayResult.Duplicate
+        saveStoreForwardGateways(_storeForwardGateways.value + StoreForwardGatewayConfig(url, true))
+        return AddRelayResult.Added
+    }
+
+    fun removeStoreForwardGateway(url: String) {
+        saveStoreForwardGateways(_storeForwardGateways.value.filterNot { it.url == url })
+    }
+
+    fun setStoreForwardGatewayEnabled(url: String, enabled: Boolean) {
+        saveStoreForwardGateways(_storeForwardGateways.value.map {
             if (it.url == url) it.copy(enabled = enabled) else it
         })
     }

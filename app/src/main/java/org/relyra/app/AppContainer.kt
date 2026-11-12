@@ -28,6 +28,7 @@ import org.relyra.app.core.network.NearbyLanConnector
 import org.relyra.app.core.network.BluetoothConnector
 import org.relyra.app.core.network.WifiDirectConnector
 import org.relyra.app.core.network.WebRtcP2pConnector
+import org.relyra.app.core.network.StoreForwardConnector
 import org.relyra.app.core.messaging.PeerStatus
 import org.relyra.app.core.storage.SecureStore
 import org.relyra.app.core.transfer.BlossomServers
@@ -154,6 +155,15 @@ class AppContainer(context: Context) {
             },
         )
     }
+    val storeForward by lazy {
+        StoreForwardConnector(
+            network = network,
+            ownId = { database.identityDao().get()?.publicId },
+            sign = { bytes -> identities.sign(bytes) },
+            onWire = { delivery.acceptWire(it) },
+            scope = netScope,
+        )
+    }
     val wifiDirect by lazy {
         WifiDirectConnector(
             context = appContext,
@@ -165,7 +175,7 @@ class AppContainer(context: Context) {
     }
     val blossom by lazy { BlossomServers(appContext) }
     val transfers: TransferEngine by lazy { TransferEngine(appContext, blossom, messages, { identities.nostrSecret() }) }
-    val router by lazy { AdaptiveRouter { listOf(internetP2p, wifiDirect, bluetooth, nearby, nostr) } }
+    val router by lazy { AdaptiveRouter { listOf(internetP2p, wifiDirect, bluetooth, nearby, nostr, storeForward) } }
     val transports: List<Transport> by lazy { listOf(router) }
 
     val delivery: DeliveryEngine by lazy {
