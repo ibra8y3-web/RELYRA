@@ -14,18 +14,9 @@ import (
 	identity "github.com/ibra8y3-web/RELYRA/services/discovery/internal/protocol"
 )
 
-type membershipTestIdentity struct {
-	id string
-	private ed25519.PrivateKey
+func membershipIdentity(t *testing.T) testIdentity {
+	return makeIdentity(t)
 }
-
-func membershipIdentity(t *testing.T) membershipTestIdentity {
-	t.Helper()
-	pub, priv, err := ed25519.GenerateKey(rand.Reader)
-	if err != nil { t.Fatal(err) }
-	return membershipTestIdentity{id: identity.PublicIDForKey(pub), private: priv}
-}
-
 func TestPrivateInvitationRequiresOwnerAndMemberSignatures(t *testing.T) {
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0)
