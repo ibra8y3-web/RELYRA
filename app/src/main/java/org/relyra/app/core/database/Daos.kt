@@ -115,8 +115,8 @@ interface TrustedDeviceDao {
     @Query("UPDATE trusted_devices SET status = 'APPROVED', approvedAt = :approvedAt, lastSeenAt = :approvedAt WHERE deviceId = :deviceId AND accountId = :accountId AND status = 'PENDING'")
     suspend fun approvePending(deviceId: String, accountId: String, approvedAt: Long): Int
 
-    @Query("UPDATE trusted_devices SET status = 'REVOKED', revokedAt = :revokedAt WHERE deviceId = :deviceId AND accountId = :accountId AND status = 'APPROVED'")
-    suspend fun revokeApproved(deviceId: String, accountId: String, revokedAt: Long): Int
+    @Query("UPDATE trusted_devices SET status = 'REVOKED', revokedAt = :revokedAt WHERE deviceId = :deviceId AND accountId = :accountId AND status IN ('APPROVED','PENDING')")
+    suspend fun revokeAny(deviceId: String, accountId: String, revokedAt: Long): Int
 
     @Query("UPDATE trusted_devices SET lastSeenAt = :seenAt WHERE deviceId = :deviceId AND accountId = :accountId AND status = 'APPROVED' AND :seenAt >= lastSeenAt")
     suspend fun updateLastSeen(deviceId: String, accountId: String, seenAt: Long): Int
