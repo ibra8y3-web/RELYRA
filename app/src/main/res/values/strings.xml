@@ -38,6 +38,16 @@
     <string name="communities_report_submit">Submit report</string>
     <string name="communities_report_submitted">Signed report submitted.</string>
     <string name="communities_discovery_complete">Public community discovery completed.</string>
+    <string name="communities_accept_invitation">Accept private invitation</string>
+    <string name="communities_invite_member">Invite private member</string>
+    <string name="communities_invitee_id">Invitee RELYRA public ID</string>
+    <string name="communities_invitation_privacy">The invitation is bound to this identity and expires after seven days. Share it only through RELYRA encrypted chat.</string>
+    <string name="communities_create_invitation">Create signed invitation</string>
+    <string name="communities_invitation_created">Invitation created</string>
+    <string name="communities_invitation_share_warning">Copy this one-time invitation and send it to the intended member through an end-to-end encrypted RELYRA chat. Anyone with the code can attempt to redeem it, but only the named identity can accept it.</string>
+    <string name="communities_copy_invitation">Copy invitation</string>
+    <string name="communities_accept_invitation_help">Paste the complete invitation code received from the community owner. Your device will verify the owner signature and sign acceptance with your RELYRA identity.</string>
+    <string name="communities_invitation_code">Private invitation code</string>
     <string name="groups_search_hint">Search groups</string>
     <string name="channels_search_hint">Search channels</string>
     <string name="channels_new">Create channel</string>
