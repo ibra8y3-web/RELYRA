@@ -20,8 +20,9 @@ import java.util.Properties
  * Encrypted database backup. The database snapshot is checkpointed and copied while a Room transaction
  * prevents concurrent writers. Restoring is staged and applied before Room is opened on the next launch.
  *
- * The encrypted archive contains the SQLCipher database, private attachment/Vault ciphertext, wrapped
- * identity/database/prekey secrets, and portable app/server preferences. Legacy database-only backups remain readable.
+ * The encrypted archive contains the SQLCipher database, private attachment/Vault/MLS ciphertext, wrapped
+ * identity/database secrets, and portable app/server preferences. Ratchet and one-time prekey state is deliberately
+ * reset during restore so an old snapshot can never roll a secure session backwards.
  */
 class BackupManager(
     private val db: AppDatabase,
@@ -250,7 +251,6 @@ object RestoreApplier {
         listOf(DB_PART, DB_READY, KEYS, MARKER, ROLLBACK_KEYS, ROLLBACK_PREFS, ROLLBACK_KEYS + ".tmp", ROLLBACK_PREFS + ".tmp", "export.tmp", "export.bundle", "restore.bundle").forEach { File(stageDir, it).delete() }
         File(stageDir, "restored-files").deleteRecursively()
         File(stageDir, "pending-prefs").deleteRecursively()
-        File(stageDir, "export-prekeys").deleteRecursively()
         File(stageDir, "verify-vault").deleteRecursively()
     }
 
@@ -495,7 +495,6 @@ object RestoreApplier {
             if (!candidate.renameTo(dbFile)) throw java.io.IOException("could not install restored database")
             installed = true
 
-            keysUpdated = true
             // One-time prekeys from an older snapshot may already have been consumed after that snapshot.
             // Never roll them back: a fresh signed/one-time prekey bundle is generated after restore.
             prekeys.values.forEach { it.fill(0) }
