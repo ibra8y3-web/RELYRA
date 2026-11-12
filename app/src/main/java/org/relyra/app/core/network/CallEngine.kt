@@ -4,7 +4,6 @@ import android.content.Context
 import android.media.AudioManager
 import org.relyra.app.background.CallForegroundService
 import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
@@ -36,7 +35,7 @@ class CallEngine(
     private val knownPeer: suspend (String) -> Boolean,
     private val sign: (ByteArray) -> ByteArray?,
     private val sendSignal: suspend (String, P2pSignalKind, String) -> SendOutcome,
-    @Suppress("UNUSED_PARAMETER") scope: CoroutineScope,
+    private val scope: CoroutineScope,
     private val iceServersProvider: suspend () -> List<IceServerConfig> = { emptyList() },
 ) {
     private val app = context.applicationContext
@@ -76,11 +75,11 @@ class CallEngine(
             val offer = createDescription(session.connection, true)
             setDescription(session.connection, true, offer)
             withTimeout(25_000) { session.gathering.await() }
-            withTimeout(25_000) { session.gathering.await() }
             val sdp = session.connection.localDescription?.description ?: error("Missing local SDP")
             val signal = signed(peer, "call_offer", sdp, id) ?: error("Could not sign call offer")
             requireDelivered(sendSignal(peer, P2pSignalKind.CALL_OFFER, signal))
             mutableState.value = mutableState.value.copy(phase = CallPhase.CONNECTING, startedAtMillis = System.currentTimeMillis())
+            watchCallTimeout(peer, id)
             true
         } catch (t: Throwable) {
             close(peer)
@@ -119,6 +118,7 @@ class CallEngine(
             requireDelivered(sendSignal(peer, P2pSignalKind.CALL_ANSWER, signal))
             mutableState.value = current.copy(phase = CallPhase.CONNECTING, incomingSignal = null,
                 startedAtMillis = System.currentTimeMillis())
+            watchCallTimeout(peer, decoded.sessionId)
         } catch (t: Throwable) {
             close(peer)
             mutableState.value = current.copy(phase = CallPhase.FAILED, incomingSignal = null, detail = t.message)
@@ -183,6 +183,21 @@ class CallEngine(
         mutableState.value = mutableState.value.copy(speakerEnabled = value)
     }
     fun switchCamera() { sessions[mutableState.value.peerId]?.capturer?.switchCamera(null) }
+
+
+    private fun watchCallTimeout(peer: String, sessionId: String) {
+        scope.launch(Dispatchers.IO) {
+            delay(45_000)
+            val current = sessions[peer]
+            if (current?.id == sessionId && mutableState.value.peerId == peer &&
+                mutableState.value.phase == CallPhase.CONNECTING
+            ) {
+                close(peer)
+                mutableState.value = CallUiState(peerId = peer, phase = CallPhase.FAILED,
+                    detail = "No answer or media connection timeout")
+            }
+        }
+    }
 
     private suspend fun createSession(peer: String, id: String, video: Boolean): Session? {
         val ice = listOf(
