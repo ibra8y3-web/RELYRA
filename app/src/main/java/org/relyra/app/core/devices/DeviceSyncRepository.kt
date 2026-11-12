@@ -1,6 +1,7 @@
 package org.relyra.app.core.devices
 
 import androidx.room.withTransaction
+import kotlinx.coroutines.flow.first
 import org.json.JSONArray
 import org.json.JSONObject
 import org.relyra.app.core.database.*
@@ -22,7 +23,8 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
         val attachmentIds=db.attachmentDao().allMessageIdsForDeviceSync().toSet()
         val messages=db.messageDao().allForDeviceSync().filter { it.messageId !in attachmentIds && (!it.outgoing || it.state !in setOf("QUEUED", "SENT", "RELAYED")) }
         val prefs=db.chatPrefDao().allForDeviceSync()
-        require(contacts.size+messages.size+prefs.size<=LIMIT)
+        val trustedDevices=db.trustedDeviceDao().observeForAccount(identity.publicId).first()
+        require(contacts.size+messages.size+prefs.size+trustedDevices.size<=LIMIT)
         val root=JSONObject().put("format",FORMAT).put("version",VERSION).put("account",identity.publicId)
             .put("createdAt",System.currentTimeMillis())
         val ca=JSONArray()
@@ -43,6 +45,14 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
         prefs.forEach { p -> pa.put(JSONObject().put("chat",p.chatId).put("pinned",p.pinned)
             .put("archived",p.archived).put("muted",p.muted).put("updated",p.updatedAt)) }
         root.put("preferences",pa)
+        root.put("trustedDevices",JSONArray().also { a -> trustedDevices.forEach { d ->
+            a.put(JSONObject().put("id",d.deviceId).put("account",d.accountId)
+                .put("name",d.displayName).put("platform",d.platform)
+                .put("signing",enc(d.signingPublicKey)).put("encryption",enc(d.encryptionPublicKey))
+                .put("status",d.status).put("created",d.createdAt).put("lastSeen",d.lastSeenAt)
+                .put("approved",d.approvedAt).put("revoked",d.revokedAt)
+                .put("keyVersion",d.keyVersion).put("syncCursor",d.syncCursor))
+        } })
         val global = settings.exportSyncable()
         root.put("globalPreferences", JSONObject().put("updatedAt",global.updatedAt)
             .put("notifications",global.notifications).put("notificationPreview",global.notificationPreview)
@@ -93,11 +103,12 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
             require(root.optString("account")==identity.publicId)
             val ca=root.getJSONArray("contacts"); val ma=root.getJSONArray("messages"); val pa=root.getJSONArray("preferences")
             val global = root.optJSONObject("globalPreferences")
+            val da=root.optJSONArray("trustedDevices") ?: JSONArray()
             val ga=root.optJSONArray("groups") ?: JSONArray()
             val gma=root.optJSONArray("groupMembers") ?: JSONArray()
             val gmessages=root.optJSONArray("groupMessages") ?: JSONArray()
             val gattachments=root.optJSONArray("groupAttachments") ?: JSONArray()
-            require(ca.length()+ma.length()+pa.length()+ga.length()+gma.length()+
+            require(ca.length()+ma.length()+pa.length()+da.length()+ga.length()+gma.length()+
                 gmessages.length()+gattachments.length()<=LIMIT)
             var cAdded=0; var mAdded=0; var pUpdated=0; var conflicts=0
             db.withTransaction {
@@ -158,6 +169,52 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
                     val current=db.chatPrefDao().get(chat)
                     if(current==null||incoming.updatedAt>current.updatedAt) { db.chatPrefDao().put(incoming); pUpdated++ }
                     else if(current!=incoming) conflicts++
+                }
+
+                for(i in 0 until da.length()) {
+                    val j=da.getJSONObject(i)
+                    val id=j.getString("id")
+                    require(id.length<=64 && runCatching { java.util.UUID.fromString(id) }.isSuccess)
+                    require(j.getString("account")==identity.publicId)
+                    val signing=dec(j.getString("signing"),32)
+                    val encryption=dec(j.getString("encryption"),32)
+                    require(signing.size==32 && encryption.size==32)
+                    val status=j.getString("status")
+                    require(status in setOf(TrustedDeviceStatus.PENDING,TrustedDeviceStatus.APPROVED,TrustedDeviceStatus.REVOKED))
+                    val incoming=TrustedDeviceEntity(id,identity.publicId,j.getString("name").take(80),
+                        j.getString("platform").take(80),signing,encryption,status,j.getLong("created"),
+                        j.getLong("lastSeen"),j.optNullableLong("approved"),j.optNullableLong("revoked"),
+                        j.getLong("keyVersion"),j.optLong("syncCursor"))
+                    require(incoming.keyVersion>=1 && incoming.syncCursor>=0)
+                    val current=db.trustedDeviceDao().get(id)
+                    when {
+                        current==null -> db.trustedDeviceDao().putSnapshot(incoming)
+                        current.status==TrustedDeviceStatus.REVOKED -> Unit
+                        status==TrustedDeviceStatus.REVOKED -> {
+                            db.trustedDeviceDao().revokeAny(id,identity.publicId,incoming.revokedAt ?: System.currentTimeMillis())
+                        }
+                        status==TrustedDeviceStatus.APPROVED && current.status==TrustedDeviceStatus.PENDING -> {
+                            check(db.trustedDeviceDao().approvePending(id,identity.publicId,
+                                incoming.approvedAt ?: System.currentTimeMillis())==1)
+                            val approved=db.trustedDeviceDao().get(id) ?: error("Approved device disappeared")
+                            if(incoming.keyVersion>approved.keyVersion) {
+                                check(db.trustedDeviceDao().rotateDeviceKeys(id,identity.publicId,approved.keyVersion,
+                                    incoming.keyVersion,signing,encryption)==1)
+                            } else require(incoming.keyVersion==approved.keyVersion &&
+                                signing.contentEquals(approved.signingPublicKey) &&
+                                encryption.contentEquals(approved.encryptionPublicKey))
+                        }
+                        status==TrustedDeviceStatus.APPROVED && current.status==TrustedDeviceStatus.APPROVED -> {
+                            if(incoming.keyVersion>current.keyVersion) {
+                                check(db.trustedDeviceDao().rotateDeviceKeys(id,identity.publicId,current.keyVersion,
+                                    incoming.keyVersion,signing,encryption)==1)
+                            } else require(incoming.keyVersion==current.keyVersion &&
+                                signing.contentEquals(current.signingPublicKey) &&
+                                encryption.contentEquals(current.encryptionPublicKey)) {
+                                "Trusted-device key rollback or collision detected"
+                            }
+                        }
+                    }
                 }
 
                 val groupDao=db.groupDao()
