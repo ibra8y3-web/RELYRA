@@ -600,9 +600,21 @@ func (s *server) listPrivateCommunityEvents(w http.ResponseWriter, r *http.Reque
 }
 
 func (s *server) communitySequence(w http.ResponseWriter, r *http.Request) {
+	communityID := r.PathValue("communityID")
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	sequence, err := s.communities.LastSequence(ctx, r.PathValue("communityID"), r.PathValue("actorPublicID"))
+	manifest, err := s.communities.GetManifest(ctx, communityID, true)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "community not found")
+		return
+	}
+	if manifest.Visibility == "private" {
+		if _, err := s.privateMemberFromRequest(r, communityID); err != nil {
+			writeError(w, http.StatusForbidden, "private community access denied")
+			return
+		}
+	}
+	sequence, err := s.communities.LastSequence(ctx, communityID, r.PathValue("actorPublicID"))
 	if err != nil {
 		writeError(w, http.StatusBadRequest, "invalid community or moderator identity")
 		return
