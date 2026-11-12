@@ -330,4 +330,26 @@
 
     <string name="groups_mls_pending_delivery_hint">Waiting for %1$d member delivery acknowledgement(s). Commit is disabled until every member has stored the proposal.</string>
 
+    <string name="call_voice">Voice call</string>
+    <string name="call_video">Video call</string>
+    <string name="call_incoming_voice">Incoming voice call</string>
+    <string name="call_incoming_video">Incoming video call</string>
+    <string name="call_accept">Accept</string>
+    <string name="call_decline">Decline</string>
+    <string name="call_outgoing">Calling…</string>
+    <string name="call_connecting">Connecting…</string>
+    <string name="call_active">Call connected</string>
+    <string name="call_failed">Call failed</string>
+    <string name="call_mute">Mute</string>
+    <string name="call_unmute">Unmute</string>
+    <string name="call_speaker">Speaker</string>
+    <string name="call_earpiece">Earpiece</string>
+    <string name="call_camera_off">Camera off</string>
+    <string name="call_camera_on">Camera on</string>
+    <string name="call_switch_camera">Flip camera</string>
+    <string name="call_end">End call</string>
+    <string name="call_start_failed">Could not start the call. Check permissions and connection.</string>
+    <string name="call_notification_channel">Calls</string>
+    <string name="call_notification_channel_desc">Incoming RELYRA calls</string>
+    <string name="call_incoming_notification">Incoming RELYRA call</string>
 </resources>
