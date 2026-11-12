@@ -89,8 +89,8 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
     }
     suspend fun approvePairingRequest(encoded: String): String {
         val identity = checkNotNull(db.identityDao().get())
-        val rootSeed = checkNotNull(secure.loadSeed())
         val local = ensureLocalDevice()
+        val localSigningSeed = checkNotNull(secure.loadDeviceSigningSeed(local.deviceId))
         val (body, sig) = open(encoded, REQUEST)
         val values = DataInputStream(ByteArrayInputStream(body)).use { i ->
             require(i.readUTF() == REQUEST)
@@ -116,7 +116,7 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         val approval=transcript(APPROVAL,account,id,b64(challenge),now.toString(),b64(identity.publicKey),
             local.deviceId,local.displayName,local.platform,b64(local.signingPublicKey),b64(local.encryptionPublicKey))
         log(EventType.DEVICE_APPROVED,id)
-        return envelope(APPROVAL,approval,IdentityCrypto.sign(rootSeed,approval))
+        return envelope(APPROVAL,approval,IdentityCrypto.sign(localSigningSeed,approval))
     }
     suspend fun acceptPairingApproval(encoded: String) {
         val identity=checkNotNull(db.identityDao().get())
@@ -130,7 +130,10 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         require(un64(approverSign).size==32 && un64(approverEnc).size==32)
         require(challenge.length in 40..64 && approved.toLong() <= System.currentTimeMillis()+60_000)
         require(secure.loadDevicePairingChallenge(id)?.contentEquals(un64(challenge)) == true) { "Pairing challenge does not match this installation" }
-        require(IdentityCrypto.verify(identity.publicKey,sig,body)) { "Approval signature invalid" }
+        val approverPublicKey=un64(approverSign)
+        require(approverPublicKey.size==32 && IdentityCrypto.verify(approverPublicKey,sig,body)) {
+            "Approval signature invalid"
+        }
         val row=checkNotNull(db.trustedDeviceDao().get(id))
         check(row.status==TrustedDeviceStatus.PENDING)
         val localSigning = checkNotNull(secure.loadDeviceSigningSeed(id))
@@ -157,8 +160,11 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         check(db.trustedDeviceDao().revokeApproved(deviceId,account,System.currentTimeMillis())==1) { "Device is not approved" }
         val identity = checkNotNull(db.identityDao().get())
         val seed = checkNotNull(secure.loadSeed())
-        val body = transcript(REVOCATION, account, deviceId, System.currentTimeMillis().toString(), b64(identity.publicKey))
-        val signedCode = envelope(REVOCATION, body, IdentityCrypto.sign(seed, body))
+        val local=ensureLocalDevice()
+        val signerSeed=checkNotNull(secure.loadDeviceSigningSeed(local.deviceId))
+        val body = transcript(REVOCATION, account, deviceId, System.currentTimeMillis().toString(),
+            local.deviceId, b64(local.signingPublicKey))
+        val signedCode = envelope(REVOCATION, body, IdentityCrypto.sign(signerSeed, body))
         log(EventType.DEVICE_REVOKED,deviceId)
         return signedCode
     }
@@ -167,12 +173,15 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         val (body, signature) = open(encoded, REVOCATION)
         val values = DataInputStream(ByteArrayInputStream(body)).use { input ->
             require(input.readUTF() == REVOCATION)
-            List(4) { input.readUTF() }.also { require(input.available() == 0) }
+            List(5) { input.readUTF() }.also { require(input.available() == 0) }
         }
-        val (account, target, timestamp, signer) = values
-        require(account == identity.publicId && un64(signer).contentEquals(identity.publicKey))
+        val (account, target, timestamp, signerDeviceId, signerKey) = values
+        val signer=checkNotNull(db.trustedDeviceDao().get(signerDeviceId)) { "Unknown revocation signer" }
+        val signerPublic=un64(signerKey)
+        require(account == identity.publicId && signer.accountId==account &&
+            signer.status==TrustedDeviceStatus.APPROVED && signer.signingPublicKey.contentEquals(signerPublic))
         require(timestamp.toLong() <= System.currentTimeMillis() + 60_000)
-        require(IdentityCrypto.verify(identity.publicKey, signature, body)) { "Invalid revocation signature" }
+        require(IdentityCrypto.verify(signerPublic, signature, body)) { "Invalid revocation signature" }
         val now = System.currentTimeMillis()
         val existing = db.trustedDeviceDao().get(target)
         when (existing?.status) {
