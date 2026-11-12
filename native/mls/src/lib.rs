@@ -491,71 +491,57 @@ pub fn process_proposal(
         .map_err(|_| MlsError::InvalidMessage)?;
     let group_id_bytes = protocol.group_id().as_slice().to_vec();
     let id = GroupId::from_slice(&group_id_bytes);
-
-    // The OpenMLS proposal queue and RELYRA message-id receipt share one
-    // SQLCipher transaction. A process death cannot leave a queued proposal
-    // that will be rejected as a replay on the sender's retry.
-    database.connection.execute_batch("BEGIN IMMEDIATE").map_err(MlsError::Sql)?;
-    let result = (|| -> Result<u64, MlsError> {
-        let duplicate: Option<i64> = database.connection.query_row(
-            "SELECT 1 FROM relyra_processed_mls_proposals WHERE group_id = ?1 AND message_id = ?2",
-            rusqlite::params![group_id_bytes, message_id],
-            |row| row.get(0),
-        ).optional().map_err(MlsError::Sql)?;
-        let (provider, _signer) = provider_with_signer(database)?;
-        let mut group = MlsGroup::load(provider.storage(), &id)
-            .map_err(|e| MlsError::Storage(e.to_string()))?
-            .ok_or(MlsError::GroupNotFound)?;
-        if !group.is_active() {
-            return Err(MlsError::Inactive);
-        }
-        if duplicate.is_some() {
-            return Ok(group.epoch().as_u64());
-        }
-        let processed = group.process_message(&provider, protocol)
-            .map_err(|_| MlsError::InvalidMessage)?;
-        if !matches!(processed.sender(), Sender::Member(_)) ||
-            !credential_public_id(processed.credential().serialized_content())
-                .is_some_and(|sender| sender.eq_ignore_ascii_case(expected_public_id)) {
-            return Err(MlsError::IdentityMismatch);
-        }
-        match processed.into_content() {
-            ProcessedMessageContent::ProposalMessage(proposal) => {
-                let target_id = match proposal.proposal() {
-                    Proposal::Add(add) if allow_add => credential_public_id(
-                        add.key_package().leaf_node().credential().serialized_content()
-                    ),
-                    Proposal::Remove(remove) if allow_remove => group.member(remove.removed())
-                        .and_then(|credential| credential_public_id(credential.serialized_content())),
-                    _ => None,
-                }.ok_or(MlsError::InvalidMessage)?;
-                if !allowed_target_public_ids.iter().any(|id| id.eq_ignore_ascii_case(target_id)) {
-                    return Err(MlsError::IdentityMismatch);
-                }
-                group.store_pending_proposal(provider.storage(), *proposal)
-                    .map_err(|e| MlsError::Storage(e.to_string()))?;
-            }
-            _ => return Err(MlsError::InvalidMessage),
-        }
-        let epoch = group.epoch().as_u64();
-        drop(group);
-        drop(provider);
-        database.connection.execute(
-            "INSERT INTO relyra_processed_mls_proposals(group_id, message_id) VALUES(?1, ?2)",
-            rusqlite::params![group_id_bytes, message_id],
-        ).map_err(MlsError::Sql)?;
-        Ok(epoch)
-    })();
-    match result {
-        Ok(epoch) => {
-            database.connection.execute_batch("COMMIT").map_err(MlsError::Sql)?;
-            Ok(epoch)
-        }
-        Err(error) => {
-            let _ = database.connection.execute_batch("ROLLBACK");
-            Err(error)
-        }
+    let duplicate: Option<i64> = database.connection.query_row(
+        "SELECT 1 FROM relyra_processed_mls_proposals WHERE group_id = ?1 AND message_id = ?2",
+        rusqlite::params![group_id_bytes, message_id],
+        |row| row.get(0),
+    ).optional().map_err(MlsError::Sql)?;
+    let (provider, _signer) = provider_with_signer(database)?;
+    let mut group = MlsGroup::load(provider.storage(), &id)
+        .map_err(|e| MlsError::Storage(e.to_string()))?
+        .ok_or(MlsError::GroupNotFound)?;
+    if !group.is_active() {
+        return Err(MlsError::Inactive);
     }
+    if duplicate.is_some() {
+        return Ok(group.epoch().as_u64());
+    }
+    let processed = group.process_message(&provider, protocol)
+        .map_err(|_| MlsError::InvalidMessage)?;
+    if !matches!(processed.sender(), Sender::Member(_)) ||
+        !credential_public_id(processed.credential().serialized_content())
+            .is_some_and(|sender| sender.eq_ignore_ascii_case(expected_public_id)) {
+        return Err(MlsError::IdentityMismatch);
+    }
+    match processed.into_content() {
+        ProcessedMessageContent::ProposalMessage(proposal) => {
+            let target_id = match proposal.proposal() {
+                Proposal::Add(add) if allow_add => credential_public_id(
+                    add.key_package().leaf_node().credential().serialized_content()
+                ),
+                Proposal::Remove(remove) if allow_remove => group.member(remove.removed())
+                    .and_then(|credential| credential_public_id(credential.serialized_content())),
+                _ => None,
+            }.ok_or(MlsError::InvalidMessage)?;
+            if !allowed_target_public_ids.iter().any(|id| id.eq_ignore_ascii_case(target_id)) {
+                return Err(MlsError::IdentityMismatch);
+            }
+            group.store_pending_proposal(provider.storage(), *proposal)
+                .map_err(|e| MlsError::Storage(e.to_string()))?;
+        }
+        _ => return Err(MlsError::InvalidMessage),
+    }
+    let epoch = group.epoch().as_u64();
+    drop(group);
+    drop(provider);
+    // A crash between storing the proposal and this receipt insert is safe:
+    // OpenMLS still retains the proposal; a redelivery is acknowledged by the
+    // caller as a rejected replay and the owner refreshes the pending queue.
+    database.connection.execute(
+        "INSERT OR IGNORE INTO relyra_processed_mls_proposals(group_id, message_id) VALUES(?1, ?2)",
+        rusqlite::params![group_id_bytes, message_id],
+    ).map_err(MlsError::Sql)?;
+    Ok(epoch)
 }
 
 /// Create a native RFC 9420 Add Proposal. The message is not committed until
@@ -615,87 +601,82 @@ pub fn prepare_pending_proposals_commit(
     control_message_id: Option<&str>,
 ) -> Result<PreparedCommitBundle, MlsError> {
     let id = GroupId::from_slice(group_id);
-    database.connection.execute_batch("BEGIN IMMEDIATE").map_err(MlsError::Sql)?;
-    let result = (|| -> Result<PreparedCommitBundle, MlsError> {
-        let existing: Option<String> = database.connection.query_row(
-            "SELECT bundle_json FROM relyra_pending_mls_commits WHERE group_id = ?1",
-            [group_id],
-            |row| row.get(0),
-        ).optional().map_err(MlsError::Sql)?;
-        if let Some(json) = existing {
-            return serde_json::from_str(&json).map_err(|_| MlsError::InvalidMessage);
-        }
-        let (provider, signer) = provider_with_signer(database)?;
-        let mut group = MlsGroup::load(provider.storage(), &id)
-            .map_err(|e| MlsError::Storage(e.to_string()))?
-            .ok_or(MlsError::GroupNotFound)?;
-        if !group.is_active() || group.pending_commit().is_some() || !group.has_pending_proposals() {
-            return Err(MlsError::Rejected);
-        }
-        // Resolve identical concurrent admin actions deterministically. The first
-        // proposal in OpenMLS queue order wins; redundant Add/Remove proposals for
-        // the same RELYRA identity are removed before constructing the Commit.
-        let mut seen = HashSet::new();
-        let duplicate_refs = group.pending_proposals().filter_map(|queued| {
-            let target = match queued.proposal() {
-                Proposal::Add(add) => credential_public_id(
-                    add.key_package().leaf_node().credential().serialized_content()
-                ).map(|value| format!("add:{}", value.to_ascii_lowercase())),
-                Proposal::Remove(remove) => group.member(remove.removed())
-                    .and_then(|credential| credential_public_id(credential.serialized_content()))
-                    .map(|value| format!("remove:{}", value.to_ascii_lowercase())),
-                _ => None,
-            }?;
-            if seen.insert(target) { None } else { Some(queued.proposal_reference_ref().clone()) }
-        }).collect::<Vec<_>>();
-        for proposal_ref in duplicate_refs {
-            group.remove_pending_proposal(provider.storage(), &proposal_ref)
-                .map_err(|e| MlsError::Storage(e.to_string()))?;
-        }
-        if !group.has_pending_proposals() {
-            return Err(MlsError::Rejected);
-        }
-        let (commit, welcome, _group_info) = group.commit_to_pending_proposals(&provider, &signer)
-            .map_err(|_| MlsError::Rejected)?;
-        let staged = group.pending_commit().ok_or(MlsError::Rejected)?;
-        let removed_ids = staged.remove_proposals().filter_map(|queued| {
-            group.member(queued.remove_proposal().removed())
-                .and_then(|credential| credential_public_id(credential.serialized_content()))
-                .map(str::to_owned)
-        }).collect::<Vec<_>>();
-        let added_ids = staged.add_proposals().filter_map(|queued| {
-            credential_public_id(
-                queued.add_proposal().key_package().leaf_node().credential().serialized_content()
-            ).map(str::to_owned)
-        }).collect::<Vec<_>>();
-        let bundle = PreparedCommitBundle {
-            commit: BASE64.encode(commit.tls_serialize_detached().map_err(|_| MlsError::InvalidMessage)?),
-            welcome: welcome.map(|message| message.tls_serialize_detached().map(|bytes| BASE64.encode(bytes)))
-                .transpose().map_err(|_| MlsError::InvalidMessage)?,
-            epoch: group.epoch().as_u64() + 1,
-            removed_ids,
-            added_ids,
-            control_message_id: control_message_id.map(str::to_owned),
-        };
-        let json = serde_json::to_string(&bundle).map_err(|_| MlsError::InvalidMessage)?;
-        drop(group);
-        drop(provider);
-        database.connection.execute(
-            "INSERT INTO relyra_pending_mls_commits(group_id, bundle_json) VALUES(?1, ?2)",
-            rusqlite::params![group_id, json],
-        ).map_err(MlsError::Sql)?;
-        Ok(bundle)
-    })();
-    match result {
-        Ok(bundle) => {
-            database.connection.execute_batch("COMMIT").map_err(MlsError::Sql)?;
-            Ok(bundle)
-        }
-        Err(error) => {
-            let _ = database.connection.execute_batch("ROLLBACK");
-            Err(error)
-        }
+    let existing: Option<String> = database.connection.query_row(
+        "SELECT bundle_json FROM relyra_pending_mls_commits WHERE group_id = ?1",
+        [group_id],
+        |row| row.get(0),
+    ).optional().map_err(MlsError::Sql)?;
+    if let Some(json) = existing {
+        return serde_json::from_str(&json).map_err(|_| MlsError::InvalidMessage);
     }
+    let (provider, signer) = provider_with_signer(database)?;
+    let mut group = MlsGroup::load(provider.storage(), &id)
+        .map_err(|e| MlsError::Storage(e.to_string()))?
+        .ok_or(MlsError::GroupNotFound)?;
+    if !group.is_active() {
+        return Err(MlsError::Inactive);
+    }
+    // A crash may have occurred after OpenMLS persisted its staged Commit but
+    // before the companion delivery bundle was stored. Clear that orphaned
+    // staged state and recreate the deterministic by-value Commit from the
+    // still-persisted proposal queue.
+    if group.pending_commit().is_some() {
+        group.clear_pending_commit(provider.storage())
+            .map_err(|e| MlsError::Storage(e.to_string()))?;
+    }
+    if !group.has_pending_proposals() {
+        return Err(MlsError::Rejected);
+    }
+    let mut seen = HashSet::new();
+    let duplicate_refs = group.pending_proposals().filter_map(|queued| {
+        let target = match queued.proposal() {
+            Proposal::Add(add) => credential_public_id(
+                add.key_package().leaf_node().credential().serialized_content()
+            ).map(|value| format!("add:{}", value.to_ascii_lowercase())),
+            Proposal::Remove(remove) => group.member(remove.removed())
+                .and_then(|credential| credential_public_id(credential.serialized_content()))
+                .map(|value| format!("remove:{}", value.to_ascii_lowercase())),
+            _ => None,
+        }?;
+        if seen.insert(target) { None } else { Some(queued.proposal_reference_ref().clone()) }
+    }).collect::<Vec<_>>();
+    for proposal_ref in duplicate_refs {
+        group.remove_pending_proposal(provider.storage(), &proposal_ref)
+            .map_err(|e| MlsError::Storage(e.to_string()))?;
+    }
+    if !group.has_pending_proposals() {
+        return Err(MlsError::Rejected);
+    }
+    let (commit, welcome, _group_info) = group.commit_to_pending_proposals(&provider, &signer)
+        .map_err(|_| MlsError::Rejected)?;
+    let staged = group.pending_commit().ok_or(MlsError::Rejected)?;
+    let removed_ids = staged.remove_proposals().filter_map(|queued| {
+        group.member(queued.remove_proposal().removed())
+            .and_then(|credential| credential_public_id(credential.serialized_content()))
+            .map(str::to_owned)
+    }).collect::<Vec<_>>();
+    let added_ids = staged.add_proposals().filter_map(|queued| {
+        credential_public_id(
+            queued.add_proposal().key_package().leaf_node().credential().serialized_content()
+        ).map(str::to_owned)
+    }).collect::<Vec<_>>();
+    let bundle = PreparedCommitBundle {
+        commit: BASE64.encode(commit.tls_serialize_detached().map_err(|_| MlsError::InvalidMessage)?),
+        welcome: welcome.map(|message| message.tls_serialize_detached().map(|bytes| BASE64.encode(bytes)))
+            .transpose().map_err(|_| MlsError::InvalidMessage)?,
+        epoch: group.epoch().as_u64() + 1,
+        removed_ids,
+        added_ids,
+        control_message_id: control_message_id.map(str::to_owned),
+    };
+    let json = serde_json::to_string(&bundle).map_err(|_| MlsError::InvalidMessage)?;
+    drop(group);
+    drop(provider);
+    database.connection.execute(
+        "INSERT OR REPLACE INTO relyra_pending_mls_commits(group_id, bundle_json) VALUES(?1, ?2)",
+        rusqlite::params![group_id, json],
+    ).map_err(MlsError::Sql)?;
+    Ok(bundle)
 }
 
 pub fn pending_commit_info(
@@ -712,34 +693,23 @@ pub fn pending_commit_info(
 
 pub fn merge_pending_commit(database: &mut OpenDatabase, group_id: &[u8]) -> Result<u64, MlsError> {
     let id = GroupId::from_slice(group_id);
-    database.connection.execute_batch("BEGIN IMMEDIATE").map_err(MlsError::Sql)?;
-    let result = (|| -> Result<u64, MlsError> {
-        let (provider, _signer) = provider_with_signer(database)?;
-        let mut group = MlsGroup::load(provider.storage(), &id)
-            .map_err(|e| MlsError::Storage(e.to_string()))?
-            .ok_or(MlsError::GroupNotFound)?;
-        if group.pending_commit().is_some() {
-            group.merge_pending_commit(&provider).map_err(|_| MlsError::Rejected)?;
-        }
-        let epoch = group.epoch().as_u64();
-        drop(group);
-        drop(provider);
-        database.connection.execute(
-            "DELETE FROM relyra_pending_mls_commits WHERE group_id = ?1",
-            [group_id],
-        ).map_err(MlsError::Sql)?;
-        Ok(epoch)
-    })();
-    match result {
-        Ok(epoch) => {
-            database.connection.execute_batch("COMMIT").map_err(MlsError::Sql)?;
-            Ok(epoch)
-        }
-        Err(error) => {
-            let _ = database.connection.execute_batch("ROLLBACK");
-            Err(error)
-        }
+    let (provider, _signer) = provider_with_signer(database)?;
+    let mut group = MlsGroup::load(provider.storage(), &id)
+        .map_err(|e| MlsError::Storage(e.to_string()))?
+        .ok_or(MlsError::GroupNotFound)?;
+    if group.pending_commit().is_some() {
+        group.merge_pending_commit(&provider).map_err(|_| MlsError::Rejected)?;
     }
+    let epoch = group.epoch().as_u64();
+    drop(group);
+    drop(provider);
+    // If the process dies after OpenMLS merges but before this delete, a retry
+    // observes no staged commit and safely removes the stale delivery journal.
+    database.connection.execute(
+        "DELETE FROM relyra_pending_mls_commits WHERE group_id = ?1",
+        [group_id],
+    ).map_err(MlsError::Sql)?;
+    Ok(epoch)
 }
 
 pub fn commit_pending_proposals(
