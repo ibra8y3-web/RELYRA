@@ -40,8 +40,10 @@ class P2pSignalEnvelopeTest {
         val bytes = EnvelopeCodec.encode(Envelope.P2pSignal(
             messageId, from, to, P2pSignalKind.OFFER, "signed",
         ))
+        // The four-byte envelope header is magic(2), version(1), and type(1).
         // DataOutputStream.writeUTF stores a two-byte length before each ASCII field.
-        val kindOffset = 1 + 2 + messageId.length + 2 + from.length + 2 + to.length
+        val envelopeHeaderBytes = 4
+        val kindOffset = envelopeHeaderBytes + 2 + messageId.length + 2 + from.length + 2 + to.length
         bytes[kindOffset] = 0x7f
         assertNull(EnvelopeCodec.decode(bytes))
     }
