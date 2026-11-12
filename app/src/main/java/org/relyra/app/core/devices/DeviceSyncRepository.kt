@@ -188,6 +188,7 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
                     require(runCatching { member.toModel() }.isSuccess)
                     groupDao.putMembers(listOf(member))
                 }
+                replaceMemberGroups.forEach { groupDao.clearMembers(it) }
                 for(i in 0 until gmessages.length()) {
                     val j=gmessages.getJSONObject(i); val group=j.getString("group")
                     if(groupDao.get(group)==null) { conflicts++; continue }
