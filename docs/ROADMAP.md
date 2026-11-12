@@ -42,7 +42,7 @@ WebRTC MediaTracks; encrypted/signed signaling; complete outgoing/incoming call 
 
 ### Phase 5 — multi-device
 
-**Implementation status:** signed manual pairing, per-device Keystore-wrapped keys, encrypted manual direct-message/contact/selected-preference sync, deterministic conflict merge, signed revocation codes, local security notifications, and Arabic/English device UI are now present. Automatic network sync, group history/MLS/Ratchet state, attachments, delegated root-key design, key-rotation propagation and physical-device verification remain outstanding. See [Phase 5 implementation status](PHASE5_MULTI_DEVICE.md) and [Arabic status](PHASE5_MULTI_DEVICE_AR.md).
+**Implementation status:** signed manual pairing, per-device Keystore-wrapped keys, encrypted manual direct-message/contact/selected-preference sync, deterministic conflict merge, signed revocation codes, local security notifications, and Arabic/English device UI are now present. Automatic network sync, group history/MLS/Ratchet state, attachments, delegated root-key design, enforcement of revocation across all messaging transports, per-message device authentication, key-rotation propagation and physical-device verification remain outstanding. See [Phase 5 implementation status](PHASE5_MULTI_DEVICE.md) and [Arabic status](PHASE5_MULTI_DEVICE_AR.md).
 Secure device enrollment and approval, device inventory, revoke, key rotation, account/device binding, authenticated synchronization, conflict handling and settings UI.
 
 ### Phase 6 — offline Mesh
