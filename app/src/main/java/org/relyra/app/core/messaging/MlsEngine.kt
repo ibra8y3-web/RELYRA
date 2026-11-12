@@ -200,7 +200,7 @@ class MlsEngine(
     }
 
     override suspend fun commitPendingProposals(groupId: String): MlsPreparedCommit = runNative {
-        decodePreparedCommit(MlsNative.nativeCommitPendingProposals(groupIdBytes(groupId)))
+        decodePreparedCommit(MlsNative.nativePreparePendingProposalsCommit(groupIdBytes(groupId)))
     }
 
     override suspend fun pendingCommitInfo(groupId: String): MlsPreparedCommit? = runNative {
