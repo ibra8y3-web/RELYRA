@@ -14,6 +14,8 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -39,6 +41,14 @@ fun DevicesScreen(vm: MainViewModel) {
     var approvalInput by remember { mutableStateOf("") }
     var syncInput by remember { mutableStateOf("") }
     var revocationInput by remember { mutableStateOf("") }
+    var selectedDeviceId by remember { mutableStateOf<String?>(null) }
+    val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        val target = selectedDeviceId
+        if (uri != null && target != null) vm.exportDeviceSyncToUri(target, uri)
+    }
+    val importLauncher = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) vm.importDeviceSyncFromUri(uri)
+    }
     LaunchedEffect(Unit) { vm.refreshTrustedDevices() }
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement=Arrangement.spacedBy(12.dp)) {
@@ -79,14 +89,17 @@ fun DevicesScreen(vm: MainViewModel) {
                             Text(device.displayName,style=MaterialTheme.typography.titleSmall)
                             Text(device.deviceId,style=MaterialTheme.typography.bodySmall)
                         }
-                        OutlinedButton(onClick={vm.exportDeviceSync(device.deviceId)}) { Text(stringResource(R.string.devices_export)) }
+                        OutlinedButton(onClick={selectedDeviceId=device.deviceId; exportLauncher.launch("relyra-device-sync.rlyx")}) { Text(stringResource(R.string.devices_export)) }
                     }
                 }
                 OutlinedTextField(value=syncInput,onValueChange={syncInput=it},label={Text(stringResource(R.string.devices_sync_code))},modifier=Modifier.fillMaxWidth(),minLines=3)
                 OutlinedTextField(value=revocationInput,onValueChange={revocationInput=it},label={Text(stringResource(R.string.devices_revocation_code))},modifier=Modifier.fillMaxWidth(),minLines=3)
                 OutlinedButton(onClick={vm.applyDeviceRevocation(revocationInput)},enabled=revocationInput.isNotBlank(),modifier=Modifier.fillMaxWidth()) { Text(stringResource(R.string.devices_apply_revocation)) }
-                Button(onClick={vm.importDeviceSync(syncInput)},enabled=syncInput.isNotBlank(),modifier=Modifier.fillMaxWidth()) {
-                    Text(stringResource(R.string.devices_import))
+                Button(onClick={importLauncher.launch(arrayOf("application/octet-stream", "application/*", "*/*"))},modifier=Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.devices_import_file))
+                }
+                OutlinedButton(onClick={vm.importDeviceSync(syncInput)},enabled=syncInput.isNotBlank(),modifier=Modifier.fillMaxWidth()) {
+                    Text(stringResource(R.string.devices_import_code))
                 }
             }
         }
