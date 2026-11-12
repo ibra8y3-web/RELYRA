@@ -62,11 +62,11 @@ func CanonicalPost(p Post) ([]byte, error) {
 		len([]byte(p.Body)) > MaxPostBody || strings.ContainsRune(p.Body, '\x00') {
 		return nil, errors.New("invalid post sequence, body or timestamp")
 	}
-	return json.Marshal(postSigningPayload{
-		Domain: "RELYRA-COMMUNITY-POST-V1", Version: p.Version, PostID: strings.ToLower(p.PostID),
-		CommunityID: strings.ToLower(p.CommunityID), AuthorPublicID: strings.ToLower(p.AuthorPublicID),
-		Sequence: p.Sequence, Body: p.Body, CreatedAt: p.CreatedAt,
-	})
+	return []byte(strings.Join([]string{
+		"RELYRA-COMMUNITY-POST-V1", strings.ToLower(p.PostID), strings.ToLower(p.CommunityID),
+		strings.ToLower(p.AuthorPublicID), strconv.FormatUint(p.Sequence, 10),
+		base64.RawURLEncoding.EncodeToString([]byte(p.Body)), strconv.FormatInt(p.CreatedAt, 10),
+	}, "\n")), nil
 }
 
 func VerifyPost(p Post, now time.Time) error {
@@ -302,12 +302,12 @@ func CanonicalReportReview(r ReportReview) ([]byte, error) {
 	if r.Status != "in_review" && r.Status != "resolved" && r.Status != "dismissed" {
 		return nil, errors.New("unsupported report review status")
 	}
-	return json.Marshal(reportReviewSigningPayload{
-		Domain: "RELYRA-COMMUNITY-REPORT-REVIEW-V1", Version: r.Version,
-		ReviewID: strings.ToLower(r.ReviewID), CommunityID: strings.ToLower(r.CommunityID),
-		ReportID: strings.ToLower(r.ReportID), ReviewerPublicID: strings.ToLower(r.ReviewerPublicID),
-		Sequence: r.Sequence, Status: r.Status, Note: r.Note, CreatedAt: r.CreatedAt,
-	})
+	return []byte(strings.Join([]string{
+		"RELYRA-COMMUNITY-REPORT-REVIEW-V1", strings.ToLower(r.ReviewID),
+		strings.ToLower(r.CommunityID), strings.ToLower(r.ReportID),
+		strings.ToLower(r.ReviewerPublicID), strconv.FormatUint(r.Sequence, 10),
+		r.Status, base64.RawURLEncoding.EncodeToString([]byte(r.Note)), strconv.FormatInt(r.CreatedAt, 10),
+	}, "\n")), nil
 }
 
 func VerifyReportReview(r ReportReview, now time.Time) error {
