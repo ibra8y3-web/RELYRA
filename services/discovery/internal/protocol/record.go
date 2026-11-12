@@ -21,7 +21,7 @@ const (
 	MaxRecordBytes    = 8 * 1024
 	MaxCapabilities   = 4
 	recordDomain      = "RELYRA-DHT-PRESENCE-V1"
-	peerKeyPrefix     = "peer/v1/"
+	peerKeyPrefix     = "/rlyra/peer/v1/"
 )
 
 var allowedCapabilities = map[string]struct{}{
