@@ -54,6 +54,12 @@ interface GroupStore {
     suspend fun putGroup(g: GroupRecord, members: List<GroupMemberRef>)
     suspend fun setState(groupId: String, state: GroupState)
     suspend fun insertOutgoingMessage(m: GroupMessage, copies: List<OutboxRow>)
+    /** Stores the encrypted group-file descriptor, message and per-member ciphertext outbox atomically. */
+    suspend fun insertOutgoingGroupAttachment(m: GroupMessage, attachment: GroupAttachmentRecord, copies: List<OutboxRow>)
+    /** Atomically remembers the copy ID, group message and encrypted file descriptor. */
+    suspend fun recordIncomingGroupAttachment(m: GroupMessage, attachment: GroupAttachmentRecord): Boolean
+    suspend fun groupAttachment(messageId: String): GroupAttachmentRecord?
+    suspend fun updateGroupAttachment(attachment: GroupAttachmentRecord)
     /** Atomically remembers the copy's ID and stores the message. False if that ID was already processed. */
     suspend fun recordIncomingMessage(m: GroupMessage): Boolean
     suspend fun enqueue(rows: List<OutboxRow>)
