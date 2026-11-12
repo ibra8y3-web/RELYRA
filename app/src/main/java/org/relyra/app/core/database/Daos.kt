@@ -29,6 +29,9 @@ interface ContactDao {
     @Query("SELECT * FROM contacts WHERE publicId = :id")
     suspend fun get(id: String): ContactEntity?
 
+    @Query("SELECT * FROM contacts ORDER BY displayName COLLATE NOCASE")
+    suspend fun allForDeviceSync(): List<ContactEntity>
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(contact: ContactEntity)
 
