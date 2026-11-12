@@ -1,60 +1,67 @@
-# RELYRA Internet P2P — WebRTC transport
+# RELYRA Internet P2P — WebRTC, DHT and TURN
 
-## Scope implemented in this branch
+## Current implementation
 
-The Android app now contains a real WebRTC DataChannel transport behind the existing Connector / Transport contract.
+The Android app contains a WebRTC DataChannel transport behind the existing Connector / Transport contract. The separate service layer in services/discovery supplies Kademlia discovery and managed TURN credential issuance.
 
-- WebRTC SDK: io.github.webrtc-sdk:android:150.7871.04 (BSD-3-Clause).
-- ICE candidate gathering and connectivity checks are provided by WebRTC.
-- STUN is configured by default for server-reflexive candidates.
-- Optional TURN URI, username and credential can be supplied in Network settings for networks where direct ICE paths fail.
-- DataChannel traffic is binary, ordered and reliable. Each frame has a unique random transfer UUID and SHA-256 digest; acknowledgements are correlated to both so delayed ACKs cannot confirm a later identical payload. The current application frame ceiling is 64 KiB; larger attachments must continue using the encrypted Blossom transfer path.
-- Every signaling envelope (offer/answer) is signed with the sender's RELYRA Ed25519 identity, bound to the intended recipient ID, versioned, size-limited and expires after ten minutes.
-- Only existing, unblocked RELYRA contacts can be used as peers.
-- The DataChannel carries the existing already end-to-end-encrypted DeliveryEngine wire payload. WebRTC DTLS is an additional transport protection, not a replacement for RELYRA E2EE.
-- AdaptiveRouter tries an already-connected Internet WebRTC path before nearby paths and Nostr. Nostr remains the fallback.
+### Android direct transport
 
-## Signaling workflow
+- WebRTC SDK: io.github.webrtc-sdk:android:150.7871.04.
+- ICE candidate gathering and connectivity checks use configured STUN servers; optional TURN candidates are accepted from either operator-issued short-lived credentials or user-provided TURN settings.
+- Binary DataChannel frames are ordered and reliable, bounded to 64 KiB, and include a random transfer ID and SHA-256 digest.
+- A direct send is reported as accepted only after the receiver authenticates and accepts the encrypted DeliveryEngine wire payload and returns the matching ACK.
+- The AdaptiveRouter tries an established WebRTC path before nearby paths and Nostr. If the direct path fails or its ACK times out, the same stored ciphertext/message ID can be sent by Nostr; the receiving DeliveryEngine deduplicates by message ID and re-acknowledges a duplicate.
+- The app monitors Android's default network and WebRTC ICE state. On disconnect/failure it performs bounded exponential retries, recreates the PeerConnection/DataChannel, and sends a new signed offer through RELYRA's encrypted signaling envelope.
+- A peer is marked eligible for automatic recovery only after the user approved an incoming offer or the peer accepted the user's offer. The first offer from a known contact is always queued for explicit approval. A previously approved peer's reconnect offer can be answered automatically.
+- Incoming data remains end-to-end encrypted by RELYRA before being passed to WebRTC. DTLS is additional transport protection, not a replacement for RELYRA E2EE.
 
-The signaling path has two options:
+### Signed signaling
 
-1. Alice chooses a known RELYRA contact and creates an offer. The offer contains a random session UUID covered by the Ed25519 signature.
-2. RELYRA wraps the signed offer in a dedicated control envelope and encrypts the complete envelope through the existing E2EE protector.
-3. When an enabled Nostr relay route is connected, the encrypted control envelope is delivered automatically. The receiving device verifies the contact and signed offer, then queues a pending request in Network settings. **No WebRTC peer connection is created until the user explicitly approves the request.**
-4. After approval, the receiving device creates an answer signed with the same session UUID and sends it back inside another E2EE control envelope. The initiating device accepts the answer only when its signed session UUID matches the currently pending offer; stale answers from previous negotiations are rejected.
-5. If no encrypted transport route is available, the app exposes signed offer/answer text for manual copy/paste. Users must exchange this text through a private channel because the text itself is signed, not independently encrypted.
-6. ICE checks then open the RELYRA DataChannel when a direct path is available.
+Every offer/answer is signed by the sender's RELYRA Ed25519 identity, bound to the recipient ID and a random session UUID, versioned, bounded to 48,000 serialized characters and valid for ten minutes. A stale answer from a different session is rejected. When Nostr is enabled, signaling envelopes travel inside the existing E2EE DeliveryEngine path; manual signed-card exchange remains a fallback when no encrypted route is available.
 
-Nostr is used only as a user-enabled rendezvous/signaling transport here; it does not carry WebRTC data once the direct channel is established. SDP text is bounded to 20,000 characters and the serialized signed signal to 48,000 characters and the containing control envelope is E2EE-protected before reaching a relay. Signed session identifiers prevent accidentally applying an answer from a different connection attempt.
+SDP contains ICE candidates and may expose local/public network addresses. WebRTC sockets do not use RELYRA's Tor SOCKS proxy and can reveal the network address to the remote peer and network observers. Manual copy/paste signaling must be exchanged over a private channel because the card is signed but not independently encrypted.
 
-SDP contains ICE candidates and can expose local/public network addresses. The app warns users to share it only with the intended contact. Direct WebRTC sockets do not use the app's Tor SOCKS proxy and can reveal the device's network address to the remote peer and network observers. For automatically relayed signaling, the outer RELYRA control envelope is E2EE-encrypted; manual copy/paste requires a private channel.
+## Kademlia DHT discovery service
 
-## TURN operations
+The Android app does not embed a libp2p host. It uses user-configured HTTPS gateways to a separate RELYRA libp2p service in services/discovery.
 
-RELYRA does not operate a TURN service. The optional TURN fields configure a TURN server that the user or project operator already controls. TURN credentials are kept in the screen's in-memory state and are not written to SharedPreferences or the database. Removing the fields resets new sessions to the bundled STUN list.
+- DHT protocol prefix: /relyra/kad/1.0.0.
+- Record namespace/key: /rlyra/peer/v1/<RELYRA-public-id>.
+- The Go service runs a Kademlia DHT node, uses a persistent Pebble datastore, and validates namespaced records before they are stored or returned.
+- Presence records are signed with the device's RELYRA Ed25519 identity and expire after three minutes. The app refreshes the lease every 90 seconds while the user has explicitly enabled public presence.
+- A record contains the RELYRA public ID/key, issue/expiry times and fixed capability labels. It does not contain a display name, SDP, IP address, phone number or contact list.
+- Lookup is by exact RELYRA public ID. Finding a presence record does not add the peer to the contact book or authorize messages; the existing known-contact check remains mandatory.
+- Public presence is off by default. An enabled DHT record exposes that the identity is online and which generic connection capabilities it supports.
 
-A TURN server requires deployment, authentication, quotas, abuse controls and operational monitoring. Do not publish static long-lived TURN credentials in the Android application.
+A single DHT node is only a seed, not a resilient distributed overlay. Operators must deploy multiple nodes on independently reachable hosts and configure each node's RELYRA_BOOTSTRAP_PEERS using full libp2p multiaddresses. The source includes Docker Compose, a container build, persistent node identity, Caddy HTTPS reverse proxy and deployment instructions. The repository does not host a public RELYRA DHT cluster.
 
-## Deliberate limitations — not release-complete yet
+## Managed TURN service
 
-- Automatic signaling is available over an enabled Nostr route and waits for recipient approval. If no relay route is connected, manual private exchange remains the fallback.
-- No DHT or automatic discovery of unknown people over the public Internet. Rendezvous is restricted to existing RELYRA contacts.
-- No libp2p host, Kademlia DHT or Circuit Relay v2 is included; WebRTC is the selected direct transport for this Android stage.
-- TURN fallback works only when a valid reachable TURN server and credentials are supplied. RELYRA does not provision one.
-- No verified real-device connectivity result is claimed in this branch. ICE success must be tested across separate Wi-Fi and carrier NATs, including symmetric NAT and IPv6.
-- No automatic ICE restart/re-offer after network handover is implemented.
-- Pending approvals are in-memory and expire with the signed signaling window; user approval is required for each incoming offer.
-- WebRTC signaling currently waits for ICE gathering to complete before producing the signed card; the timeout is bounded to 25 seconds.
-- DeliveryEngine's existing retry/fallback behaviour still needs end-to-end tests while a WebRTC DataChannel disconnects mid-send.
+The same deployment can run coturn with time-limited REST credentials.
 
-## Required validation
+- The Android app asks a configured HTTPS discovery gateway for TURN credentials.
+- The request is signed using the device's RELYRA Ed25519 identity, with a short timestamp window and a random nonce.
+- The service verifies the identity signature and nonce, then returns coturn REST credentials computed from a server-only shared secret.
+- The default credential lifetime is five minutes. The shared secret is not embedded in the app or stored on the device.
+- Coturn is configured with user/total allocation quotas and a bounded relay-port range. The sample deployment uses turn: over UDP/TCP. TLS/DTLS must not be advertised until the operator installs valid certificates and enables those listeners.
 
-- Clean CI build and JVM tests.
-- Two physical Android devices, each with a separate RELYRA identity and the other device added as a signed contact.
-- Direct path on two different Wi-Fi networks, then Wi-Fi-to-mobile and mobile-to-mobile.
-- TURN-only relay path with a controlled TURN server.
-- Bad signature, wrong recipient, expired offer, unknown/blocked contact, malformed SDP and oversized DataChannel frame.
-- Disconnect during send, app background/foreground, process restart, network handover and Nostr fallback.
-- Record device models, Android versions, ICE candidate pair type (host/srflx/relay), network type and exact CI run.
+RELYRA does not run these services on behalf of users. The operator must provision DNS, public IP routing, firewall rules, HTTPS certificates, a high-entropy TURN secret, bootstrap nodes, service monitoring and abuse controls. See services/discovery/README.md.
 
-Until those checks pass, the code is an implemented experimental direct transport, not a certified global P2P service.
+## Known boundaries
+
+- DHT discovery is identity-indexed; it is not a global searchable directory of usernames or display names.
+- Android accesses the DHT through HTTPS gateways; it is not a native libp2p/DHT peer.
+- No public default bootstrap network is configured in the repository. A multi-node overlay must be deployed by the project/operator.
+- The deployment templates do not prove that the chosen VPS, firewall, DNS, NAT mapping or coturn relay range is reachable.
+- WebRTC reconnection is bounded and best-effort. A user-approved peer may need manual retry after all retry attempts fail.
+- The service code and JVM regression tests do not replace physical-device acceptance tests across independent Wi-Fi and mobile carrier NATs.
+
+## Validation included in source
+
+- Unit tests for signed/expired/tampered DHT presence records and HTTPS gateway validation.
+- Go protocol tests for RELYRA identity binding, record signature, DHT key namespace, expiry, newest-record selection, TURN challenge and temporary credential creation.
+- WebRTC codec tests for frame bounds, digest tampering, transfer IDs and ACKs.
+- Delivery fallback test: simulate direct packet accepted but ACK lost, send the same packet over Nostr, and assert one stored message.
+- Reconnect backoff is bounded and tested as a pure policy.
+
+The remaining physical-device testing is deliberately left to the project owner.
