@@ -7,13 +7,11 @@ import (
 	"encoding/base64"
 	"encoding/json"
 	"errors"
-	"sort"
 	"strconv"
 	"strings"
 	"time"
 
 	datastore "github.com/ipfs/go-datastore"
-	"github.com/ipfs/go-datastore/query"
 )
 
 const (
