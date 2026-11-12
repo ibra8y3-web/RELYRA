@@ -33,7 +33,7 @@ class DataManager(
     suspend fun setMuted(chatId: String, value: Boolean) = update(chatId) { it.copy(muted = value) }
 
     private suspend fun update(chatId: String, change: (ChatPrefEntity) -> ChatPrefEntity) {
-        val next = change(db.chatPrefDao().get(chatId) ?: ChatPrefEntity(chatId, pinned = false, archived = false, muted = false))
+        val next = change(db.chatPrefDao().get(chatId) ?: ChatPrefEntity(chatId, pinned = false, archived = false, muted = false)).copy(updatedAt = System.currentTimeMillis())
         if (!next.pinned && !next.archived && !next.muted) db.chatPrefDao().delete(chatId) else db.chatPrefDao().put(next)
     }
 
