@@ -3,6 +3,7 @@ package org.relyra.app.core.database
 import androidx.room.withTransaction
 import org.relyra.app.core.messaging.GroupMemberRef
 import org.relyra.app.core.messaging.GroupMessage
+import org.relyra.app.core.messaging.GroupAttachmentRecord
 import org.relyra.app.core.messaging.GroupRecord
 import org.relyra.app.core.messaging.GroupState
 import org.relyra.app.core.messaging.GroupStore
