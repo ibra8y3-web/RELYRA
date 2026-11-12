@@ -384,7 +384,7 @@ func (s *Store) AppendModerationEvent(ctx context.Context, raw []byte) (Moderati
 		return e, err
 	}
 	if e.Action == "remove_member" {
-		if err := s.ds.Delete(ctx, datastore.NewKey(memberStorageKey(e.CommunityID, e.SubjectPublicID))); err != nil && !errors.Is(err, datastore.ErrNotFound) {
+		if err := s.ds.Delete(ctx, membershipKey(e.CommunityID, e.SubjectPublicID)); err != nil && !errors.Is(err, datastore.ErrNotFound) {
 			return e, err
 		}
 	}
