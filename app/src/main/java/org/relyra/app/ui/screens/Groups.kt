@@ -163,6 +163,7 @@ fun GroupsList(vm: MainViewModel, query: String, onOpen: (String) -> Unit, onCre
                                 Text(
                                     when {
                                         state == GroupState.INVITED -> stringResource(R.string.groups_state_invited)
+                                        state == GroupState.JOINING -> stringResource(R.string.groups_state_joining)
                                         state == GroupState.LEFT -> stringResource(R.string.groups_state_left)
                                         state == GroupState.REMOVED -> stringResource(R.string.groups_state_removed)
                                         s != null && s.unread > 0 -> kind + " · " + stringResource(R.string.chat_unread_count, s.unread)
@@ -300,7 +301,14 @@ fun GroupChatScreen(vm: MainViewModel, groupId: String) {
 
     Column(Modifier.fillMaxSize().imePadding()) {
         Text(
-            stringResource(if (kind == GroupKind.CHANNEL) R.string.groups_banner_channel else R.string.groups_banner_group),
+            stringResource(
+                when {
+                    g.mlsEnabled && kind == GroupKind.CHANNEL -> R.string.groups_banner_mls_channel
+                    g.mlsEnabled -> R.string.groups_banner_mls_group
+                    kind == GroupKind.CHANNEL -> R.string.groups_banner_channel
+                    else -> R.string.groups_banner_group
+                }
+            ),
             style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
             modifier = Modifier.fillMaxWidth().background(MaterialTheme.colorScheme.surfaceContainer).padding(12.dp),
         )
@@ -312,6 +320,14 @@ fun GroupChatScreen(vm: MainViewModel, groupId: String) {
                     OutlinedButton(onClick = { vm.leaveGroup(groupId) }) { Text(stringResource(R.string.groups_decline)) }
                 }
             }
+        }
+        if (state == GroupState.JOINING) {
+            Text(
+                stringResource(R.string.groups_state_joining_detail),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.fillMaxWidth().padding(16.dp),
+            )
         }
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(), state = listState,
@@ -355,6 +371,9 @@ fun GroupChatScreen(vm: MainViewModel, groupId: String) {
             }
         } else if (state == GroupState.ACTIVE) {
             Text(stringResource(R.string.groups_readonly), style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
+        } else if (state == GroupState.JOINING) {
+            Text(stringResource(R.string.groups_state_joining_detail), style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant, modifier = Modifier.padding(16.dp))
         } else if (state != GroupState.INVITED) {
             Text(stringResource(R.string.groups_inactive), style = MaterialTheme.typography.bodySmall,
