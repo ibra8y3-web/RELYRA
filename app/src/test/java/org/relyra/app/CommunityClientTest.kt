@@ -13,7 +13,7 @@ class CommunityClientTest {
     @Test fun verifiesOwnerSignedManifestAndRejectsTampering() {
         val owner = IdentityCrypto.generate()
         val ownerId = IdentityCrypto.publicId(owner.publicKey)
-        val now = 1_800_000_000_000L
+        val now = System.currentTimeMillis()
         val unsigned = CommunityManifest(
             communityId = "a1b2c3d4-e5f6-4789-8abc-0123456789ab",
             ownerPublicId = ownerId,
@@ -95,10 +95,12 @@ class CommunityClientTest {
         val client = CommunityClient({ null }, { ownerId }, { IdentityCrypto.sign(owner.seed, it) })
         assertTrue(client.verifyManifest(manifest))
         assertTrue(client.verifyEvent(signedEvent, manifest))
-        assertFalse(client.verifyEvent(signedEvent.copy(action = "ban"), manifest))
+        assertFalse(client.verifyEvent(signedEvent.copy(action = "unban"), manifest))
         val stalePolicy = manifest.copy(policyVersion = 3)
         assertFalse(client.verifyEvent(signedEvent, stalePolicy))
         val strangerEvent = signedEvent.copy(actorPublicId = IdentityCrypto.publicId(stranger.publicKey))
         assertFalse(client.verifyEvent(strangerEvent, manifest))
+        assertFalse(client.verifyEvent(signedEvent.copy(expiresAt = now - 1), manifest))
+        assertFalse(client.verifyEvent(signedEvent.copy(action = "not_supported"), manifest))
     }
 }
