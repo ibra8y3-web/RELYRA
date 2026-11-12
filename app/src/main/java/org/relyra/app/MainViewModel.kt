@@ -1100,7 +1100,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun approveDeviceRequest(code: String) {
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { ctr().devices.approvePairingRequest(code.trim()) }
-                .onSuccess { deviceSyncCode.value = it; deviceMessage.value = "Approval created. Send it to the new device." }
+                .onSuccess { deviceSyncCode.value = it; deviceMessage.value = "Approval created. Send it to the new device."; ctr().notifier.postSecurity("RELYRA device approved", "A new device was approved for this account.") }
                 .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
         }
     }
