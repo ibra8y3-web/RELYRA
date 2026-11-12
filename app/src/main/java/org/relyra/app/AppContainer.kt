@@ -48,6 +48,9 @@ class AppContainer(context: Context) {
     val identities: IdentityRepository by lazy { IdentityRepository(database, secure, events) { transfers.wipeAll(); vault.wipeFiles() } }
     val devices by lazy { org.relyra.app.core.devices.DeviceManager(database, secure, identities) }
     val deviceSync by lazy { org.relyra.app.core.devices.DeviceSyncRepository(database, devices, settings) }
+    val deviceSyncNetwork by lazy {
+        org.relyra.app.core.devices.DeviceSyncNetwork(network, identities, database, secure, devices, deviceSync, netScope)
+    }
     val contacts: ContactRepository by lazy { ContactRepository(database, events) { ids, paths -> transfers.clean(ids, paths) } }
     val messages by lazy { RoomMessageStore(database) }
     val groupStore by lazy { RoomGroupStore(database) }
@@ -239,5 +242,6 @@ class AppContainer(context: Context) {
     /** Forces the encrypted database to open so failures surface at startup, not mid-use. */
     fun open() {
         database.openHelper.writableDatabase
+        deviceSyncNetwork.start()
     }
 }
