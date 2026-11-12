@@ -617,6 +617,39 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun createPrivateCommunityInvitation(
+        communityId: String,
+        memberPublicId: String,
+        onCreated: (String) -> Unit,
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val entity = ctr().database.communityDao().get(communityId)
+                    ?: error("Community is not saved on this device")
+                val manifest = ctr().communityClient.deserializeAndVerifyManifest(entity.manifestJson)
+                val code = ctr().communityClient.createPrivateInvitation(manifest, memberPublicId)
+                withContext(Dispatchers.Main) { onCreated(code) }
+            } catch (t: Throwable) {
+                fail(t)
+            }
+        }
+    }
+
+    fun acceptPrivateCommunityInvitation(
+        sharedCode: String,
+        onJoined: (String) -> Unit,
+    ) {
+        viewModelScope.launch(Dispatchers.IO) {
+            try {
+                val joined = ctr().communityClient.acceptPrivateInvitation(sharedCode)
+                saveCommunity(joined.manifest, "MEMBER")
+                withContext(Dispatchers.Main) { onJoined(joined.manifest.communityId) }
+            } catch (t: Throwable) {
+                fail(t)
+            }
+        }
+    }
+
     fun updateCommunityModerators(communityId: String, moderatorIds: List<String>) {
         viewModelScope.launch(Dispatchers.IO) {
             try {
