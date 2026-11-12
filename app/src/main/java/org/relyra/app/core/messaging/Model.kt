@@ -69,6 +69,16 @@ sealed interface Envelope {
     class GroupLeave(override val messageId: String, override val from: String, override val to: String,
                      val groupId: String) : Envelope
 
+    /** A member read a specific per-recipient copy of a group message. */
+    class GroupReadReceipt(
+        override val messageId: String,
+        override val from: String,
+        override val to: String,
+        val groupId: String,
+        val originalMessageId: String,
+        val readAt: Long,
+    ) : Envelope
+
     class Chat(override val messageId: String, override val from: String, override val to: String,
                val sentAt: Long, val body: String) : Envelope
 
@@ -123,6 +133,7 @@ object EnvelopeCodec {
     private const val T_GROUP_SYNC = 5
     private const val T_GROUP_LEAVE = 6
     private const val T_P2P_SIGNAL = 7
+    private const val T_GROUP_READ_RECEIPT = 8
     const val MAX_P2P_SIGNAL_CHARS = 48_000
 
     fun encode(e: Envelope): ByteArray {
@@ -175,6 +186,12 @@ object EnvelopeCodec {
                     o.writeByte(T_GROUP_LEAVE)
                     o.writeUTF(e.messageId); o.writeUTF(e.from); o.writeUTF(e.to)
                     o.writeUTF(e.groupId)
+                }
+                is Envelope.GroupReadReceipt -> {
+                    require(e.readAt > 0)
+                    o.writeByte(T_GROUP_READ_RECEIPT)
+                    o.writeUTF(e.messageId); o.writeUTF(e.from); o.writeUTF(e.to)
+                    o.writeUTF(e.groupId); o.writeUTF(e.originalMessageId); o.writeLong(e.readAt)
                 }
             }
         }
@@ -254,6 +271,15 @@ object EnvelopeCodec {
                         val gid = i.readUTF()
                         UUID.fromString(gid)
                         Envelope.GroupLeave(id, from, to, gid)
+                    }
+                    T_GROUP_READ_RECEIPT -> {
+                        val gid = i.readUTF()
+                        val originalId = i.readUTF()
+                        val readAt = i.readLong()
+                        UUID.fromString(gid)
+                        UUID.fromString(originalId)
+                        if (readAt <= 0) return null
+                        Envelope.GroupReadReceipt(id, from, to, gid, originalId, readAt)
                     }
                     else -> null
                 }
