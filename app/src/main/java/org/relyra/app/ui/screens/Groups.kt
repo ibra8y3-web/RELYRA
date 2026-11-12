@@ -476,6 +476,11 @@ fun GroupInfoScreen(vm: MainViewModel, groupId: String, onGone: () -> Unit) {
     }
     val active = state == GroupState.ACTIVE
     val staff = active && (myRole == GroupRole.OWNER || myRole == GroupRole.ADMIN)
+    val pendingProposals by vm.pendingMlsProposals.collectAsStateWithLifecycle()
+    val pendingProposalCount = pendingProposals[groupId] ?: 0
+    LaunchedEffect(groupId, g.mlsEnabled) {
+        if (g.mlsEnabled) vm.refreshPendingMlsProposals(groupId)
+    }
 
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(bottom = 24.dp)) {
         item {
@@ -494,6 +499,29 @@ fun GroupInfoScreen(vm: MainViewModel, groupId: String, onGone: () -> Unit) {
                 }
             }
             HorizontalDivider()
+        }
+        if (staff && myRole == GroupRole.OWNER && g.mlsEnabled && pendingProposalCount > 0) {
+            item(key = "mls-pending-proposals") {
+                Card(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 8.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerHigh),
+                ) {
+                    Column(Modifier.fillMaxWidth().padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            stringResource(R.string.groups_mls_pending_title, pendingProposalCount),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            stringResource(R.string.groups_mls_pending_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Button(onClick = { vm.commitPendingMlsProposals(groupId) }) {
+                            Text(stringResource(R.string.groups_mls_commit_pending))
+                        }
+                    }
+                }
+            }
         }
         items(members.sortedByDescending { GroupRole.valueOf(it.role).ordinal }, key = { it.memberId }) { m ->
             val inContacts = m.memberId == me || contacts.any { it.publicId == m.memberId }
