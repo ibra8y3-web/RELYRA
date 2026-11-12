@@ -81,6 +81,9 @@ interface GroupDao {
     @Query("SELECT COUNT(*) FROM group_messages")
     suspend fun countMessages(): Int
 
+    @Query("SELECT EXISTS(SELECT 1 FROM processed_ids WHERE messageId = :id)")
+    suspend fun hasProcessedId(id: String): Boolean
+
     @Query("DELETE FROM group_outbox WHERE groupId = :id")
     suspend fun deleteOutbox(id: String)
 
