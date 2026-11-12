@@ -346,6 +346,7 @@ pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeProces
     mut env: JNIEnv,
     _class: JClass,
     message: JByteArray,
+    message_id: JString,
     expected_public_id: JString,
     allowed_target_ids: JObjectArray,
     allow_add: jboolean,
@@ -353,6 +354,10 @@ pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeProces
 ) -> jlong {
     let message = match input_bytes(&mut env, message) {
         Ok(value) => value,
+        Err(error) => { throw(&mut env, error); return -1; }
+    };
+    let message_id: String = match env.get_string(&message_id) {
+        Ok(value) => value.into(),
         Err(error) => { throw(&mut env, error); return -1; }
     };
     let expected_public_id: String = match env.get_string(&expected_public_id) {
@@ -375,7 +380,7 @@ pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeProces
         };
         allowed.push(target);
     }
-    catch_result(&mut env, || with_database(|db| process_proposal(db, &message, &expected_public_id, &allowed, allow_add != 0, allow_remove != 0)))
+    catch_result(&mut env, || with_database(|db| process_proposal(db, &message, &message_id, &expected_public_id, &allowed, allow_add != 0, allow_remove != 0)))
         .map(|epoch| epoch as jlong)
         .unwrap_or(-1)
 }
