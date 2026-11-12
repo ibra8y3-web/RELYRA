@@ -289,6 +289,10 @@ func (s *server) health(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) publishRecord(w http.ResponseWriter, r *http.Request) {
+	if s.dht.RoutingTable().Size() == 0 {
+		writeError(w, http.StatusServiceUnavailable, "DHT routing table is empty; configure reachable bootstrap peers")
+		return
+	}
 	r.Body = http.MaxBytesReader(w, r.Body, apiRecordLimit)
 	raw, err := io.ReadAll(r.Body)
 	if err != nil {
@@ -320,6 +324,10 @@ func (s *server) publishRecord(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) lookupRecord(w http.ResponseWriter, r *http.Request) {
+	if s.dht.RoutingTable().Size() == 0 {
+		writeError(w, http.StatusServiceUnavailable, "DHT routing table is empty; configure reachable bootstrap peers")
+		return
+	}
 	publicID := strings.ToLower(strings.TrimSpace(r.PathValue("publicID")))
 	key, err := presence.KeyForPublicID(publicID)
 	if err != nil {
