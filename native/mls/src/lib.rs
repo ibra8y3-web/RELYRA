@@ -989,4 +989,41 @@ mod tests {
         assert_eq!(pending_proposal_count(&mut owner, gid).unwrap(), 0);
     }
 
+    #[test]
+    fn staged_commit_bundle_survives_restart_and_merges_once() {
+        let temp = tempdir().unwrap();
+        let owner_path = temp.path().join("owner.db");
+        let owner_key = [0x81; 32];
+        let mut owner = database(owner_path.to_str().unwrap(), &owner_key);
+        let mut member = database(temp.path().join("member.db").to_str().unwrap(), &[0x82; 32]);
+        let gid = b"rfc9420-staged-commit-recovery";
+        let owner_credential = test_credential("alice", "00000000-0000-4000-8000-000000000031");
+        let member_credential = test_credential("bob", "00000000-0000-4000-8000-000000000032");
+
+        create_group(&mut owner, gid, &owner_credential).unwrap();
+        let key_package = generate_key_package(&mut member, &member_credential).unwrap();
+        let joined = add_members(&mut owner, gid, &[key_package]).unwrap();
+        join_group(&mut member, gid, &BASE64.decode(joined.welcome.unwrap()).unwrap(), &member_credential).unwrap();
+
+        let proposal = propose_remove_member(&mut owner, gid, &member_credential).unwrap();
+        process_proposal(
+            &mut owner, &proposal, "staged-remove-1", "alice", &["bob".to_owned()], false, true,
+        ).unwrap();
+        let prepared = prepare_pending_proposals_commit(&mut owner, gid).unwrap();
+        assert_eq!(prepared.epoch, 2);
+        assert_eq!(prepared.removed_ids, vec!["bob".to_owned()]);
+        assert_eq!(epoch(&mut owner, gid).unwrap(), 1);
+        assert!(pending_commit_info(&mut owner, gid).unwrap().is_some());
+
+        drop(owner);
+        let mut reopened = database(owner_path.to_str().unwrap(), &owner_key);
+        let recovered = pending_commit_info(&mut reopened, gid).unwrap().unwrap();
+        assert_eq!(recovered.commit, prepared.commit);
+        assert_eq!(recovered.epoch, prepared.epoch);
+        assert_eq!(merge_pending_commit(&mut reopened, gid).unwrap(), 2);
+        assert_eq!(merge_pending_commit(&mut reopened, gid).unwrap(), 2);
+        assert!(pending_commit_info(&mut reopened, gid).unwrap().is_none());
+        assert_eq!(members(&mut reopened, gid).unwrap().len(), 1);
+    }
+
 }
