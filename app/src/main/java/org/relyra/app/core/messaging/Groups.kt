@@ -651,36 +651,9 @@ class GroupEngine(
                     addProposal, newId(), me, setOf(env.from), allowAdd = true, allowRemove = false,
                 )
                 val bundle = engine.commitPendingProposals(env.groupId)
-                val welcome = bundle.welcome ?: return
-                val activeCredentials = mlsCredentialIds(env.groupId) ?: return
-                val updatedMembers = members
-                    .filter { !it.mlsJoined || it.id.lowercase() in activeCredentials }
-                    .map { it.copy(mlsJoined = it.id.lowercase() in activeCredentials) }
-                val removedIds = members.filter {
-                    it.mlsJoined && it.id.lowercase() !in activeCredentials
-                }.map { it.id }.toSet()
-                val now = clock().coerceAtLeast(1L)
-                val currentJoined = members.filter { it.mlsJoined && it.id != me && peers.status(it.id) == PeerStatus.Known }
-                val commitRows = currentJoined.map { recipient ->
-                    val id = newId()
-                    OutboxRow(id, env.groupId, recipient.id, null,
-                        EnvelopeCodec.encode(Envelope.GroupMls(id, me, recipient.id, env.groupId, GroupMlsKind.COMMIT, bundle.commit)),
-                        now, 0, now, acked = false, failed = false)
-                }
-                val welcomeId = newId()
-                val welcomeRow = OutboxRow(
-                    welcomeId, env.groupId, env.from, null,
-                    EnvelopeCodec.encode(Envelope.GroupMls(welcomeId, me, env.from, env.groupId, GroupMlsKind.WELCOME, welcome)),
-                    now, 0, now, acked = false, failed = false,
-                )
-                store.applyMlsCommit(
-                    group.copy(epoch = group.epoch + 1, mlsEpoch = bundle.epoch),
-                    updatedMembers,
-                    commitRows + welcomeRow,
-                    env.messageId,
-                    clock(),
-                )
-                broadcastSnapshot(env.groupId, removedIds)
+                val prepared = engine.commitPendingProposals(env.groupId)
+                if (prepared.welcome == null || env.from.lowercase() !in prepared.addedIds) return
+                persistPreparedMlsCommit(group, members, prepared, env.messageId, clock())
                 refreshPendingMlsProposalsLocked(env.groupId)
                 ack(me, env.from, env.messageId)
             }
@@ -782,10 +755,6 @@ class GroupEngine(
         return count
     }
 
-    suspend fun refreshPendingMlsProposals(groupId: String): Int = lock.withLock {
-        refreshPendingMlsProposalsLocked(groupId)
-    }
-
     /** The group owner commits the complete validated OpenMLS proposal queue as one RFC 9420 Commit. */
     suspend fun commitPendingMlsProposals(groupId: String): GroupResult = lock.withLock {
         val me = ownId() ?: return@withLock GroupResult.NO_IDENTITY
@@ -800,40 +769,82 @@ class GroupEngine(
             return@withLock GroupResult.OK
         }
         val before = store.members(groupId)
-        val bundle = engine.commitPendingProposals(groupId)
-        val activeIds = mlsCredentialIds(groupId) ?: return@withLock GroupResult.MLS_UNAVAILABLE
-        val removed = before.filter { it.mlsJoined && it.id.lowercase() !in activeIds }.map { it.id }.toSet()
-        val added = activeIds - before.map { it.id.lowercase() }.toSet()
+        val prepared = engine.commitPendingProposals(groupId)
+        persistPreparedMlsCommit(group, before, prepared)
+        refreshPendingMlsProposalsLocked(groupId)
+        GroupResult.OK
+    }
+
+    private suspend fun persistPreparedMlsCommit(
+        group: GroupRecord,
+        before: List<GroupMemberRef>,
+        prepared: MlsPreparedCommit,
+        controlMessageId: String? = null,
+        receivedAt: Long? = null,
+    ) {
+        val me = ownId() ?: throw IllegalStateException("RELYRA identity unavailable")
+        val removed = prepared.removedIds.map { it.lowercase() }.toSet()
+        val added = prepared.addedIds.map { it.lowercase() }.toSet()
+        if (added.isNotEmpty() && prepared.welcome == null) {
+            throw IllegalStateException("OpenMLS Add Commit did not produce a Welcome")
+        }
+        val activeIds = before.filter { it.mlsJoined }.map { it.id.lowercase() }.toSet() - removed + added
         val updated = before
             .filter { !it.mlsJoined || it.id.lowercase() in activeIds }
             .map { it.copy(mlsJoined = it.id.lowercase() in activeIds) } +
-            added.map { GroupMemberRef(it, GroupRole.MEMBER, mlsJoined = true) }
-        if (added.isNotEmpty() && bundle.welcome == null) return@withLock GroupResult.MLS_UNAVAILABLE
+            added.filter { target -> before.none { it.id.equals(target, ignoreCase = true) } }
+                .map { GroupMemberRef(it, GroupRole.MEMBER, mlsJoined = true) }
         val now = clock().coerceAtLeast(1L)
         val recipients = before.filter { it.mlsJoined && it.id != me && peers.status(it.id) == PeerStatus.Known }
         val rows = recipients.map { recipient ->
             val id = newId()
             OutboxRow(
-                id, groupId, recipient.id, null,
-                EnvelopeCodec.encode(Envelope.GroupMls(id, me, recipient.id, groupId, GroupMlsKind.COMMIT, bundle.commit)),
+                id, group.groupId, recipient.id, null,
+                EnvelopeCodec.encode(Envelope.GroupMls(id, me, recipient.id, group.groupId, GroupMlsKind.COMMIT, prepared.commit)),
                 now, 0, now, acked = false, failed = false,
             )
         } + added.map { target ->
             val id = newId()
             OutboxRow(
-                id, groupId, target, null,
-                EnvelopeCodec.encode(Envelope.GroupMls(id, me, target, groupId, GroupMlsKind.WELCOME, bundle.welcome!!)),
+                id, group.groupId, target, null,
+                EnvelopeCodec.encode(Envelope.GroupMls(id, me, target, group.groupId, GroupMlsKind.WELCOME, prepared.welcome!!)),
                 now, 0, now, acked = false, failed = false,
             )
         }
         store.applyMlsCommit(
-            group.copy(epoch = group.epoch + 1, mlsEpoch = bundle.epoch),
+            group.copy(epoch = group.epoch + 1, mlsEpoch = prepared.epoch),
             updated,
             rows,
+            controlMessageId,
+            receivedAt,
         )
-        broadcastSnapshot(groupId, removed)
+        // The native pending Commit is merged only after the Room epoch and its
+        // retryable network packets are durable. Startup recovery finishes this step.
+        mls?.mergePendingCommit(group.groupId)
+        broadcastSnapshot(group.groupId, removed)
+    }
+
+    private suspend fun recoverPendingMlsCommitLocked(group: GroupRecord): Boolean {
+        val engine = mls ?: return true
+        val prepared = engine.pendingCommitInfo(group.groupId) ?: return true
+        return when {
+            group.mlsEpoch == prepared.epoch -> {
+                engine.mergePendingCommit(group.groupId)
+                true
+            }
+            group.mlsEpoch + 1 == prepared.epoch -> {
+                val before = store.members(group.groupId)
+                persistPreparedMlsCommit(group, before, prepared)
+                true
+            }
+            else -> false
+        }
+    }
+
+    suspend fun refreshPendingMlsProposals(groupId: String): Int = lock.withLock {
+        val group = store.group(groupId) ?: return@withLock 0
+        if (!recoverPendingMlsCommitLocked(group)) return@withLock 0
         refreshPendingMlsProposalsLocked(groupId)
-        GroupResult.OK
     }
 
     private suspend fun mlsCredentialIds(groupId: String): Set<String>? {
