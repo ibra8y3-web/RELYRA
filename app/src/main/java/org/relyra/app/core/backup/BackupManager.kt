@@ -233,8 +233,9 @@ object RestoreApplier {
      */
     fun applyIfPending(stageDir: File, dbFile: File, secure: SecureStore, filesDir: File, preferenceStores: Map<String, SharedPreferences>): Boolean {
         if (!File(stageDir, MARKER).isFile) {
-            // Remove abandoned plaintext staging artifacts (including prekey material) after a crash.
+            // No restore is pending: remove abandoned plaintext staging and old rollback artifacts.
             clear(stageDir)
+            cleanupOldBackups(stageDir, dbFile, filesDir)
             return false
         }
         val stagedDb = File(stageDir, DB_READY)
@@ -274,8 +275,6 @@ object RestoreApplier {
         val suffixes = listOf("-wal", "-shm", "-journal")
         val sidecarBackups = suffixes.associateWith { File(parent, dbFile.name + it + ".restore-old") }
         candidate.delete()
-        previous.delete()
-        sidecarBackups.values.forEach { it.delete() }
 
         var installed = false
         var keysUpdated = false
@@ -290,13 +289,22 @@ object RestoreApplier {
                     output.fd.sync()
                 }
             }
-            if (dbFile.exists() && !dbFile.renameTo(previous)) {
-                throw java.io.IOException("could not preserve the current database")
+            if (dbFile.exists()) {
+                if (!previous.exists()) {
+                    if (!dbFile.renameTo(previous)) throw java.io.IOException("could not preserve the current database")
+                } else {
+                    // A prior process may have installed the staged DB and crashed before clearing the marker.
+                    if (!dbFile.delete()) throw java.io.IOException("could not replace partially restored database")
+                }
             }
             for ((suffix, backup) in sidecarBackups) {
                 val sidecar = File(parent, dbFile.name + suffix)
-                if (sidecar.exists() && !sidecar.renameTo(backup)) {
-                    throw java.io.IOException("could not preserve database journal files")
+                if (sidecar.exists()) {
+                    if (!backup.exists()) {
+                        if (!sidecar.renameTo(backup)) throw java.io.IOException("could not preserve database journal files")
+                    } else if (!sidecar.delete()) {
+                        throw java.io.IOException("could not replace partially restored database journal files")
+                    }
                 }
             }
             if (!candidate.renameTo(dbFile)) throw java.io.IOException("could not install restored database")
@@ -306,13 +314,15 @@ object RestoreApplier {
             keysUpdated = true
             restoredDirs = applyRestoredFiles(stageDir, filesDir)
             applyRestoredPreferences(stageDir, preferenceStores)
+            // Removing the pending marker is the commit point. If the process dies afterwards,
+            // startup cleanup removes rollback copies without trying to replay the restore.
+            clear(stageDir)
             restoredDirs.values.filterNotNull().forEach { it.deleteRecursively() }
             previous.delete()
             sidecarBackups.values.forEach { it.delete() }
-            clear(stageDir)
             return true
         } catch (t: Throwable) {
-            if (restoredDirs != null) rollbackRestoredFiles(filesDir, restoredDirs!!)
+            if (restoredDirs != null) rollbackRestoredFiles(stageDir, filesDir, restoredDirs!!)
             if (keysUpdated) runCatching { secure.restoreKeys(previousSeed, previousKey) }
             runCatching { restorePreferenceSnapshot(preferenceStores, previousPreferences) }
             if (installed) dbFile.delete()
@@ -329,33 +339,34 @@ object RestoreApplier {
             throw t
         }
     }
+    /** Idempotent directory swap: staged sources remain available if the process dies mid-restore. */
     private fun applyRestoredFiles(stageDir: File, filesDir: File): Map<String, File?> {
         val stagedRoot = File(stageDir, "restored-files")
         val names = listOf("vault", "inbox", "outbox")
         val old = linkedMapOf<String, File?>()
-        val installed = mutableListOf<String>()
         try {
             names.forEach { name ->
                 val target = File(filesDir, name)
                 val backup = File(filesDir, "$name.restore-old")
-                backup.deleteRecursively()
-                if (target.exists()) {
-                    if (!target.renameTo(backup)) throw java.io.IOException("could not preserve existing $name data")
-                    old[name] = backup
+                if (!backup.exists()) {
+                    if (target.exists()) {
+                        if (!target.renameTo(backup)) throw java.io.IOException("could not preserve existing $name data")
+                    } else if (!backup.mkdirs() && !backup.isDirectory) {
+                        throw java.io.IOException("could not stage previous $name directory state")
+                    }
                 }
+                old[name] = backup
                 val source = File(stagedRoot, name)
                 if (source.exists()) {
+                    target.deleteRecursively()
                     if (!source.renameTo(target)) throw java.io.IOException("could not install restored $name data")
-                } else if (!target.mkdirs() && !target.isDirectory) throw java.io.IOException("could not create restored $name directory")
-                installed += name
-                if (!old.containsKey(name)) old[name] = null
+                } else if (!target.exists() && !target.mkdirs()) {
+                    throw java.io.IOException("could not create restored $name directory")
+                }
             }
             return old
         } catch (t: Throwable) {
-            installed.asReversed().forEach { File(filesDir, it).deleteRecursively() }
-            old.forEach { (name, backup) ->
-                if (backup != null && backup.exists() && !backup.renameTo(File(filesDir, name))) throw java.io.IOException("restore failed and $name files could not be recovered", t)
-            }
+            rollbackRestoredFiles(stageDir, filesDir, old)
             throw t
         }
     }
@@ -382,12 +393,32 @@ object RestoreApplier {
         }
     }
 
-    private fun rollbackRestoredFiles(filesDir: File, previous: Map<String, File?>) {
+    private fun rollbackRestoredFiles(stageDir: File, filesDir: File, previous: Map<String, File?>) {
         previous.forEach { (name, backup) ->
-            File(filesDir, name).deleteRecursively()
-            if (backup != null && backup.exists() && !backup.renameTo(File(filesDir, name))) {
+            val target = File(filesDir, name)
+            val staged = File(File(stageDir, "restored-files"), name)
+            if (target.exists()) {
+                staged.parentFile?.mkdirs()
+                if (!staged.exists()) {
+                    if (!target.renameTo(staged)) target.deleteRecursively()
+                } else {
+                    target.deleteRecursively()
+                }
+            }
+            if (backup != null && backup.exists() && !backup.renameTo(target)) {
                 throw java.io.IOException("could not roll back restored $name files")
             }
+        }
+    }
+
+    private fun cleanupOldBackups(stageDir: File, dbFile: File, filesDir: File) {
+        File(dbFile.parentFile, dbFile.name + ".restore-new").delete()
+        File(dbFile.parentFile, dbFile.name + ".restore-old").delete()
+        listOf("-wal", "-shm", "-journal").forEach {
+            File(dbFile.parentFile, dbFile.name + it + ".restore-old").delete()
+        }
+        listOf("vault", "inbox", "outbox").forEach {
+            File(filesDir, "$it.restore-old").deleteRecursively()
         }
     }
 
