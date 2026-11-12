@@ -95,7 +95,7 @@ fun NetworkScreen(vm: MainViewModel) {
     var turnCredential by remember { mutableStateOf("") }
     var turnError by rememberSaveable { mutableStateOf(false) }
     var discoveryGatewayInput by rememberSaveable { mutableStateOf("") }
-    var discoveryGatewayError by rememberSaveable { mutableStateOf(false) }
+    var discoveryGatewayError by rememberSaveable { mutableStateOf<Int?>(null) }
 
     val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -266,7 +266,7 @@ fun NetworkScreen(vm: MainViewModel) {
                             stringResource(when (gatewayTest) {
                                 true -> R.string.net_dht_gateway_test_ok
                                 false -> R.string.net_dht_gateway_test_failed
-                                null -> R.string.net_dht_gateway_test
+                                null -> R.string.net_dht_gateway_untested
                             }),
                             modifier = Modifier.weight(1f),
                             style = MaterialTheme.typography.bodySmall,
@@ -287,19 +287,20 @@ fun NetworkScreen(vm: MainViewModel) {
             }
             OutlinedTextField(
                 value = discoveryGatewayInput,
-                onValueChange = { discoveryGatewayInput = it; discoveryGatewayError = false },
+                onValueChange = { discoveryGatewayInput = it; discoveryGatewayError = null },
                 label = { Text(stringResource(R.string.net_dht_gateway_label)) },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
-            if (discoveryGatewayError) {
-                Text(stringResource(R.string.err_server_invalid), color = MaterialTheme.colorScheme.error)
+            discoveryGatewayError?.let { errorId ->
+                Text(stringResource(errorId), color = MaterialTheme.colorScheme.error)
             }
             Button(
                 onClick = {
                     when (vm.addDiscoveryGateway(discoveryGatewayInput)) {
-                        AddRelayResult.Added -> { discoveryGatewayInput = ""; discoveryGatewayError = false }
-                        AddRelayResult.Invalid, AddRelayResult.Duplicate -> discoveryGatewayError = true
+                        AddRelayResult.Added -> { discoveryGatewayInput = ""; discoveryGatewayError = null }
+                        AddRelayResult.Invalid -> discoveryGatewayError = R.string.net_dht_gateway_invalid
+                        AddRelayResult.Duplicate -> discoveryGatewayError = R.string.net_dht_gateway_duplicate
                     }
                 },
                 enabled = discoveryGatewayInput.isNotBlank(),
