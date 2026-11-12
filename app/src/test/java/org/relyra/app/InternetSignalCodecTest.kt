@@ -70,6 +70,11 @@ class InternetSignalCodecTest {
         assertTrue(IceServerConfig("stun:stun.example.org:3478").isValid())
         assertTrue(IceServerConfig("turns:turn.example.org:5349", "user", "secret").isValid())
         assertFalse(IceServerConfig("turn:turn.example.org:3478").isValid())
+        assertFalse(IceServerConfig("turn:turn.example.org:3478", "user", "").isValid())
+        assertFalse(IceServerConfig("turn:turn.example.org:3478", "", "secret").isValid())
+        assertFalse(IceServerConfig("stun:stun.example.org:3478", "user", "").isValid())
+        assertFalse(IceServerConfig("stun:stun.example.org:3478", "", "secret").isValid())
+        assertFalse(IceServerConfig("turn:turn.example.org:3478", "u".repeat(257), "secret").isValid())
         assertFalse(IceServerConfig("https://turn.example.org", "user", "secret").isValid())
     }
 }
