@@ -304,6 +304,7 @@
     <string name="settings_cat_diagnostics_desc">تشخيص الاتصال وحالة التطبيق والسجلات التقنية.</string>
 
     <string name="communities_posts_title">منشورات المجتمع</string>
+    <string name="communities_private_feed_notice">العضوية الخاصة تحدد من يستطيع قراءة التغذية، لكن المنشورات غير مشفرة من طرف إلى طرف ويمكن لخدمة الاكتشاف قراءتها. لا تنشر معلومات حساسة.</string>
     <string name="communities_post_hint">اكتب منشورًا للمجتمع</string>
     <string name="communities_post_publish">نشر المنشور الموقّع</string>
     <string name="communities_post_published">تم نشر المنشور الموقّع.</string>
