@@ -38,7 +38,7 @@ interface GroupMlsProvider {
     suspend fun proposeAddMember(groupId: String, keyPackage: ByteArray): ByteArray
     suspend fun proposeRemoveMember(groupId: String, relyraPublicId: String): ByteArray
     /** Stores a native RFC 9420 proposal only when its MLS credential matches the authenticated envelope sender. */
-    suspend fun processProposal(message: ByteArray, expectedSenderPublicId: String, allowedTargetPublicIds: Set<String>): Long
+    suspend fun processProposal(message: ByteArray, expectedSenderPublicId: String, allowedTargetPublicIds: Set<String>, allowAdd: Boolean, allowRemove: Boolean): Long
     suspend fun commitPendingProposals(groupId: String): MlsCommitBundle
     suspend fun pendingProposalCount(groupId: String): Int
     suspend fun epoch(groupId: String): Long
@@ -181,9 +181,18 @@ class MlsEngine(
             .also { check(it.isNotEmpty()) { "OpenMLS returned an empty Remove Proposal" } }
     }
 
-    override suspend fun processProposal(message: ByteArray, expectedSenderPublicId: String, allowedTargetPublicIds: Set<String>): Long = runNative {
+    override suspend fun processProposal(
+        message: ByteArray,
+        expectedSenderPublicId: String,
+        allowedTargetPublicIds: Set<String>,
+        allowAdd: Boolean,
+        allowRemove: Boolean,
+    ): Long = runNative {
         require(allowedTargetPublicIds.isNotEmpty() && allowedTargetPublicIds.size <= 200)
-        MlsNative.nativeProcessProposal(message, expectedSenderPublicId, allowedTargetPublicIds.toTypedArray())
+        require(allowAdd.xor(allowRemove))
+        MlsNative.nativeProcessProposal(
+            message, expectedSenderPublicId, allowedTargetPublicIds.toTypedArray(), allowAdd, allowRemove,
+        )
             .also { check(it >= 0) { "OpenMLS rejected the proposal or its sender identity" } }
     }
 
