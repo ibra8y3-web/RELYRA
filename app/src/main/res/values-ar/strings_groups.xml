@@ -25,6 +25,8 @@
     <string name="groups_decline">رفض</string>
     <string name="groups_banner_group">كل رسالة تُشفَّر على حدة لكل عضو عبر جلسته الفردية. يجب أن يكون الأعضاء من جهات اتصالك. هذا ليس MLS.</string>
     <string name="groups_banner_channel">قناة: المالك والمشرفون فقط يستطيعون النشر. كل رسالة تُشفَّر على حدة لكل مشترك.</string>
+    <string name="groups_banner_mls_group">تُشفّر الرسائل بتشفير MLS للمجموعة. تغييرات العضوية تُقدّم حقبة التشفير وتحدّث مفاتيح المجموعة المشتركة.</string>
+    <string name="groups_banner_mls_channel">قناة بث بتشفير MLS: المالك والمشرفون فقط يستطيعون النشر، وتستخدم الرسائل حقبة المجموعة المشتركة.</string>
     <string name="groups_readonly">المالك والمشرفون فقط يستطيعون النشر في هذه القناة.</string>
     <string name="groups_inactive">لم تعد عضوًا في هذه المجموعة. تبقى نسختك من الرسائل على هذا الجهاز.</string>
     <string name="groups_info">معلومات المجموعة</string>
