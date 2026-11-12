@@ -112,6 +112,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val wifiDirectPeers get() = rely.container.wifiDirect.discovered
     val wifiDirectVerifiedPeers get() = rely.container.wifiDirect.verified
     val wifiDirectStatus get() = rely.container.wifiDirect.status
+    val lastTransportPath get() = rely.container.router.lastPath
     val internetPeerStates get() = rely.container.internetP2p.peerStates
     val incomingInternetOffers get() = rely.container.internetP2p.incomingOffers
     val internetSignal = MutableStateFlow("")
