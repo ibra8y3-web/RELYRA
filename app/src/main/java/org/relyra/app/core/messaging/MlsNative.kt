@@ -14,6 +14,7 @@ internal object MlsNative {
     @JvmStatic external fun nativeInit(path: String, databaseKey: ByteArray)
     @JvmStatic external fun nativeCreateGroup(groupId: ByteArray, credentialIdentity: ByteArray): Long
     @JvmStatic external fun nativeGenerateKeyPackage(credentialIdentity: ByteArray): ByteArray
+    @JvmStatic external fun nativeKeyPackageIdentity(keyPackage: ByteArray): ByteArray
     @JvmStatic external fun nativeAddMembers(groupId: ByteArray, packages: Array<ByteArray>): String
     @JvmStatic external fun nativeJoinGroup(groupId: ByteArray, welcome: ByteArray): Long
     @JvmStatic external fun nativeEncrypt(groupId: ByteArray, plaintext: ByteArray): ByteArray
