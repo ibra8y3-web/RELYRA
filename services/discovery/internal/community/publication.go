@@ -2,6 +2,7 @@ package community
 
 import (
 	"encoding/base64"
+	"crypto/ed25519"
 	"encoding/json"
 	"errors"
 	"fmt"
@@ -78,7 +79,7 @@ func VerifyPost(p Post, now time.Time) error {
 	publicKey, err := identity.DecodePublicID(p.AuthorPublicID)
 	if err != nil { return err }
 	signature, err := base64.RawURLEncoding.DecodeString(p.Signature)
-	if err != nil || len(signature) != 64 || !identity.VerifyPublicKey(publicKey, payload, signature) {
+	if err != nil || len(signature) != 64 || !ed25519.Verify(publicKey, payload, signature) {
 		return errors.New("invalid post author signature")
 	}
 	return nil
