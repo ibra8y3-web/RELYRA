@@ -13,6 +13,7 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.OutputStream
+import android.content.Context
 import android.content.SharedPreferences
 import java.util.Properties
 
@@ -30,8 +31,14 @@ class BackupManager(
     private val stageDir: File,
     private val filesDir: File,
     private val preferenceStores: Map<String, SharedPreferences>,
+    private val context: Context,
 ) {
-    private val backupRoots = mapOf("vault" to File(filesDir, "vault"), "inbox" to File(filesDir, "inbox"), "outbox" to File(filesDir, "outbox"))
+    private val backupRoots = mapOf(
+        "vault" to File(filesDir, "vault"),
+        "inbox" to File(filesDir, "inbox"),
+        "outbox" to File(filesDir, "outbox"),
+        "mls" to File(filesDir, "mls"),
+    )
 
     private fun encodePreferences(): Map<String, Map<String, String>> = preferenceStores.mapValues { (_, prefs) ->
         prefs.all.mapNotNull { (key, value) ->
@@ -74,19 +81,9 @@ class BackupManager(
                     throw java.io.IOException("database checkpoint is busy; retry the backup")
                 }
             }
-            val prekeyDir = File(stageDir, "export-prekeys")
-            prekeyDir.deleteRecursively()
-            check(prekeyDir.mkdirs() || prekeyDir.isDirectory)
             sdb.beginTransaction()
             try {
                 validateReferencedFiles(sdb)
-                val privatePrekeys = secure.exportPreKeys()
-                sdb.query("SELECT keyId FROM prekeys WHERE kind = 'SIGNED' OR (kind = 'ONE_TIME' AND consumed = 0)").use { cursor ->
-                    while (cursor.moveToNext()) {
-                        val keyId = cursor.getString(0)
-                        if (keyId !in privatePrekeys) throw java.io.IOException("private prekey $keyId is missing; refusing an incomplete backup")
-                    }
-                }
                 FileInputStream(dbFile).use { input ->
                     FileOutputStream(snapshot).use { fileOut ->
                         input.copyTo(fileOut, 64 * 1024)
@@ -94,18 +91,12 @@ class BackupManager(
                     }
                 }
                 version = sdb.version
-                privatePrekeys.forEach { (id, value) ->
-                    val fileName = id.replace(':', '_')
-                    check(fileName.matches(Regex("[a-z-]+_[0-9]+")))
-                    File(prekeyDir, fileName).writeBytes(value)
-                }
-                BackupArchive.pack(snapshot, backupRoots + ("secure-prekeys" to prekeyDir), encodePreferences(), bundle)
+                BackupArchive.pack(snapshot, backupRoots, encodePreferences(), bundle)
                 // Recheck references after copying: a file deleted or moved during export invalidates the snapshot.
                 validateReferencedFiles(sdb)
             } finally {
                 sdb.endTransaction()
             }
-            prekeyDir.deleteRecursively()
             val seed = secure.loadSeed()
             val key = secure.databaseKey()
             BackupCrypto.seal(out, passphrase).use { sealed -> BackupPayload.write(sealed, seed, key, version, bundle) }
@@ -113,7 +104,6 @@ class BackupManager(
         } finally {
             snapshot.delete()
             bundle.delete()
-            File(stageDir, "export-prekeys").deleteRecursively()
             File(stageDir, "verify-vault").deleteRecursively()
         }
     }
@@ -152,6 +142,12 @@ class BackupManager(
         sdb.query("SELECT localPath, size, plainSha256, blobSize, blobSha256 FROM group_attachments WHERE localPath IS NOT NULL").use { cursor ->
             while (cursor.moveToNext()) {
                 verifyAttachment(cursor.getString(0), cursor.getLong(1), cursor.getBlob(2), cursor.getLong(3), cursor.getBlob(4))
+            }
+        }
+        sdb.query("SELECT COUNT(*) FROM chat_groups WHERE mlsEnabled = 1").use { cursor ->
+            if (cursor.moveToFirst() && cursor.getLong(0) > 0L &&
+                !File(filesDir, "mls/groups.db").isFile) {
+                throw java.io.IOException("MLS group state is missing; refusing an incomplete backup")
             }
         }
         sdb.query("SELECT id, size, plainSha256, fileKey FROM vault_items").use { cursor ->
@@ -258,6 +254,49 @@ object RestoreApplier {
         File(stageDir, "pending-prefs").deleteRecursively()
         File(stageDir, "export-prekeys").deleteRecursively()
         File(stageDir, "verify-vault").deleteRecursively()
+    }
+
+    /** Remove rollback-sensitive messaging state before the restored DB can become live. */
+    private fun sanitizeRestoredDatabase(context: Context, candidate: File, key: ByteArray) {
+        val restoredDb = AppDatabase.buildNamed(context, key, candidate.name)
+        try {
+            val sdb = restoredDb.openHelper.writableDatabase
+            sdb.beginTransaction()
+            try {
+                sdb.execSQL("DELETE FROM ratchet_sessions")
+                sdb.execSQL("DELETE FROM encrypted_packets")
+                sdb.execSQL("DELETE FROM prekeys")
+                sdb.execSQL(
+                    "UPDATE contacts SET verified = 0, encKey = NULL, nostrKey = NULL, " +
+                        "signedPreKeyId = NULL, signedPreKey = NULL, signedPreKeyExpiresAt = NULL, " +
+                        "signedPreKeySignature = NULL, oneTimePreKeyId = NULL, oneTimePreKey = NULL"
+                )
+                sdb.execSQL(
+                    "UPDATE messages SET state = 'FAILED', wirePayload = NULL, nextAttemptAt = 9223372036854775807 " +
+                        "WHERE outgoing = 1 AND state IN ('QUEUED', 'SENT', 'RELAYED')"
+                )
+                sdb.setTransactionSuccessful()
+            } finally {
+                sdb.endTransaction()
+            }
+            sdb.query("PRAGMA wal_checkpoint(TRUNCATE)").use { cursor ->
+                if (!cursor.moveToFirst() || cursor.getInt(0) != 0 ||
+                    cursor.getInt(1) != cursor.getInt(2)) {
+                    throw java.io.IOException("could not checkpoint restored database")
+                }
+            }
+            sdb.query("PRAGMA journal_mode=DELETE").use { cursor ->
+                if (!cursor.moveToFirst() || !cursor.getString(0).equals("delete", ignoreCase = true)) {
+                    throw java.io.IOException("could not finalize restored database")
+                }
+            }
+        } finally {
+            restoredDb.close()
+        }
+        val wal = File(candidate.parentFile, candidate.name + "-wal")
+        if (wal.exists() && wal.length() > 0L) throw java.io.IOException("restored database still has a WAL file")
+        wal.delete()
+        File(candidate.parentFile, candidate.name + "-shm").delete()
     }
 
     private fun persistRollbackState(
@@ -376,7 +415,7 @@ object RestoreApplier {
      * Replaces the database using same-filesystem renames and keeps rollback copies until key restoration
      * succeeds. Sidecar WAL/journal files are moved aside as part of the same guarded operation.
      */
-    fun applyIfPending(stageDir: File, dbFile: File, secure: SecureStore, filesDir: File, preferenceStores: Map<String, SharedPreferences>): Boolean {
+    fun applyIfPending(context: Context, stageDir: File, dbFile: File, secure: SecureStore, filesDir: File, preferenceStores: Map<String, SharedPreferences>): Boolean {
         if (!File(stageDir, MARKER).isFile) {
             // No restore is pending: remove abandoned plaintext staging and old rollback artifacts.
             clear(stageDir)
@@ -454,11 +493,16 @@ object RestoreApplier {
                     }
                 }
             }
+            sanitizeRestoredDatabase(context, candidate, key)
             if (!candidate.renameTo(dbFile)) throw java.io.IOException("could not install restored database")
             installed = true
 
             keysUpdated = true
-            secure.restoreKeys(if (seed.isEmpty()) null else seed, key, prekeys)
+            // One-time prekeys from an older snapshot may already have been consumed after that snapshot.
+            // Never roll them back: a fresh signed/one-time prekey bundle is generated after restore.
+            prekeys.values.forEach { it.fill(0) }
+            keysUpdated = true
+            secure.restoreKeys(if (seed.isEmpty()) null else seed, key, emptyMap())
             restoredDirs = applyRestoredFiles(stageDir, filesDir)
             applyRestoredPreferences(stageDir, preferenceStores)
             // Removing the pending marker is the commit point. If the process dies afterwards,
@@ -489,7 +533,7 @@ object RestoreApplier {
     /** Idempotent directory swap: staged sources remain available if the process dies mid-restore. */
     private fun applyRestoredFiles(stageDir: File, filesDir: File): Map<String, File?> {
         val stagedRoot = File(stageDir, "restored-files")
-        val names = listOf("vault", "inbox", "outbox")
+        val names = listOf("vault", "inbox", "outbox", "mls")
         val old = linkedMapOf<String, File?>()
         try {
             names.forEach { name ->
@@ -564,7 +608,7 @@ object RestoreApplier {
         listOf("-wal", "-shm", "-journal").forEach {
             File(dbFile.parentFile, dbFile.name + it + ".restore-old").delete()
         }
-        listOf("vault", "inbox", "outbox").forEach {
+        listOf("vault", "inbox", "outbox", "mls").forEach {
             File(filesDir, "$it.restore-old").deleteRecursively()
         }
     }
