@@ -453,55 +453,90 @@ fn credential_public_id(encoded: &[u8]) -> Option<&str> {
 pub fn process_proposal(
     database: &mut OpenDatabase,
     message: &[u8],
+    message_id: &str,
     expected_public_id: &str,
     allowed_target_public_ids: &[String],
     allow_add: bool,
     allow_remove: bool,
 ) -> Result<u64, MlsError> {
     if message.is_empty() || message.len() > 1024 * 1024 ||
+        message_id.is_empty() || message_id.len() > 128 ||
         expected_public_id.is_empty() || expected_public_id.len() > 256 ||
         allowed_target_public_ids.is_empty() || allowed_target_public_ids.len() > 200 ||
         allow_add == allow_remove {
         return Err(MlsError::InvalidMessage);
     }
-    let (provider, _signer) = provider_with_signer(database)?;
     let incoming = MlsMessageIn::tls_deserialize_exact_bytes(message)
         .map_err(|_| MlsError::InvalidMessage)?;
     let protocol: ProtocolMessage = incoming.try_into_protocol_message()
         .map_err(|_| MlsError::InvalidMessage)?;
-    let id = GroupId::from_slice(protocol.group_id().as_slice());
-    let mut group = MlsGroup::load(provider.storage(), &id)
-        .map_err(|e| MlsError::Storage(e.to_string()))?
-        .ok_or(MlsError::GroupNotFound)?;
-    if !group.is_active() {
-        return Err(MlsError::Inactive);
-    }
-    let processed = group.process_message(&provider, protocol)
-        .map_err(|_| MlsError::InvalidMessage)?;
-    if !matches!(processed.sender(), Sender::Member(_)) ||
-        !credential_public_id(processed.credential().serialized_content())
-            .is_some_and(|id| id.eq_ignore_ascii_case(expected_public_id)) {
-        return Err(MlsError::IdentityMismatch);
-    }
-    match processed.into_content() {
-        ProcessedMessageContent::ProposalMessage(proposal) => {
-            let target_id = match proposal.proposal() {
-                Proposal::Add(add) if allow_add => credential_public_id(
-                    add.key_package().leaf_node().credential().serialized_content()
-                ),
-                Proposal::Remove(remove) if allow_remove => group.member(remove.removed())
-                    .and_then(|credential| credential_public_id(credential.serialized_content())),
-                _ => None,
-            }.ok_or(MlsError::InvalidMessage)?;
-            if !allowed_target_public_ids.iter().any(|id| id.eq_ignore_ascii_case(target_id)) {
-                return Err(MlsError::IdentityMismatch);
-            }
-            group.store_pending_proposal(provider.storage(), *proposal)
-                .map_err(|e| MlsError::Storage(e.to_string()))?;
+    let group_id_bytes = protocol.group_id().as_slice().to_vec();
+    let id = GroupId::from_slice(&group_id_bytes);
+
+    // The OpenMLS proposal queue and RELYRA message-id receipt share one
+    // SQLCipher transaction. A process death cannot leave a queued proposal
+    // that will be rejected as a replay on the sender's retry.
+    database.connection.execute_batch("BEGIN IMMEDIATE").map_err(MlsError::Sql)?;
+    let result = (|| -> Result<u64, MlsError> {
+        let duplicate: Option<i64> = database.connection.query_row(
+            "SELECT 1 FROM relyra_processed_mls_proposals WHERE group_id = ?1 AND message_id = ?2",
+            rusqlite::params![group_id_bytes, message_id],
+            |row| row.get(0),
+        ).optional().map_err(MlsError::Sql)?;
+        let (provider, _signer) = provider_with_signer(database)?;
+        let mut group = MlsGroup::load(provider.storage(), &id)
+            .map_err(|e| MlsError::Storage(e.to_string()))?
+            .ok_or(MlsError::GroupNotFound)?;
+        if !group.is_active() {
+            return Err(MlsError::Inactive);
         }
-        _ => return Err(MlsError::InvalidMessage),
+        if duplicate.is_some() {
+            return Ok(group.epoch().as_u64());
+        }
+        let processed = group.process_message(&provider, protocol)
+            .map_err(|_| MlsError::InvalidMessage)?;
+        if !matches!(processed.sender(), Sender::Member(_)) ||
+            !credential_public_id(processed.credential().serialized_content())
+                .is_some_and(|sender| sender.eq_ignore_ascii_case(expected_public_id)) {
+            return Err(MlsError::IdentityMismatch);
+        }
+        match processed.into_content() {
+            ProcessedMessageContent::ProposalMessage(proposal) => {
+                let target_id = match proposal.proposal() {
+                    Proposal::Add(add) if allow_add => credential_public_id(
+                        add.key_package().leaf_node().credential().serialized_content()
+                    ),
+                    Proposal::Remove(remove) if allow_remove => group.member(remove.removed())
+                        .and_then(|credential| credential_public_id(credential.serialized_content())),
+                    _ => None,
+                }.ok_or(MlsError::InvalidMessage)?;
+                if !allowed_target_public_ids.iter().any(|id| id.eq_ignore_ascii_case(target_id)) {
+                    return Err(MlsError::IdentityMismatch);
+                }
+                group.store_pending_proposal(provider.storage(), *proposal)
+                    .map_err(|e| MlsError::Storage(e.to_string()))?;
+            }
+            _ => return Err(MlsError::InvalidMessage),
+        }
+        let epoch = group.epoch().as_u64();
+        drop(group);
+        drop(provider);
+        database.connection.execute(
+            "INSERT INTO relyra_processed_mls_proposals(group_id, message_id) VALUES(?1, ?2)",
+            rusqlite::params![group_id_bytes, message_id],
+        ).map_err(MlsError::Sql)?;
+        Ok(epoch)
+    })();
+    match result {
+        Ok(epoch) => {
+            database.connection.execute_batch("COMMIT").map_err(MlsError::Sql)?;
+            Ok(epoch)
+        }
+        Err(error) => {
+            let _ = database.connection.execute_batch("ROLLBACK");
+            Err(error)
+        }
     }
-    Ok(group.epoch().as_u64())
 }
 
 /// Create a native RFC 9420 Add Proposal. The message is not committed until
