@@ -237,8 +237,7 @@ pub fn add_members(
     if key_packages.is_empty() || key_packages.len() > 200 {
         return Err(MlsError::InvalidKeyPackage);
     }
-    let (provider, _signer) = provider_with_signer(database)?;
-    let signer = provider.signer()?;
+    let (provider, signer) = provider_with_signer(database)?;
     let id = GroupId::from_slice(group_id);
     let mut group = MlsGroup::load(provider.storage(), &id)
         .map_err(|e| MlsError::Storage(e.to_string()))?
@@ -291,8 +290,7 @@ pub fn encrypt(
     if plaintext.is_empty() || plaintext.len() > 1024 * 1024 {
         return Err(MlsError::Rejected);
     }
-    let (provider, _signer) = provider_with_signer(database)?;
-    let signer = provider.signer()?;
+    let (provider, signer) = provider_with_signer(database)?;
     let id = GroupId::from_slice(group_id);
     let mut group = MlsGroup::load(provider.storage(), &id)
         .map_err(|e| MlsError::Storage(e.to_string()))?
@@ -371,8 +369,7 @@ pub fn remove_member(
     group_id: &[u8],
     member_identity: &[u8],
 ) -> Result<CommitBundle, MlsError> {
-    let (provider, _signer) = provider_with_signer(database)?;
-    let signer = provider.signer()?;
+    let (provider, signer) = provider_with_signer(database)?;
     let id = GroupId::from_slice(group_id);
     let mut group = MlsGroup::load(provider.storage(), &id)
         .map_err(|e| MlsError::Storage(e.to_string()))?
