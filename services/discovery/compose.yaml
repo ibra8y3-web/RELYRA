@@ -17,6 +17,9 @@ services:
       RELYRA_TRUST_PROXY: "true"
     volumes:
       - discovery-data:/var/lib/relyra-discovery
+    networks:
+      relyra:
+        ipv4_address: 172.30.0.10
     ports:
       - "4001:4001/tcp"
     expose:
@@ -32,9 +35,12 @@ services:
       - "/etc/coturn/turnserver.conf"
       - "--realm=${TURN_REALM:-${TURN_PUBLIC_HOST}}"
       - "--static-auth-secret=${TURN_SHARED_SECRET:?Set TURN_SHARED_SECRET in .env}"
-      - "--external-ip=${TURN_EXTERNAL_IP:?Set TURN_EXTERNAL_IP to the public IPv4 address}"
+      - "--external-ip=${TURN_EXTERNAL_IP:?Set TURN_EXTERNAL_IP}/${TURN_INTERNAL_IP:-172.30.0.11}"
     volumes:
       - ./turn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    networks:
+      relyra:
+        ipv4_address: 172.30.0.11
     ports:
       - "3478:3478/udp"
       - "3478:3478/tcp"
@@ -59,8 +65,17 @@ services:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
       - caddy-data:/data
       - caddy-config:/config
+    networks:
+      relyra:
+        ipv4_address: 172.30.0.12
     depends_on:
       - discovery
+
+networks:
+  relyra:
+    ipam:
+      config:
+        - subnet: ${RELYRA_DOCKER_SUBNET:-172.30.0.0/24}
 
 volumes:
   discovery-data:
