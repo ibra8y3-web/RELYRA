@@ -801,4 +801,40 @@ mod tests {
         assert!(process_message(&mut admin_c, &post_commit).is_err());
     }
 
+    #[test]
+    fn duplicate_remove_proposals_are_deduplicated_before_the_owner_commit() {
+        let temp = tempdir().unwrap();
+        let mut owner = database(temp.path().join("owner.db").to_str().unwrap(), &[0x71; 32]);
+        let mut admin = database(temp.path().join("admin.db").to_str().unwrap(), &[0x72; 32]);
+        let mut target = database(temp.path().join("target.db").to_str().unwrap(), &[0x73; 32]);
+        let gid = b"rfc9420-duplicate-remove";
+        let owner_credential = test_credential("alice", "00000000-0000-4000-8000-000000000021");
+        let admin_credential = test_credential("bob", "00000000-0000-4000-8000-000000000022");
+        let target_credential = test_credential("carol", "00000000-0000-4000-8000-000000000023");
+
+        create_group(&mut owner, gid, &owner_credential).unwrap();
+        let admin_package = generate_key_package(&mut admin, &admin_credential).unwrap();
+        let admin_join = add_members(&mut owner, gid, &[admin_package]).unwrap();
+        join_group(&mut admin, gid, &BASE64.decode(admin_join.welcome.unwrap()).unwrap(), &admin_credential).unwrap();
+        let target_package = generate_key_package(&mut target, &target_credential).unwrap();
+        let target_join = add_members(&mut owner, gid, &[target_package]).unwrap();
+        let target_commit = BASE64.decode(target_join.commit).unwrap();
+        process_message(&mut admin, &target_commit).unwrap();
+        join_group(&mut target, gid, &BASE64.decode(target_join.welcome.unwrap()).unwrap(), &target_credential).unwrap();
+
+        let admin_proposal = propose_remove_member(&mut admin, gid, &target_credential).unwrap();
+        let owner_proposal = propose_remove_member(&mut owner, gid, &target_credential).unwrap();
+        process_proposal(&mut owner, &admin_proposal, "bob", &["carol".to_owned()], false, true).unwrap();
+        process_proposal(&mut owner, &owner_proposal, "alice", &["carol".to_owned()], false, true).unwrap();
+        assert_eq!(pending_proposal_count(&mut owner, gid).unwrap(), 2);
+
+        let committed = commit_pending_proposals(&mut owner, gid).unwrap();
+        assert_eq!(committed.epoch, 3);
+        let commit = BASE64.decode(committed.commit).unwrap();
+        process_message(&mut admin, &commit).unwrap();
+        process_message(&mut target, &commit).unwrap();
+        assert_eq!(members(&mut owner, gid).unwrap().len(), 2);
+        assert_eq!(pending_proposal_count(&mut owner, gid).unwrap(), 0);
+    }
+
 }
