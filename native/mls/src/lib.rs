@@ -1013,4 +1013,37 @@ mod tests {
         assert_eq!(members(&mut reopened, gid).unwrap().len(), 1);
     }
 
+    #[test]
+    fn orphaned_openmls_pending_commit_rebuilds_its_delivery_journal() {
+        let temp = tempdir().unwrap();
+        let mut owner = database(temp.path().join("owner.db").to_str().unwrap(), &[0x91; 32]);
+        let mut member = database(temp.path().join("member.db").to_str().unwrap(), &[0x92; 32]);
+        let gid = b"rfc9420-orphaned-pending-commit";
+        let owner_credential = test_credential("alice", "00000000-0000-4000-8000-000000000041");
+        let member_credential = test_credential("bob", "00000000-0000-4000-8000-000000000042");
+
+        create_group(&mut owner, gid, &owner_credential).unwrap();
+        let key_package = generate_key_package(&mut member, &member_credential).unwrap();
+        let joined = add_members(&mut owner, gid, &[key_package]).unwrap();
+        join_group(&mut member, gid, &BASE64.decode(joined.welcome.unwrap()).unwrap(), &member_credential).unwrap();
+        let proposal = propose_remove_member(&mut owner, gid, &member_credential).unwrap();
+        process_proposal(
+            &mut owner, &proposal, "orphan-remove-1", "alice", &["bob".to_owned()], false, true,
+        ).unwrap();
+
+        // Simulate process death after OpenMLS has staged the Commit but before
+        // RELYRA persisted the serialized delivery journal.
+        let (provider, signer) = provider_with_signer(&mut owner).unwrap();
+        let mut group = MlsGroup::load(provider.storage(), &GroupId::from_slice(gid)).unwrap().unwrap();
+        group.commit_to_pending_proposals(&provider, &signer).unwrap();
+        drop(group);
+        drop(provider);
+
+        let recovered = pending_commit_info(&mut owner, gid).unwrap().unwrap();
+        assert_eq!(recovered.epoch, 2);
+        assert_eq!(recovered.removed_ids, vec!["bob".to_owned()]);
+        assert_eq!(merge_pending_commit(&mut owner, gid).unwrap(), 2);
+        assert_eq!(members(&mut owner, gid).unwrap().len(), 1);
+    }
+
 }
