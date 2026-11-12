@@ -126,18 +126,47 @@ object FileTools {
         return odd * 100 / data.size < 2
     }
 
-    /** Pretty-prints JSON, or returns null when the text is not valid JSON. */
+    /** Pretty-prints JSON consistently across Android and the host JVM implementation of org.json. */
     fun prettyJson(text: String): String? {
         val t = text.trim()
         return try {
             when {
-                t.startsWith("{") -> JSONObject(t).toString(2)
-                t.startsWith("[") -> JSONArray(t).toString(2)
+                t.startsWith("{") -> prettyValue(JSONObject(t), 0)
+                t.startsWith("[") -> prettyValue(JSONArray(t), 0)
                 else -> null
             }
-        } catch (e: JSONException) {
+        } catch (_: JSONException) {
+            null
+        } catch (_: RuntimeException) {
             null
         }
+    }
+
+    private fun prettyValue(value: Any, depth: Int): String = when (value) {
+        is JSONObject -> {
+            val keys = value.keys().asSequence().toList()
+            if (keys.isEmpty()) "{}" else keys.joinToString(
+                prefix = "{\n",
+                postfix = "\n" + " ".repeat(depth * 2) + "}",
+                separator = ",\n",
+            ) { key ->
+                " ".repeat((depth + 1) * 2) + JSONObject.quote(key) + ": " +
+                    prettyValue(value.get(key), depth + 1)
+            }
+        }
+        is JSONArray -> {
+            if (value.length() == 0) "[]" else (0 until value.length()).joinToString(
+                prefix = "[\n",
+                postfix = "\n" + " ".repeat(depth * 2) + "]",
+                separator = ",\n",
+            ) { index ->
+                " ".repeat((depth + 1) * 2) + prettyValue(value.get(index), depth + 1)
+            }
+        }
+        is String -> JSONObject.quote(value)
+        value === JSONObject.NULL -> "null"
+        is Number, is Boolean -> value.toString()
+        else -> JSONObject.quote(value.toString())
     }
 
     /** Skips exactly [n] bytes (or until the stream ends). Returns how many were skipped. */
