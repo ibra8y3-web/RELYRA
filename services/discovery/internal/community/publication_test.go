@@ -220,8 +220,11 @@ func TestReportReviewAuditSignaturesRemainVerifiableAfterThirtyDays(t *testing.T
 	review := signedReviewForTest(t, reviewer, "a1b2c3d4-e5f6-4789-8abc-0123456789ab",
 		"c1b2c3d4-e5f6-4789-8abc-0123456789ab", "d1b2c3d4-e5f6-4789-8abc-0123456789ab",
 		"in_review", 1, "Historical audit entry", now)
-	if err := VerifyReportReview(review, now.Add(365*24*time.Hour)); err != nil {
+	if err := VerifyStoredReportReview(review, now.Add(365*24*time.Hour)); err != nil {
 		t.Fatalf("historical signed audit entry became unverifiable: %v", err)
+	}
+	if err := VerifyReportReview(review, now.Add(365*24*time.Hour)); err == nil {
+		t.Fatal("an old review event was accepted as a new submission")
 	}
 }
 
