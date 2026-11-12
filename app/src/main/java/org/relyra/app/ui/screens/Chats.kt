@@ -313,12 +313,16 @@ fun ChatScreen(vm: MainViewModel, chatId: String) {
         if (uri != null && id != null) vm.exportAttachment(id, uri)
     }
     var pendingVideoCall by remember { mutableStateOf(false) }
+    var pendingAcceptCall by remember { mutableStateOf(false) }
     val callPermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
         val audioGranted = grants[Manifest.permission.RECORD_AUDIO] == true ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
         val cameraGranted = !pendingVideoCall || grants[Manifest.permission.CAMERA] == true ||
             ContextCompat.checkSelfPermission(context, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
-        if (audioGranted && cameraGranted) vm.startCall(chatId, pendingVideoCall)
+        if (audioGranted && cameraGranted) {
+            if (pendingAcceptCall) vm.acceptCall() else vm.startCall(chatId, pendingVideoCall)
+        }
+        pendingAcceptCall = false
         pendingVideoCall = false
     }
     val call by vm.callState.collectAsStateWithLifecycle()
@@ -377,7 +381,13 @@ fun ChatScreen(vm: MainViewModel, chatId: String) {
                     Text(stringResource(if (call.video) R.string.call_incoming_video else R.string.call_incoming_voice),
                         style = MaterialTheme.typography.titleMedium)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Button(onClick = vm::acceptCall) { Text(stringResource(R.string.call_accept)) }
+                        Button(onClick = {
+                            pendingVideoCall = call.video
+                            pendingAcceptCall = true
+                            val required = if (call.video) arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA)
+                                else arrayOf(Manifest.permission.RECORD_AUDIO)
+                            callPermissions.launch(required)
+                        }) { Text(stringResource(R.string.call_accept)) }
                         TextButton(onClick = vm::declineCall) { Text(stringResource(R.string.call_decline)) }
                     }
                 }
