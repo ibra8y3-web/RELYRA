@@ -70,6 +70,7 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         val signing = IdentityCrypto.fromSeed(signingSeed)
         val enc = secure.loadDeviceEncryptionSecret(id) ?: ByteArray(32).also { SecureRandom().nextBytes(it); secure.saveDeviceEncryptionSecret(id,it) }
         val challenge = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        secure.saveDevicePairingChallenge(id, challenge)
         val created = System.currentTimeMillis()
         val body = transcript(REQUEST, identity.publicId, id, displayName.take(80), "Android " + Build.VERSION.SDK_INT,
             b64(signing.publicKey), b64(PayloadCrypto.publicKey(enc)), b64(challenge), created.toString())
@@ -112,10 +113,16 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         val (account,id,challenge,approved,signer)=values
         require(account==identity.publicId && id==secure.deviceId() && un64(signer).contentEquals(identity.publicKey))
         require(challenge.length in 40..64 && approved.toLong() <= System.currentTimeMillis()+60_000)
+        require(secure.loadDevicePairingChallenge(id)?.contentEquals(un64(challenge)) == true) { "Pairing challenge does not match this installation" }
         require(IdentityCrypto.verify(identity.publicKey,sig,body)) { "Approval signature invalid" }
         val row=checkNotNull(db.trustedDeviceDao().get(id))
         check(row.status==TrustedDeviceStatus.PENDING)
         check(db.trustedDeviceDao().approvePending(id,account,approved.toLong())==1)
+        secure.clearDevicePairingChallenge(id)
+        val localSigning = checkNotNull(secure.loadDeviceSigningSeed(id))
+        val localEncryption = checkNotNull(secure.loadDeviceEncryptionSecret(id))
+        require(row.signingPublicKey.contentEquals(IdentityCrypto.fromSeed(localSigning).publicKey))
+        require(row.encryptionPublicKey.contentEquals(PayloadCrypto.publicKey(localEncryption)))
         log(EventType.DEVICE_APPROVED,id)
     }
     suspend fun revoke(deviceId: String) {
@@ -124,6 +131,8 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         check(db.trustedDeviceDao().revokeApproved(deviceId,account,System.currentTimeMillis())==1) { "Device is not approved" }
         log(EventType.DEVICE_REVOKED,deviceId)
     }
+    fun observeTrustedDevices(accountId: String) = db.trustedDeviceDao().observeForAccount(accountId)
+
     suspend fun encryptForDevice(targetId: String, plain: ByteArray): ByteArray {
         require(plain.size<=8*1024*1024)
         val local=ensureLocalDevice(); val target=checkNotNull(db.trustedDeviceDao().get(targetId))
