@@ -42,6 +42,7 @@ data class OutboxRow(
     val nextAttemptAt: Long,
     val acked: Boolean,
     val failed: Boolean,
+    val readAt: Long? = null,
 )
 
 interface GroupStore {
@@ -58,6 +59,10 @@ interface GroupStore {
     suspend fun updateOutbox(row: OutboxRow)
     /** True when [id] is one of our packets addressed to [memberId]. */
     suspend fun markAcked(id: String, memberId: String): Boolean
+    /** Atomically returns unread inbound messages and marks them locally read. */
+    suspend fun markMessagesRead(groupId: String): List<GroupMessage>
+    /** Accepts a read receipt only for the exact per-member copy stored in this outbox. */
+    suspend fun markReadReceipt(copyId: String, groupId: String, memberId: String, readAt: Long): Boolean
     suspend fun deleteGroup(groupId: String)
 }
 
@@ -264,6 +269,7 @@ class GroupEngine(
                 is Envelope.GroupChat -> onChat(me, env)
                 is Envelope.GroupSync -> onSync(me, env)
                 is Envelope.GroupLeave -> onLeave(me, env)
+                is Envelope.GroupReadReceipt -> onReadReceipt(me, env)
                 else -> Unit
             }
         }
@@ -271,6 +277,44 @@ class GroupEngine(
 
     private suspend fun ack(me: String, to: String, id: String) {
         transmit(to, EnvelopeCodec.encode(Envelope.Ack(id, me, to, AckKind.DELIVERED)))
+    }
+
+    /**
+     * Marks unread group messages locally and queues one authenticated receipt per sender/copy.
+     * Local read state is saved even when the user disabled outgoing read receipts.
+     */
+    suspend fun markRead(groupId: String, sendReceipts: Boolean) = lock.withLock {
+        val me = ownId() ?: return@withLock
+        val group = store.group(groupId) ?: return@withLock
+        if (group.state != GroupState.ACTIVE) return@withLock
+        val unread = store.markMessagesRead(groupId)
+        if (!sendReceipts || unread.isEmpty()) return@withLock
+        val members = store.members(groupId).map { it.id }.toSet()
+        val now = clock().coerceAtLeast(1L)
+        val rows = unread.mapNotNull { message ->
+            val sender = message.senderId
+            if (message.outgoing || sender == me || sender !in members || peers.status(sender) != PeerStatus.Known) {
+                null
+            } else {
+                val id = newId()
+                OutboxRow(
+                    id, groupId, sender, null,
+                    EnvelopeCodec.encode(Envelope.GroupReadReceipt(id, me, sender, groupId, message.messageId, now)),
+                    now, 0, now, acked = false, failed = false,
+                )
+            }
+        }
+        if (rows.isNotEmpty()) store.enqueue(rows)
+    }
+
+    private suspend fun onReadReceipt(me: String, env: Envelope.GroupReadReceipt) {
+        if (env.to != me || env.from == me) return
+        val group = store.group(env.groupId) ?: return
+        if (group.state != GroupState.ACTIVE) return
+        // The database binds the original copy ID to its intended recipient and group.
+        if (store.markReadReceipt(env.originalMessageId, env.groupId, env.from, env.readAt)) {
+            ack(me, env.from, env.messageId)
+        }
     }
 
     private suspend fun onChat(me: String, env: Envelope.GroupChat) {
