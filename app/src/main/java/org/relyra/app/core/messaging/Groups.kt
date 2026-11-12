@@ -431,9 +431,14 @@ class GroupEngine(
                 ack(me, env.from, env.messageId)
             }
             GroupMlsKind.WELCOME -> {
-                if (group.state != GroupState.JOINING || env.from != group.owner || sender.role != GroupRole.OWNER) return
+                if (env.from != group.owner || sender.role != GroupRole.OWNER) return
+                if (group.state == GroupState.ACTIVE && members.any { it.id == me && it.mlsJoined }) {
+                    ack(me, env.from, env.messageId)
+                    return
+                }
+                if (group.state != GroupState.JOINING) return
                 val engine = mls ?: return
-                val joinedEpoch = engine.joinGroup(env.groupId, env.payload)
+                val joinedEpoch = engine.joinGroup(env.groupId, env.payload, me)
                 if (!store.recordControlMessage(env.messageId, clock())) { ack(me, env.from, env.messageId); return }
                 val updatedMembers = members.map { if (it.id == me) it.copy(mlsJoined = true) else it }
                 store.putGroup(group.copy(state = GroupState.ACTIVE, mlsEpoch = joinedEpoch), updatedMembers)
@@ -441,7 +446,8 @@ class GroupEngine(
                 ack(me, env.from, env.messageId)
             }
             GroupMlsKind.JOIN_ACK -> {
-                if (!isStaff(localRole) || env.from == group.owner || sender.mlsJoined) return
+                if (!isStaff(localRole) || env.from == group.owner) return
+                if (sender.mlsJoined) { ack(me, env.from, env.messageId); return }
                 val acknowledgedEpoch = env.payload.toString(Charsets.UTF_8).toLongOrNull() ?: return
                 if (acknowledgedEpoch != group.mlsEpoch) return
                 if (!store.recordControlMessage(env.messageId, clock())) { ack(me, env.from, env.messageId); return }
@@ -453,21 +459,24 @@ class GroupEngine(
             GroupMlsKind.COMMIT -> {
                 if (!sender.mlsJoined || !isStaff(sender.role)) return
                 val engine = mls ?: return
-                if (!store.recordControlMessage(env.messageId, clock())) { ack(me, env.from, env.messageId); return }
+                if (store.recordControlMessage(env.messageId, clock())) { ack(me, env.from, env.messageId); return }
                 val result = engine.processMessage(env.payload)
                 if (result.groupId != env.groupId || result.kind !in setOf("commit", "own_commit")) return
                 store.putGroup(group.copy(mlsEpoch = result.epoch), members)
+                store.recordControlMessage(env.messageId, clock())
                 ack(me, env.from, env.messageId)
             }
             GroupMlsKind.APPLICATION -> {
                 if (group.state != GroupState.ACTIVE || !sender.mlsJoined) return
                 if (group.kind == GroupKind.CHANNEL && sender.role == GroupRole.MEMBER) return
+                if (store.recordControlMessage(env.messageId, clock())) { ack(me, env.from, env.messageId); return }
                 val engine = mls ?: return
                 val result = engine.processMessage(env.payload)
                 if (result.groupId != env.groupId || result.kind != "application") return
                 val app = GroupPayloadCodec.decodeText(result.application ?: return) ?: return
                 val fresh = store.recordIncomingMessage(GroupMessage(app.messageId, env.groupId, env.from, false, app.body, app.sentAt, false))
                 if (fresh) runCatching { incoming?.onMessage(env.groupId, true, env.from, app.body) }
+                store.recordControlMessage(env.messageId, clock())
                 ack(me, env.from, env.messageId)
             }
         }
