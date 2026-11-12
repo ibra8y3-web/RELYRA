@@ -27,6 +27,7 @@ class RelyraApp : Application() {
         } catch (t: Throwable) {
             false
         }
+        if (restoreApplied) container.settings.reload()
         WorkManager.getInstance(this).enqueueUniquePeriodicWork(
             "relyra-delivery",
             ExistingPeriodicWorkPolicy.KEEP,
