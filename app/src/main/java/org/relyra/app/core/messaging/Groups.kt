@@ -749,7 +749,9 @@ class GroupEngine(
         }
         if (env.epoch < local.epoch || env.mlsEpoch < local.mlsEpoch) { ack(me, env.from, env.messageId); return }
         if (env.mlsEnabled != local.mlsEnabled) return
-        if (env.mlsEnabled && local.state == GroupState.ACTIVE) {
+        // A removed member intentionally does not receive the new MLS Commit.
+        // Validate native epoch/member state only for replicas that remain in the epoch.
+        if (env.mlsEnabled && local.state == GroupState.ACTIVE && iAmIn) {
             val nativeEpoch = runCatching { mls?.epoch(env.groupId) }.getOrNull() ?: return
             if (nativeEpoch != env.mlsEpoch) return
             val nativeMembers = mlsCredentialIds(env.groupId) ?: return
