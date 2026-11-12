@@ -38,6 +38,24 @@ android {
 
 ksp { arg("room.schemaLocation", "$projectDir/schemas") }
 
+// OpenMLS is compiled from native/mls and packaged as a real Android JNI library.
+// This is a required build input: MLS is never silently downgraded to pairwise encryption.
+val mlsJniOutput = layout.buildDirectory.dir("generated/mls-jniLibs")
+android.sourceSets.getByName("main").jniLibs.srcDir(mlsJniOutput)
+
+val buildMlsNative by tasks.registering(Exec::class) {
+    val script = rootProject.file("scripts/build_mls_android.sh")
+    inputs.file(script)
+    inputs.dir(rootProject.file("native/mls"))
+    outputs.dir(mlsJniOutput)
+    workingDir(rootProject.projectDir)
+    commandLine("bash", script.absolutePath, mlsJniOutput.get().asFile.absolutePath)
+}
+
+tasks.named("preBuild").configure {
+    dependsOn(buildMlsNative)
+}
+
 dependencies {
     implementation(platform(libs.compose.bom))
     implementation(libs.compose.ui)
