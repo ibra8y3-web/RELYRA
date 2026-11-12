@@ -11,7 +11,7 @@ import java.util.Base64
 
 data class DeviceSyncReport(val contactsAdded:Int,val messagesAdded:Int,val preferencesUpdated:Int,val conflictsKept:Int)
 
-/** User-triggered E2EE sync. Ratchet, MLS, Keystore secrets and transport ciphertext are never copied. */
+/** E2EE device snapshot. Local file paths, ratchet sessions, MLS native state, Keystore secrets and transport ciphertext are never copied. */
 class DeviceSyncRepository(private val db:AppDatabase,private val devices:DeviceManager,private val settings:org.relyra.app.core.storage.AppSettings) {
     companion object { private const val FORMAT="RELYRA-DEVICE-SYNC"; private const val VERSION=2; private const val MAX=8*1024*1024; private const val LIMIT=100_000 }
     private fun enc(b:ByteArray)=Base64.getUrlEncoder().withoutPadding().encodeToString(b)
