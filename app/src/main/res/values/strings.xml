@@ -28,6 +28,9 @@
     <string name="communities_moderators_updated">Moderator policy updated and signed.</string>
     <string name="communities_moderate">Moderation action</string>
     <string name="communities_view_reports">View reports</string>
+    <string name="communities_action_ban">Ban</string>
+    <string name="communities_action_unban">Unban</string>
+    <string name="communities_action_remove_member">Remove member</string>
     <string name="communities_recent_reports">Recent reports</string>
     <string name="communities_no_reports">There are no verified reports for this community.</string>
     <string name="communities_subject_id">Target RELYRA public ID</string>
