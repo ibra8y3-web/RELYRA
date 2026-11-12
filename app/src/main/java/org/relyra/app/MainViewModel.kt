@@ -911,6 +911,24 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         ctr().network.updateTorProxySettings(enabled, strict, port)
     fun testTorProxy() = ctr().network.testTorProxy()
 
+
+    val callState get() = rely.container.calls.state
+    val localCallVideo get() = rely.container.calls.localVideo
+    val remoteCallVideo get() = rely.container.calls.remoteVideo
+
+    fun startCall(peerId: String, video: Boolean) {
+        viewModelScope.launch(Dispatchers.IO) {
+            if (!ctr().calls.start(peerId, video)) message.value = UiMessage(R.string.call_start_failed)
+        }
+    }
+    fun acceptCall() { viewModelScope.launch(Dispatchers.IO) { ctr().calls.acceptIncoming() } }
+    fun declineCall() { viewModelScope.launch(Dispatchers.IO) { ctr().calls.decline() } }
+    fun endCall() { viewModelScope.launch(Dispatchers.IO) { ctr().calls.hangUp() } }
+    fun setCallMuted(value: Boolean) = ctr().calls.setMuted(value)
+    fun setCallCamera(value: Boolean) = ctr().calls.setCameraEnabled(value)
+    fun setCallSpeaker(value: Boolean) = ctr().calls.setSpeakerEnabled(value)
+    fun switchCallCamera() = ctr().calls.switchCamera()
+
     // ---- conversation housekeeping ---------------------------------------------------------------------------
 
     private fun housekeeping(block: suspend () -> Unit) {
