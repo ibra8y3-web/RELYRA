@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.json.JSONObject
 import org.relyra.app.MainViewModel
+import org.relyra.app.IdentityState
 import org.relyra.app.R
 import org.relyra.app.core.database.CommunityEntity
 import org.relyra.app.core.community.CommunityManifest
@@ -46,6 +47,7 @@ fun CommunitiesScreen(vm: MainViewModel) {
     val discovered by vm.discoveredCommunities.collectAsStateWithLifecycle()
     val communityEvents by vm.communityEvents.collectAsStateWithLifecycle()
     val busy by vm.communityBusy.collectAsStateWithLifecycle()
+    val identity by vm.identity.collectAsStateWithLifecycle()
     var selectedId by rememberSaveable { mutableStateOf<String?>(null) }
     var showCreate by rememberSaveable { mutableStateOf(false) }
     var showManage by rememberSaveable { mutableStateOf(false) }
@@ -65,10 +67,12 @@ fun CommunitiesScreen(vm: MainViewModel) {
     val selectedEntity = selectedId?.let(savedById::get)
     val selectedPublic = selectedId?.let { id -> discovered.find { it.communityId == id } }
     val selectedManifest = selectedEntity?.let(::manifestFromEntity) ?: selectedPublic
-    val isOwner = selectedEntity?.localRole == "OWNER"
-    val isModerator = isOwner || selectedManifest?.moderatorPublicIds?.any { mod ->
-        savedEntityOwnsOrHasMod(selectedEntity, mod)
-    } == true
+    val ownId = (identity as? IdentityState.Present)?.identity?.publicId
+    val isOwner = selectedManifest != null && ownId?.equals(selectedManifest.ownerPublicId, true) == true
+    val isModerator = selectedManifest != null && ownId != null && (
+        ownId.equals(selectedManifest.ownerPublicId, true) ||
+            selectedManifest.moderatorPublicIds.any { it.equals(ownId, true) }
+    )
 
     Column(
         modifier = Modifier.fillMaxSize().padding(16.dp),
@@ -318,7 +322,3 @@ private fun manifestFromEntity(entity: CommunityEntity): CommunityManifest {
     )
 }
 
-private fun savedEntityOwnsOrHasMod(entity: CommunityEntity?, id: String): Boolean {
-    val manifest = entity?.let { runCatching { manifestFromEntity(it) }.getOrNull() } ?: return false
-    return entity.localRole == "OWNER" || manifest.moderatorPublicIds.any { it.equals(id, true) }
-}
