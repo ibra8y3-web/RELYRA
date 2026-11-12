@@ -76,12 +76,17 @@ class RoomGroupStore(private val db: AppDatabase) : GroupStore {
         group: GroupRecord,
         members: List<GroupMemberRef>,
         outbox: List<OutboxRow>,
+        controlMessageId: String?,
+        receivedAt: Long?,
     ) {
         db.withTransaction {
             dao.put(group.toEntity())
             dao.clearMembers(group.groupId)
             dao.putMembers(members.map { GroupMemberEntity(group.groupId, it.id, it.role.name, it.mlsJoined) })
             if (outbox.isNotEmpty()) dao.insertOutbox(outbox.map { it.toEntity() })
+            if (controlMessageId != null && receivedAt != null) {
+                db.messageDao().insertProcessed(ProcessedIdEntity(controlMessageId, receivedAt))
+            }
         }
     }
 
