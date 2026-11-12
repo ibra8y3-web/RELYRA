@@ -992,8 +992,12 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             try {
                 val out = getApplication<Application>().contentResolver.openOutputStream(dest, "w")
                     ?: throw java.io.IOException("cannot write to the chosen location")
-                ctr().mls.withBackupBarrier {
-                    out.use { ctr().backup.export(it, passphrase) }
+                // Lock the Room group state first, then close/lock the native MLS store.
+                // This prevents a backup from pairing an old group epoch with a newer MLS epoch.
+                ctr().groups.withBackupBarrier {
+                    ctr().mls.withBackupBarrier {
+                        out.use { ctr().backup.export(it, passphrase) }
+                    }
                 }
                 message.value = UiMessage(R.string.backup_saved)
             } catch (t: Throwable) {
