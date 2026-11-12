@@ -44,6 +44,7 @@ data class ChatPrefEntity(
     val pinned: Boolean,
     val archived: Boolean,
     val muted: Boolean,
+    val updatedAt: Long = 0,
 )
 
 /** File descriptor of a message. The file key lives only in this encrypted database. */
