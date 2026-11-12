@@ -1,9 +1,12 @@
 package org.relyra.app.ui.screens
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.text.format.DateUtils
 import android.text.format.Formatter
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
@@ -12,6 +15,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
@@ -56,6 +60,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import org.relyra.app.MainViewModel
 import org.relyra.app.R
@@ -69,6 +74,9 @@ import org.relyra.app.core.messaging.EnqueueResult
 import org.relyra.app.core.messaging.EnvelopeCodec
 import org.relyra.app.core.messaging.MessageState
 import org.relyra.app.core.notify.Foreground
+import org.relyra.app.core.network.CallPhase
+import org.webrtc.SurfaceViewRenderer
+import org.webrtc.VideoTrack
 import org.relyra.app.core.transfer.BlossomUrl
 import org.relyra.app.ui.components.Avatar
 import java.text.DateFormat
@@ -303,6 +311,18 @@ fun ChatScreen(vm: MainViewModel, chatId: String) {
         exportId = null
         if (uri != null && id != null) vm.exportAttachment(id, uri)
     }
+    var pendingVideoCall by remember { mutableStateOf(false) }
+    val callPermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
+        val audioGranted = grants[Manifest.permission.RECORD_AUDIO] == true ||
+            ContextCompat.checkSelfPermission(LocalContext.current, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        val cameraGranted = !pendingVideoCall || grants[Manifest.permission.CAMERA] == true ||
+            ContextCompat.checkSelfPermission(LocalContext.current, Manifest.permission.CAMERA) == PackageManager.PERMISSION_GRANTED
+        if (audioGranted && cameraGranted) vm.startCall(chatId, pendingVideoCall)
+        pendingVideoCall = false
+    }
+    val call by vm.callState.collectAsStateWithLifecycle().let { it }
+    val localVideo by vm.localCallVideo.collectAsStateWithLifecycle()
+    val remoteVideo by vm.remoteCallVideo.collectAsStateWithLifecycle()
 
     DisposableEffect(chatId) {
         Foreground.openChat = chatId
@@ -323,6 +343,18 @@ fun ChatScreen(vm: MainViewModel, chatId: String) {
                 color = if (canEncrypt) MaterialTheme.colorScheme.onSurfaceVariant else MaterialTheme.colorScheme.error,
                 modifier = Modifier.weight(1f).padding(12.dp),
             )
+            TextButton(onClick = {
+                pendingVideoCall = false
+                callPermissions.launch(arrayOf(Manifest.permission.RECORD_AUDIO))
+            }, enabled = canEncrypt && call.phase in listOf(CallPhase.IDLE, CallPhase.ENDED, CallPhase.FAILED)) {
+                Text(stringResource(R.string.call_voice))
+            }
+            TextButton(onClick = {
+                pendingVideoCall = true
+                callPermissions.launch(arrayOf(Manifest.permission.RECORD_AUDIO, Manifest.permission.CAMERA))
+            }, enabled = canEncrypt && call.phase in listOf(CallPhase.IDLE, CallPhase.ENDED, CallPhase.FAILED)) {
+                Text(stringResource(R.string.call_video))
+            }
             IconButton(onClick = { searching = !searching; if (!searching) query = "" }) {
                 Icon(Icons.Default.Search, contentDescription = stringResource(R.string.chat_search))
             }
@@ -337,6 +369,50 @@ fun ChatScreen(vm: MainViewModel, chatId: String) {
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth().padding(horizontal = 12.dp, vertical = 6.dp),
             )
+        }
+        if (call.peerId == chatId && call.phase == CallPhase.INCOMING) {
+            Card(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)) {
+                Column(Modifier.padding(12.dp)) {
+                    Text(stringResource(if (call.video) R.string.call_incoming_video else R.string.call_incoming_voice),
+                        style = MaterialTheme.typography.titleMedium)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Button(onClick = vm::acceptCall) { Text(stringResource(R.string.call_accept)) }
+                        TextButton(onClick = vm::declineCall) { Text(stringResource(R.string.call_decline)) }
+                    }
+                }
+            }
+        } else if (call.peerId == chatId && call.phase !in listOf(CallPhase.IDLE, CallPhase.ENDED)) {
+            Card(Modifier.fillMaxWidth().padding(horizontal = 10.dp, vertical = 6.dp)) {
+                Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(stringResource(when (call.phase) {
+                        CallPhase.OUTGOING -> R.string.call_outgoing
+                        CallPhase.CONNECTING -> R.string.call_connecting
+                        CallPhase.ACTIVE -> R.string.call_active
+                        CallPhase.FAILED -> R.string.call_failed
+                        else -> R.string.call_connecting
+                    }), style = MaterialTheme.typography.titleMedium)
+                    if (call.video) {
+                        CallVideoSurface(remoteVideo, vm, mirror = false)
+                        CallVideoSurface(localVideo, vm, mirror = true)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        TextButton(onClick = { vm.setCallMuted(!call.muted) }) {
+                            Text(stringResource(if (call.muted) R.string.call_unmute else R.string.call_mute))
+                        }
+                        TextButton(onClick = { vm.setCallSpeaker(!call.speakerEnabled) }) {
+                            Text(stringResource(if (call.speakerEnabled) R.string.call_earpiece else R.string.call_speaker))
+                        }
+                        if (call.video) {
+                            TextButton(onClick = { vm.setCallCamera(!call.cameraEnabled) }) {
+                                Text(stringResource(if (call.cameraEnabled) R.string.call_camera_off else R.string.call_camera_on))
+                            }
+                            TextButton(onClick = vm::switchCallCamera) { Text(stringResource(R.string.call_switch_camera)) }
+                        }
+                        TextButton(onClick = vm::endCall) { Text(stringResource(R.string.call_end), color = MaterialTheme.colorScheme.error) }
+                    }
+                    call.detail?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }
+                }
+            }
         }
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(), state = listState,
@@ -549,4 +625,22 @@ private fun AttachmentCard(
             }
         }
     }
+}
+
+@Composable
+private fun CallVideoSurface(track: VideoTrack?, vm: MainViewModel, mirror: Boolean) {
+    if (track == null) return
+    val context = LocalContext.current
+    val renderer = remember(track) {
+        SurfaceViewRenderer(context).apply {
+            init(vm.callEglContext(), null)
+            setEnableHardwareScaler(true)
+            setMirror(mirror)
+        }
+    }
+    DisposableEffect(track, renderer) {
+        track.addSink(renderer)
+        onDispose { track.removeSink(renderer); renderer.release() }
+    }
+    AndroidView(factory = { renderer }, modifier = Modifier.fillMaxWidth().height(180.dp))
 }
