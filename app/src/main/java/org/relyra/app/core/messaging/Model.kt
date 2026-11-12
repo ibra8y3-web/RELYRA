@@ -43,7 +43,7 @@ enum class P2pSignalKind { OFFER, ANSWER }
 enum class GroupKind { GROUP, CHANNEL }
 enum class GroupRole { MEMBER, ADMIN, OWNER }
 enum class GroupState { INVITED, JOINING, ACTIVE, LEFT, REMOVED }
-enum class GroupMlsKind { KEY_PACKAGE, COMMIT, WELCOME, APPLICATION, JOIN_ACK, MEMBERSHIP_PROPOSAL }
+enum class GroupMlsKind { KEY_PACKAGE, COMMIT, WELCOME, APPLICATION, JOIN_ACK, MEMBERSHIP_PROPOSAL, PROPOSAL }
 
 data class GroupChangeProposal(
     val proposalId: String,
