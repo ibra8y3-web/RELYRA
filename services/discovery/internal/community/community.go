@@ -2,6 +2,7 @@ package community
 
 import (
 	"bytes"
+	"io"
 	"context"
 	"crypto/ed25519"
 	"crypto/rand"
@@ -279,7 +280,7 @@ func VerifyReport(r Report, now time.Time) error {
 func (s *Store) PublishManifest(ctx context.Context, raw []byte) (Manifest, error) {
 	var m Manifest
 	if len(raw) == 0 || len(raw) > MaxManifestBytes { return m, errors.New("manifest is oversized") }
-	if err := json.Unmarshal(raw, &m); err != nil { return m, errors.New("invalid manifest JSON") }
+	if err := decodeStrict(raw, &m); err != nil { return m, errors.New("invalid manifest JSON") }
 	if err := VerifyManifest(m, s.clock()); err != nil { return m, err }
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -349,7 +350,7 @@ func sequenceStorageKey(id, actor string) string {
 func (s *Store) AppendModerationEvent(ctx context.Context, raw []byte) (ModerationEvent, error) {
 	var e ModerationEvent
 	if len(raw) == 0 || len(raw) > MaxEventBytes { return e, errors.New("moderation event is oversized") }
-	if err := json.Unmarshal(raw, &e); err != nil { return e, errors.New("invalid moderation event JSON") }
+	if err := decodeStrict(raw, &e); err != nil { return e, errors.New("invalid moderation event JSON") }
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	m, err := s.GetManifest(ctx, e.CommunityID, true)
@@ -398,7 +399,7 @@ func (s *Store) Events(ctx context.Context, communityID string, limit int) ([]Mo
 func (s *Store) SubmitReport(ctx context.Context, raw []byte) (Report, error) {
 	var report Report
 	if len(raw) == 0 || len(raw) > MaxReportBytes { return report, errors.New("report is oversized") }
-	if err := json.Unmarshal(raw, &report); err != nil { return report, errors.New("invalid report JSON") }
+	if err := decodeStrict(raw, &report); err != nil { return report, errors.New("invalid report JSON") }
 	if err := VerifyReport(report, s.clock()); err != nil { return report, err }
 	// Reports deliberately have no message-content, attachment, URL or recipient fields.
 	// The report is opt-in and includes only a controlled category and a short summary.
@@ -413,6 +414,18 @@ func (s *Store) SubmitReport(ctx context.Context, raw []byte) (Report, error) {
 	if err != nil { return report, err }
 	if err := s.ds.Put(ctx, key, encoded); err != nil { return report, err }
 	return report, nil
+}
+
+func decodeStrict(raw []byte, target any) error {
+	decoder := json.NewDecoder(bytes.NewReader(raw))
+	decoder.DisallowUnknownFields()
+	if err := decoder.Decode(target); err != nil { return err }
+	var extra any
+	if err := decoder.Decode(&extra); !errors.Is(err, io.EOF) {
+		if err == nil { return errors.New("multiple JSON values are not allowed") }
+		return err
+	}
+	return nil
 }
 
 func NewReportID() (string, error) {
@@ -431,4 +444,3 @@ func Fingerprint(publicID string) (string, error) {
 	return hex.EncodeToString(sum[:16]), nil
 }
 
-var _ = bytes.Compare
