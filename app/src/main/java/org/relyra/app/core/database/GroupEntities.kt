@@ -63,13 +63,14 @@ data class GroupOutboxEntity(
     val nextAttemptAt: Long,
     val acked: Boolean,
     val failed: Boolean,
+    val readAt: Long? = null,
 ) {
-    fun toModel() = OutboxRow(id, groupId, memberId, baseMessageId, payload, createdAt, attempts, nextAttemptAt, acked, failed)
+    fun toModel() = OutboxRow(id, groupId, memberId, baseMessageId, payload, createdAt, attempts, nextAttemptAt, acked, failed, readAt)
 }
 
-fun OutboxRow.toEntity() = GroupOutboxEntity(id, groupId, memberId, baseMessageId, payload, createdAt, attempts, nextAttemptAt, acked, failed)
+fun OutboxRow.toEntity() = GroupOutboxEntity(id, groupId, memberId, baseMessageId, payload, createdAt, attempts, nextAttemptAt, acked, failed, readAt)
 
 /** How many of a group message's copies have been acknowledged. */
-data class GroupDeliveryCount(val messageId: String, val total: Int, val delivered: Int)
+data class GroupDeliveryCount(val messageId: String, val total: Int, val delivered: Int, val readCount: Int)
 
 data class GroupSummary(val groupId: String, val lastAt: Long, val unread: Int)
