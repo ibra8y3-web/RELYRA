@@ -231,6 +231,25 @@ pub struct CommitBundle {
     pub epoch: u64,
 }
 
+pub fn key_package_identity(
+    database: &mut OpenDatabase,
+    key_package: &[u8],
+) -> Result<Vec<u8>, MlsError> {
+    if key_package.is_empty() || key_package.len() > 64 * 1024 {
+        return Err(MlsError::InvalidKeyPackage);
+    }
+    let (provider, _signer) = provider_with_signer(database)?;
+    let input = KeyPackageIn::tls_deserialize_exact_bytes(key_package)
+        .map_err(|_| MlsError::InvalidKeyPackage)?;
+    let identity = input.unverified_credential().credential.serialized_content().to_vec();
+    input.validate(provider.crypto(), ProtocolVersion::Mls10)
+        .map_err(|_| MlsError::InvalidKeyPackage)?;
+    if identity.is_empty() || identity.len() > 2048 {
+        return Err(MlsError::IdentityMismatch);
+    }
+    Ok(identity)
+}
+
 pub fn add_members(
     database: &mut OpenDatabase,
     group_id: &[u8],
@@ -247,7 +266,7 @@ pub fn add_members(
     let packages = key_packages.iter().map(|bytes| {
         let input = KeyPackageIn::tls_deserialize_exact_bytes(bytes.as_slice())
             .map_err(|_| MlsError::InvalidKeyPackage)?;
-        input.validate(provider.crypto()).map_err(|_| MlsError::InvalidKeyPackage)
+        input.validate(provider.crypto(), ProtocolVersion::Mls10).map_err(|_| MlsError::InvalidKeyPackage)
     }).collect::<Result<Vec<_>, _>>()?;
     let (commit, welcome, _group_info) = group.add_members(&provider, &signer, &packages)
         .map_err(|_| MlsError::Rejected)?;
