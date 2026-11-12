@@ -211,6 +211,37 @@ class WebRtcP2pConnector(
         IceServerConfig("stun:stun.l.google.com:19302"),
         IceServerConfig("stun:stun.cloudflare.com:3478"),
     )
+    @Volatile private var networkCallbackRegistered = false
+
+    private val networkCallback = object : ConnectivityManager.NetworkCallback() {
+        override fun onAvailable(network: Network) {
+            scope.launch(Dispatchers.IO) {
+                delay(1_000)
+                peers.forEach { (peerId, peer) ->
+                    val ice = peer.connection.iceConnectionState()
+                    if (ice == PeerConnection.IceConnectionState.DISCONNECTED ||
+                        ice == PeerConnection.IceConnectionState.FAILED ||
+                        peer.channel?.state() != DataChannel.State.OPEN
+                    ) {
+                        scheduleRecovery(peerId, peer)
+                    }
+                }
+            }
+        }
+
+        override fun onLost(network: Network) {
+            peers.forEach { (peerId, _) ->
+                states.value = states.value + (peerId to InternetPeerState.DISCONNECTED)
+            }
+        }
+    }
+
+    init {
+        networkCallbackRegistered = runCatching {
+            connectivityManager.registerDefaultNetworkCallback(networkCallback)
+            true
+        }.getOrDefault(false)
+    }
 
     private data class Peer(
         val sessionId: String,
