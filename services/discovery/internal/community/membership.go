@@ -198,6 +198,11 @@ func (s *Store) AcceptInvitation(ctx context.Context, raw []byte, token string, 
 	if err := s.ds.Put(ctx, membershipKey(inv.CommunityID, acceptance.MemberPublicID), encoded); err != nil {
 		return membership, err
 	}
+	// Redeem the invitation exactly once. The membership record is durable before
+	// deleting the one-time invitation, so a successful acceptance cannot be replayed.
+	if err := s.ds.Delete(ctx, invitationKey(inv.CommunityID, inv.InviteID)); err != nil && !errors.Is(err, datastore.ErrNotFound) {
+		return membership, err
+	}
 	return membership, nil
 }
 
