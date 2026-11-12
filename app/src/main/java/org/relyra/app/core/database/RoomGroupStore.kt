@@ -57,6 +57,8 @@ class RoomGroupStore(private val db: AppDatabase) : GroupStore {
     override suspend fun recordControlMessage(id: String, receivedAt: Long): Boolean =
         db.messageDao().insertProcessed(ProcessedIdEntity(id, receivedAt)) != -1L
 
+    override suspend fun hasControlMessage(id: String): Boolean = dao.hasProcessedId(id)
+
     override suspend fun deleteGroup(groupId: String) {
         db.withTransaction {
             dao.deleteMessages(groupId)
