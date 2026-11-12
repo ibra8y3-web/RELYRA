@@ -208,7 +208,9 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         val oldSeed=checkNotNull(secure.loadDeviceSigningSeed(local.deviceId))
         val oldEncryption=checkNotNull(secure.loadDeviceEncryptionSecret(local.deviceId))
         val newSigning=IdentityCrypto.generate()
-        val newEncryption=ByteArray(32).also { SecureRandom().nextBytes(it) }
+        // Rotate the device signing identity first. Keep the X25519 transport key stable
+        // until peers have received this signed update, otherwise they could not decrypt it.
+        val newEncryption=oldEncryption
         val newVersion=local.keyVersion+1
         val body=transcript(ROTATION,local.accountId,local.deviceId,System.currentTimeMillis().toString(),
             local.keyVersion.toString(),newVersion.toString(),b64(local.signingPublicKey),
@@ -216,13 +218,11 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
             b64(PayloadCrypto.publicKey(newEncryption)))
         val token=envelope(ROTATION,body,IdentityCrypto.sign(oldSeed,body))
         secure.saveDeviceSigningSeed(local.deviceId,newSigning.seed)
-        secure.saveDeviceEncryptionSecret(local.deviceId,newEncryption)
         val changed=db.trustedDeviceDao().rotateDeviceKeys(local.deviceId,local.accountId,
             local.keyVersion,newVersion,newSigning.publicKey,PayloadCrypto.publicKey(newEncryption))
         if(changed!=1) {
             secure.saveDeviceSigningSeed(local.deviceId,oldSeed)
-            secure.saveDeviceEncryptionSecret(local.deviceId,oldEncryption)
-            error("Device key rotation lost a concurrent update; previous keys were restored")
+            error("Device key rotation lost a concurrent update; previous signing key was restored")
         }
         log(EventType.DEVICE_KEY_ROTATED,local.deviceId)
         return token
