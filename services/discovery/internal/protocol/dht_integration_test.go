@@ -25,7 +25,7 @@ func TestKademliaPresenceReplicatesAcrossThreeNodes(t *testing.T) {
 		h, err := libp2p.New(libp2p.ListenAddrStrings("/ip4/127.0.0.1/tcp/0"))
 		if err != nil { t.Fatalf("create libp2p host %d: %v", i, err) }
 		d, err := dht.New(
-			ctx, h,
+			h,
 			dht.Mode(dht.ModeServer),
 			dht.ProtocolPrefix(libp2pprotocol.ID("/relyra")),
 			dht.NamespacedValidator("rlyra", NewValidator(store)),
