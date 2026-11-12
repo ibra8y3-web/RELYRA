@@ -57,4 +57,27 @@
     <string name="net_p2p_incoming_offer">جهة اتصال موثوقة تطلب إنشاء اتصال WebRTC مباشر. وافق فقط إذا كنت تتوقع هذا الطلب.</string>
     <string name="net_p2p_approve">الموافقة على الاتصال</string>
     <string name="net_p2p_decline">رفض</string>
+
+    <string name="net_dht_title">اكتشاف الأجهزة عبر الإنترنت (Kademlia DHT)</string>
+    <string name="net_dht_desc">أضف بوابة اكتشاف RELYRA تعمل عبر HTTPS ومتّصلة بشبكة Kademlia الموزعة. نشر الوجود العام متوقف افتراضيًا. عند تفعيله يُنشر معرّف RELYRA العام وقدرات الاتصال في سجل موقّع صالح لثلاث دقائق؛ لا يُنشر الاسم أو SDP أو عنوان IP.</string>
+    <string name="net_dht_presence_toggle">نشر حالة وجودي للعامة</string>
+    <string name="net_dht_status_disabled">نشر الوجود العام متوقف.</string>
+    <string name="net_dht_status_no_gateway">أضف بوابة اكتشاف HTTPS لاستخدام DHT.</string>
+    <string name="net_dht_status_publishing">جارٍ نشر سجل الوجود الموقّع إلى البوابات المحددة.</string>
+    <string name="net_dht_status_published">يتم تحديث سجل الوجود العام الموقّع دوريًا.</string>
+    <string name="net_dht_status_unavailable">لم تقبل أي بوابة السجل الموقّع.</string>
+    <string name="net_dht_gateway_label">عنوان بوابة اكتشاف HTTPS</string>
+    <string name="net_dht_gateway_add">إضافة بوابة</string>
+    <string name="net_dht_gateway_remove">إزالة</string>
+    <string name="net_dht_gateway_enabled">مفعّلة</string>
+    <string name="net_dht_gateway_test">اختبار البوابة</string>
+    <string name="net_dht_gateway_testing">جارٍ الاختبار</string>
+    <string name="net_dht_gateway_test_ok">واجهة البوابة متاحة</string>
+    <string name="net_dht_gateway_test_failed">فشل اختبار البوابة</string>
+    <string name="net_dht_lookup">البحث عن الوجود في DHT</string>
+    <string name="net_dht_peer_found">تم العثور على سجل وجود موقّع. ينتهي في %1$d (وقت Unix). هذا لا يضيف جهة الاتصال ولا يجعلها موثوقة.</string>
+    <string name="net_dht_peer_not_found">لم يتم العثور على سجل وجود صالح وغير منتهٍ لمعرّف RELYRA هذا.</string>
+    <string name="net_dht_turn_fetch">الحصول على بيانات TURN مؤقتة من خدمة الاكتشاف</string>
+    <string name="net_dht_turn_ready">تم قبول بيانات TURN المؤقتة للجلسات الجديدة.</string>
+    <string name="net_dht_turn_unavailable">تعذر الحصول على بيانات TURN صالحة. تحقق من البوابة وهوية الخادم ونشر خدمة TURN.</string>
 </resources>
