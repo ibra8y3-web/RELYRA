@@ -386,6 +386,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             GroupResult.NO_RECIPIENTS -> UiMessage(R.string.err_group_no_recipients)
             GroupResult.UNKNOWN_CONTACT -> UiMessage(R.string.err_group_contact)
             GroupResult.TOO_LONG -> UiMessage(R.string.err_msg_too_long)
+            GroupResult.MLS_UNAVAILABLE -> UiMessage(R.string.err_mls_unavailable)
             GroupResult.INVALID, GroupResult.EMPTY -> UiMessage(R.string.err_group_invalid)
             else -> UiMessage(R.string.err_group_state)
         }
