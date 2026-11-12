@@ -60,6 +60,9 @@ interface GroupDao {
     @Update
     suspend fun updateOutbox(e: GroupOutboxEntity)
 
+    @Query("SELECT * FROM group_outbox WHERE id = :id")
+    suspend fun outbox(id: String): GroupOutboxEntity?
+
     @Query("UPDATE group_outbox SET acked = 1 WHERE id = :id AND memberId = :memberId")
     suspend fun ack(id: String, memberId: String): Int
 
