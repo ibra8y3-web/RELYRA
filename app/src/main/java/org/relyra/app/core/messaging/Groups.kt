@@ -103,9 +103,11 @@ class GroupOutcome(val result: GroupResult, val groupId: String? = null)
  * Authority is decided from each receiver's OWN copy of the group, never from what a packet claims:
  *  - an unknown group is only ever an invitation that the user must accept;
  *  - a snapshot is applied only if its sender is OWNER/ADMIN locally and its epoch is higher;
- *  - admins can add/remove plain members and rename, but cannot touch the owner/admin set;
+ *  - on MLS groups, admin membership changes are sent as authenticated proposals to the owner;
+ *    the owner serializes them against the exact group and MLS epochs and is the only commit writer;
+ *  - on legacy groups, admins can add/remove plain members and rename, but cannot touch the owner/admin set;
  *  - in a channel only OWNER/ADMIN may post.
- * Concurrent admin edits at the same epoch are resolved deterministically by the SHA-256 fingerprint of the canonical snapshot.
+ * Concurrent same-epoch metadata edits are resolved deterministically by the SHA-256 fingerprint of the canonical snapshot.
  */
 class GroupEngine(
     private val store: GroupStore,
@@ -320,8 +322,8 @@ class GroupEngine(
             }
             is Verdict.Apply -> {
                 val changesMlsMembership = v.members != previousMembers
-                // Keep MLS membership and epoch changes single-writer until a distributed proposal
-                // coordinator can reconcile concurrent proposals and commits from multiple admins.
+                // MLS membership proposals are owner-routed and checked against both base epochs.
+                // Only the owner reaches this native membership-commit path.
                 if (g.mlsEnabled && changesMlsMembership && roleOf(previousMembers, me) != GroupRole.OWNER) {
                     return@withLock GroupResult.NOT_ALLOWED
                 }
