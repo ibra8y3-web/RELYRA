@@ -356,4 +356,26 @@
     <string name="call_connection_interrupted">Connection interrupted. Trying to restore the call.</string>
     <string name="call_connection_failed">The call connection failed.</string>
     <string name="call_no_answer">No answer or media connection timeout.</string>
+
+    <string name="devices_title">Trusted devices</string>
+    <string name="devices_intro">Pair another installation, approve it from a trusted device, review devices, and exchange an encrypted snapshot manually.</string>
+    <string name="devices_pair_title">Register this installation</string>
+    <string name="devices_name">Device name</string>
+    <string name="devices_create_request">Create signed pairing request</string>
+    <string name="devices_request_code">Pairing request code</string>
+    <string name="devices_approve_title">Approve a new device</string>
+    <string name="devices_approve">Verify and approve request</string>
+    <string name="devices_approval_code">Approval code from trusted device</string>
+    <string name="devices_accept_approval">Accept signed approval</string>
+    <string name="devices_output_code">Generated approval / encrypted export code</string>
+    <string name="devices_sync_title">Encrypted manual sync</string>
+    <string name="devices_sync_warning">Sync codes contain private conversation data. Share them only with your own approved device. Ratchet and MLS secrets are excluded.</string>
+    <string name="devices_export">Export</string>
+    <string name="devices_sync_code">Encrypted sync code</string>
+    <string name="devices_import">Decrypt and merge snapshot</string>
+    <string name="devices_list_title">Devices on this account</string>
+    <string name="devices_empty">No registered devices.</string>
+    <string name="devices_last_seen">Last seen (local timestamp)</string>
+    <string name="devices_revoke">Revoke trust</string>
+
 </resources>
