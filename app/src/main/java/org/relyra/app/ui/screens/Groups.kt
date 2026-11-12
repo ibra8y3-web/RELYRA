@@ -1,5 +1,7 @@
 package org.relyra.app.ui.screens
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.StringRes
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
@@ -56,6 +58,8 @@ import org.relyra.app.R
 import org.relyra.app.core.database.ContactEntity
 import org.relyra.app.core.database.GroupMemberEntity
 import org.relyra.app.core.database.GroupEntity
+import org.relyra.app.core.database.GroupAttachmentEntity
+import org.relyra.app.core.messaging.GroupAttachmentPhase
 import org.relyra.app.core.messaging.EnvelopeCodec
 import org.relyra.app.core.messaging.GroupKind
 import org.relyra.app.core.messaging.GroupLimits
@@ -269,6 +273,7 @@ fun GroupChatScreen(vm: MainViewModel, groupId: String) {
     val messages by remember(groupId) { vm.groupMessages(groupId) }.collectAsStateWithLifecycle(initialValue = emptyList())
     val members by remember(groupId) { vm.groupMembers(groupId) }.collectAsStateWithLifecycle(initialValue = emptyList())
     val delivery by remember(groupId) { vm.groupDelivery(groupId) }.collectAsStateWithLifecycle(initialValue = emptyList())
+    val attachments by remember(groupId) { vm.groupAttachments(groupId) }.collectAsStateWithLifecycle(initialValue = emptyList())
     val contacts by vm.contacts.collectAsStateWithLifecycle()
     val me = myPublicId(vm)
     val g = group
@@ -285,6 +290,16 @@ fun GroupChatScreen(vm: MainViewModel, groupId: String) {
 
     val clipboard = LocalClipboardManager.current
     var actionMsg by remember { mutableStateOf<org.relyra.app.core.database.GroupMessageEntity?>(null) }
+    var exportAttachmentId by remember { mutableStateOf<String?>(null) }
+    val attachmentById = remember(attachments) { attachments.associateBy { it.messageId } }
+    val filePicker = rememberLauncherForActivityResult(ActivityResultContracts.GetContent()) { uri ->
+        uri?.let { vm.sendGroupFile(groupId, it) }
+    }
+    val exportPicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        val messageId = exportAttachmentId
+        if (uri != null && messageId != null) vm.exportGroupAttachment(messageId, uri)
+        exportAttachmentId = null
+    }
     DisposableEffect(groupId) {
         Foreground.openChat = groupId
         vm.cancelNotification(groupId)
@@ -346,6 +361,30 @@ fun GroupChatScreen(vm: MainViewModel, groupId: String) {
                         if (!mine) Text(nameOf(m.senderId), style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.primary)
                         Text(m.body)
                     }
+                    attachmentById[m.messageId]?.let { attachment ->
+                        val phase = GroupAttachmentPhase.valueOf(attachment.phase)
+                        when (phase) {
+                            GroupAttachmentPhase.REMOTE, GroupAttachmentPhase.FAILED -> {
+                                TextButton(onClick = { vm.downloadGroupAttachment(attachment.messageId) }) {
+                                    Text(stringResource(R.string.groups_file_download))
+                                }
+                            }
+                            GroupAttachmentPhase.DOWNLOADING -> Text(
+                                stringResource(R.string.groups_file_downloading),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                            GroupAttachmentPhase.READY -> {
+                                TextButton(onClick = {
+                                    exportAttachmentId = attachment.messageId
+                                    exportPicker.launch(attachment.name)
+                                }) { Text(stringResource(R.string.groups_file_save)) }
+                            }
+                            GroupAttachmentPhase.UPLOADED -> Text(
+                                stringResource(R.string.groups_file_uploaded),
+                                style = MaterialTheme.typography.labelSmall,
+                            )
+                        }
+                    }
                     val d = deliveryById[m.messageId]
                     if (mine && d != null) {
                         Text(
@@ -359,6 +398,10 @@ fun GroupChatScreen(vm: MainViewModel, groupId: String) {
         }
         if (canPost) {
             Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom) {
+                TextButton(
+                    onClick = { filePicker.launch("*/*") },
+                    modifier = Modifier.padding(end = 4.dp),
+                ) { Text(stringResource(R.string.groups_attach_file)) }
                 OutlinedTextField(
                     value = text, onValueChange = { text = it.take(EnvelopeCodec.MAX_BODY) },
                     placeholder = { Text(stringResource(R.string.chat_input_hint)) },
