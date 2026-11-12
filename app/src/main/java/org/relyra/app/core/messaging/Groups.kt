@@ -652,15 +652,25 @@ class GroupEngine(
                 }.map { it.id }.toSet()
                 val now = clock().coerceAtLeast(1L)
                 val currentJoined = members.filter { it.mlsJoined && it.id != me && peers.status(it.id) == PeerStatus.Known }
-                store.enqueue(currentJoined.map { recipient ->
+                val commitRows = currentJoined.map { recipient ->
                     val id = newId()
                     OutboxRow(id, env.groupId, recipient.id, null,
                         EnvelopeCodec.encode(Envelope.GroupMls(id, me, recipient.id, env.groupId, GroupMlsKind.COMMIT, bundle.commit)),
                         now, 0, now, acked = false, failed = false)
-                })
-                enqueueMlsControl(env.groupId, me, env.from, GroupMlsKind.WELCOME, welcome)
-                store.putGroup(group.copy(epoch = group.epoch + 1, mlsEpoch = bundle.epoch), updatedMembers)
-                store.recordControlMessage(env.messageId, clock())
+                }
+                val welcomeId = newId()
+                val welcomeRow = OutboxRow(
+                    welcomeId, env.groupId, env.from, null,
+                    EnvelopeCodec.encode(Envelope.GroupMls(welcomeId, me, env.from, env.groupId, GroupMlsKind.WELCOME, welcome)),
+                    now, 0, now, acked = false, failed = false,
+                )
+                store.applyMlsCommit(
+                    group.copy(epoch = group.epoch + 1, mlsEpoch = bundle.epoch),
+                    updatedMembers,
+                    commitRows + welcomeRow,
+                    env.messageId,
+                    clock(),
+                )
                 broadcastSnapshot(env.groupId, removedIds)
                 refreshPendingMlsProposalsLocked(env.groupId)
                 ack(me, env.from, env.messageId)
