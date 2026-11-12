@@ -45,6 +45,15 @@ class RoomGroupStore(private val db: AppDatabase) : GroupStore {
     override suspend fun updateOutbox(row: OutboxRow) = dao.updateOutbox(row.toEntity())
     override suspend fun markAcked(id: String, memberId: String): Boolean = dao.ack(id, memberId) > 0
 
+    override suspend fun markMessagesRead(groupId: String): List<GroupMessage> = db.withTransaction {
+        val unread = dao.unreadMessages(groupId).map { it.toModel() }
+        if (unread.isNotEmpty()) dao.markRead(groupId)
+        unread
+    }
+
+    override suspend fun markReadReceipt(copyId: String, groupId: String, memberId: String, readAt: Long): Boolean =
+        dao.markReadReceipt(copyId, groupId, memberId, readAt) > 0
+
     override suspend fun deleteGroup(groupId: String) {
         db.withTransaction {
             dao.deleteMessages(groupId)
