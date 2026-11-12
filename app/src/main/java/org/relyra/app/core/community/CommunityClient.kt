@@ -11,6 +11,8 @@ import org.json.JSONObject
 import org.relyra.app.core.crypto.IdentityCrypto
 import java.io.IOException
 import java.util.Base64
+import java.security.MessageDigest
+import java.security.SecureRandom
 import java.util.UUID
 import java.util.concurrent.TimeUnit
 
@@ -48,6 +50,32 @@ data class CommunityReport(
     val category: String,
     val summary: String,
     val createdAt: Long,
+    val signature: String,
+)
+
+data class PrivateCommunityInvitation(
+    val inviteId: String,
+    val communityId: String,
+    val ownerPublicId: String,
+    val memberPublicId: String,
+    val policyVersion: Long,
+    val tokenHash: String,
+    val createdAt: Long,
+    val expiresAt: Long,
+    val signature: String,
+)
+
+data class PrivateCommunityJoin(
+    val manifest: CommunityManifest,
+    val memberPublicId: String,
+    val joinedAt: Long,
+)
+
+private data class PrivateInvitationAcceptance(
+    val inviteId: String,
+    val communityId: String,
+    val memberPublicId: String,
+    val acceptedAt: Long,
     val signature: String,
 )
 
@@ -115,11 +143,108 @@ class CommunityClient(
             result
         }
 
+    /**
+     * Creates a single-member invitation. The service stores the token hash only.
+     * Share the returned JSON solely through RELYRA end-to-end encrypted chat.
+     */
+    suspend fun createPrivateInvitation(
+        manifest: CommunityManifest,
+        memberPublicId: String,
+        lifetimeMillis: Long = 7L * 24 * 60 * 60 * 1000,
+    ): String = withContext(Dispatchers.IO) {
+        check(manifest.visibility == "private") { "Only private communities use invitations" }
+        val owner = ownPublicId() ?: error("RELYRA identity is unavailable")
+        check(owner.equals(manifest.ownerPublicId, true)) { "Only the owner can invite private members" }
+        require(IdentityCrypto.parsePublicId(memberPublicId) != null) { "Invalid member RELYRA public ID" }
+        require(lifetimeMillis in 60_000L..14L * 24 * 60 * 60 * 1000)
+        val tokenBytes = ByteArray(32).also { SecureRandom().nextBytes(it) }
+        val token = Base64.getUrlEncoder().withoutPadding().encodeToString(tokenBytes)
+        val tokenHash = Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(MessageDigest.getInstance("SHA-256").digest(tokenBytes))
+        tokenBytes.fill(0)
+        val now = System.currentTimeMillis()
+        val unsigned = PrivateCommunityInvitation(
+            UUID.randomUUID().toString(), manifest.communityId, owner, memberPublicId.lowercase(),
+            manifest.policyVersion, tokenHash, now, now + lifetimeMillis, "",
+        )
+        val signed = unsigned.copy(signature = signBase64(canonicalInvitation(unsigned)))
+        val response = request(
+            "POST",
+            "/v1/communities/${manifest.communityId}/invitations",
+            JSONObject().apply {
+                put("invitation", invitationJson(signed))
+                put("token", token)
+            },
+        )
+        val accepted = parseInvitation(response.getJSONObject("invitation"))
+        check(verifyInvitation(accepted)) { "The service returned an invalid invitation signature" }
+        JSONObject().apply {
+            put("format", "RELYRA-PRIVATE-COMMUNITY-INVITE-V1")
+            put("invitation", invitationJson(accepted))
+            put("token", token)
+        }.toString()
+    }
+
+    suspend fun acceptPrivateInvitation(sharedCode: String): PrivateCommunityJoin = withContext(Dispatchers.IO) {
+        require(sharedCode.length in 1..16_384)
+        val code = JSONObject(sharedCode)
+        check(code.keys().asSequence().toSet() == setOf("format", "invitation", "token")) {
+            "Unsupported private invitation format"
+        }
+        check(code.getString("format") == "RELYRA-PRIVATE-COMMUNITY-INVITE-V1") {
+            "Unsupported private invitation format"
+        }
+        val invitation = parseInvitation(code.getJSONObject("invitation"))
+        val token = code.getString("token")
+        check(verifyInvitation(invitation)) { "The invitation owner signature is invalid" }
+        check(invitation.expiresAt > System.currentTimeMillis()) { "The invitation has expired" }
+        val me = ownPublicId() ?: error("RELYRA identity is unavailable")
+        check(me.equals(invitation.memberPublicId, true)) {
+            "This invitation belongs to a different RELYRA identity"
+        }
+        check(tokenDigest(token) == invitation.tokenHash) { "The invitation token does not match" }
+        val acceptedAt = System.currentTimeMillis()
+        val unsigned = PrivateInvitationAcceptance(
+            invitation.inviteId, invitation.communityId, me, acceptedAt, "",
+        )
+        val acceptance = unsigned.copy(
+            signature = signBase64(canonicalAcceptance(unsigned, invitation.tokenHash)),
+        )
+        val response = request(
+            "POST",
+            "/v1/communities/${invitation.communityId}/invitations/accept",
+            JSONObject().apply {
+                put("invitation", invitationJson(invitation))
+                put("token", token)
+                put("acceptance", acceptanceJson(acceptance))
+            },
+        )
+        val membership = response.getJSONObject("membership")
+        check(membership.getString("inviteId").equals(invitation.inviteId, true))
+        check(membership.getString("memberPublicId").equals(me, true))
+        check(membership.getLong("policyVersion") == invitation.policyVersion)
+        val manifest = getPrivateCommunity(invitation.communityId)
+        check(manifest.ownerPublicId.equals(invitation.ownerPublicId, true))
+        PrivateCommunityJoin(manifest, me, membership.getLong("joinedAt"))
+    }
+
+    suspend fun getPrivateCommunity(communityId: String): CommunityManifest = withContext(Dispatchers.IO) {
+        requireValidCommunityId(communityId)
+        val path = "/v1/communities/${communityId}/private"
+        val manifest = parseManifest(request("GET", path, privateAccess = true))
+        check(manifest.visibility == "private" && verifyManifest(manifest)) {
+            "Private community manifest is invalid"
+        }
+        manifest
+    }
+
     suspend fun moderationEvents(manifest: CommunityManifest, limit: Int = 100): List<CommunityEvent> =
         withContext(Dispatchers.IO) {
             require(limit in 1..100)
-            val path = "/v1/communities/" + manifest.communityId + "/events?limit=" + limit
-            val response = request("GET", path)
+            val privateCommunity = manifest.visibility == "private"
+            val suffix = if (privateCommunity) "/private/events?limit=" else "/events?limit="
+            val path = "/v1/communities/" + manifest.communityId + suffix + limit
+            val response = request("GET", path, privateAccess = privateCommunity)
             val array = response.getJSONArray("events")
             buildList {
                 for (index in 0 until array.length()) {
@@ -142,7 +267,7 @@ class CommunityClient(
             check(actor.equals(manifest.ownerPublicId, true)) { "Only the owner may perform this action" }
         }
         val sequencePath = "/v1/communities/" + manifest.communityId + "/sequence/" + actor
-        val sequenceJson = request("GET", sequencePath)
+        val sequenceJson = request("GET", sequencePath, privateAccess = manifest.visibility == "private")
         val sequence = sequenceJson.getLong("lastSequence") + 1
         val now = System.currentTimeMillis()
         val unsigned = CommunityEvent(
@@ -202,12 +327,25 @@ class CommunityClient(
         id.equals(manifest.ownerPublicId, true) ||
             manifest.moderatorPublicIds.any { it.equals(id, true) }
 
-    private suspend fun request(method: String, path: String, body: JSONObject? = null): JSONObject {
+    private suspend fun request(
+        method: String,
+        path: String,
+        body: JSONObject? = null,
+        privateAccess: Boolean = false,
+    ): JSONObject {
         val base = baseUrl()?.trimEnd('/')
             ?: error("Add and enable a RELYRA discovery gateway in Network settings first")
         val normalized = org.relyra.app.core.network.DiscoveryGatewayUrl.normalize(base)
             ?: error("The configured discovery gateway URL is invalid")
         val builder = Request.Builder().url(normalized + path).header("Accept", "application/json")
+        if (privateAccess) {
+            val member = ownPublicId() ?: error("RELYRA identity is unavailable")
+            val timestamp = System.currentTimeMillis()
+            val proof = canonicalAccess(method, path, member, timestamp)
+            builder.header("X-RELYRA-Public-ID", member)
+                .header("X-RELYRA-Timestamp", timestamp.toString())
+                .header("X-RELYRA-Signature", signBase64(proof))
+        }
         when (method) {
             "GET" -> builder.get()
             "POST" -> builder.post((body ?: JSONObject()).toString().toRequestBody(jsonType))
@@ -238,6 +376,61 @@ class CommunityClient(
         e.actorPublicId.lowercase(), e.sequence.toString(), e.policyVersion.toString(), e.action,
         e.subjectPublicId.lowercase(), e.reasonCode, e.createdAt.toString(), e.expiresAt.toString(),
     ).joinToString("\n").toByteArray(Charsets.UTF_8)
+
+    private fun canonicalInvitation(i: PrivateCommunityInvitation): ByteArray = listOf(
+        "RELYRA-COMMUNITY-INVITATION-V1",
+        i.inviteId.lowercase(), i.communityId.lowercase(), i.ownerPublicId.lowercase(),
+        i.memberPublicId.lowercase(), i.policyVersion.toString(), i.tokenHash,
+        i.createdAt.toString(), i.expiresAt.toString(),
+    ).joinToString("\n").toByteArray(Charsets.UTF_8)
+
+    private fun canonicalAcceptance(a: PrivateInvitationAcceptance, tokenHash: String): ByteArray = listOf(
+        "RELYRA-COMMUNITY-ACCEPTANCE-V1",
+        a.inviteId.lowercase(), a.communityId.lowercase(), a.memberPublicId.lowercase(),
+        tokenHash, a.acceptedAt.toString(),
+    ).joinToString("\n").toByteArray(Charsets.UTF_8)
+
+    private fun canonicalAccess(method: String, path: String, memberId: String, timestamp: Long): ByteArray = listOf(
+        "RELYRA-COMMUNITY-ACCESS-V1",
+        method.uppercase(), path, memberId.lowercase(), timestamp.toString(),
+    ).joinToString("\n").toByteArray(Charsets.UTF_8)
+
+    private fun tokenDigest(token: String): String {
+        val bytes = Base64.getUrlDecoder().decode(token)
+        require(bytes.size == 32) { "Invitation token must contain 32 random bytes" }
+        return Base64.getUrlEncoder().withoutPadding()
+            .encodeToString(MessageDigest.getInstance("SHA-256").digest(bytes))
+    }
+
+    private fun verifyInvitation(invitation: PrivateCommunityInvitation): Boolean {
+        if (!validCommunityId(invitation.communityId) || !validCommunityId(invitation.inviteId) ||
+            invitation.policyVersion <= 0 || invitation.createdAt <= 0 ||
+            invitation.expiresAt <= invitation.createdAt ||
+            IdentityCrypto.parsePublicId(invitation.ownerPublicId) == null ||
+            IdentityCrypto.parsePublicId(invitation.memberPublicId) == null
+        ) return false
+        val publicKey = IdentityCrypto.parsePublicId(invitation.ownerPublicId) ?: return false
+        val signature = decodeSignature(invitation.signature) ?: return false
+        return IdentityCrypto.verify(publicKey, signature, canonicalInvitation(invitation))
+    }
+
+    private fun invitationJson(i: PrivateCommunityInvitation) = JSONObject().apply {
+        put("version", 1); put("inviteId", i.inviteId); put("communityId", i.communityId)
+        put("ownerPublicId", i.ownerPublicId); put("memberPublicId", i.memberPublicId)
+        put("policyVersion", i.policyVersion); put("tokenHash", i.tokenHash)
+        put("createdAt", i.createdAt); put("expiresAt", i.expiresAt); put("signature", i.signature)
+    }
+
+    private fun acceptanceJson(a: PrivateInvitationAcceptance) = JSONObject().apply {
+        put("version", 1); put("inviteId", a.inviteId); put("communityId", a.communityId)
+        put("memberPublicId", a.memberPublicId); put("acceptedAt", a.acceptedAt); put("signature", a.signature)
+    }
+
+    private fun parseInvitation(j: JSONObject) = PrivateCommunityInvitation(
+        j.getString("inviteId"), j.getString("communityId"), j.getString("ownerPublicId"),
+        j.getString("memberPublicId"), j.getLong("policyVersion"), j.getString("tokenHash"),
+        j.getLong("createdAt"), j.getLong("expiresAt"), j.getString("signature"),
+    )
 
     private fun canonicalReport(r: CommunityReport): ByteArray = listOf(
         "RELYRA-COMMUNITY-REPORT-V1", r.reportId.lowercase(), r.communityId.lowercase(),
