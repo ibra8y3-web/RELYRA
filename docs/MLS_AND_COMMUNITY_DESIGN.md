@@ -1,6 +1,6 @@
 # RELYRA Phase 3 — MLS and Community Protocol Design
 
-Status: protocol design plus partial implementation status. Source implementation is present on branch `phase-3-group-protocol`, but the phase is not release-complete until CI and independent-device interoperability gates pass.
+Status: protocol design and partial implementation. Phase 3 is merged into `main` by PR #27. The PR-head workflow #418 passed Android, Go discovery-service, and OpenMLS native jobs. Post-merge `main` workflow #419 was still running at the last check; independent-device interoperability gates remain open.
 
 ## 0. Implementation status
 
@@ -20,7 +20,7 @@ Legacy groups retain the earlier pairwise RELYRA one-to-one Double Ratchet fan-o
 
 ## 2. MLS implementation decision
 
-Use the IETF Messaging Layer Security protocol defined by RFC 9420. The candidate implementation is OpenMLS (Rust), behind a narrow JNI boundary for Android. Do not write a new Kotlin implementation of the MLS state machine.
+Use the IETF Messaging Layer Security protocol defined by RFC 9420. The merged implementation pins OpenMLS 0.9.2 (Rust) behind a JNI boundary for Android. Do not write a new Kotlin implementation of the MLS state machine. Native build and Rust tests pass in the phase-3 PR CI; independent client interoperability and device-process recovery remain open.
 
 - Protocol: https://www.rfc-editor.org/rfc/rfc9420.html
 - Candidate implementation: https://github.com/openmls/openmls
@@ -33,14 +33,14 @@ Integration gates:
 - Run RFC 9420 test vectors and two-independent-client interoperability tests.
 - Complete threat-model, license and dependency review before enabling MLS by default.
 
-A successful native compilation alone does not prove MLS interoperability or correct group membership semantics.
+A successful native compilation and unit tests do not by themselves prove cross-device MLS interoperability or correct behaviour under concurrent membership changes.
 
 ## 3. Identity and credential binding
 
 - A RELYRA account identity remains the existing Ed25519 public identity; MLS does not replace it.
-- An MLS credential binds the RELYRA public ID, a per-installation device identifier, credential version and MLS signing public key.
-- The credential is signed by the existing RELYRA identity key. Verification checks the RELYRA signature and the MLS credential signature chain.
-- Device keys are distinct from the account identity key. Revoking one device must not silently revoke every device belonging to the account.
+- The current credential binds the RELYRA public ID and stable per-installation device identifier inside the OpenMLS BasicCredential.
+- The canonical account/device tuple is signed by the existing RELYRA Ed25519 identity key and verified when the authenticated RELYRA sender presents a KeyPackage.
+- OpenMLS signing keys remain separate from the account identity key. Multi-device registration, revocation and device-specific key lifecycle remain future work.
 - Unknown or blocked contacts cannot be added merely because a valid MLS KeyPackage is presented. Local trust and explicit invitation acceptance remain mandatory.
 
 ## 4. Group state, epochs and membership lifecycle
@@ -58,10 +58,10 @@ Commit state transactionally with epoch and delivery metadata. Never persist an 
 Lifecycle:
 1. The creator creates an MLS group and emits an authenticated Add/Commit/Welcome flow for invited members.
 2. An invited member verifies the creator credential, checks that the RELYRA contact is trusted, and explicitly accepts before installing Welcome state.
-3. Add/remove/role changes become MLS proposals followed by a Commit. The new epoch is accepted only from authorized group state and transcript.
+3. The current app serializes MLS membership-changing operations through the group owner. The owner produces the Commit/Welcome update; admins cannot independently advance epochs.
 4. A removed member is excluded from the new epoch secret. Future application messages use only the committed epoch. History access is governed by the explicit history policy.
-5. Concurrent membership changes must be resolved through MLS proposal/commit processing and transcript rules, not by choosing a snapshot with a larger integer alone.
-6. On restart, restore committed state from SQLCipher and reject stale or forked state that does not extend the accepted transcript.
+5. Distributed multi-admin proposal creation, reconciliation of simultaneous proposals and fork resolution remain unimplemented; this is the main protocol feature still missing from phase 3.
+6. OpenMLS state is stored in SQLCipher and has a Rust close/reopen regression test. Android process death, reinstall/recovery and independent-device restore still require validation.
 
 Default history policy: new members receive no earlier message history. Existing members retain only history already stored on their own devices. Removal cannot erase content already decrypted or copied by the removed member.
 
