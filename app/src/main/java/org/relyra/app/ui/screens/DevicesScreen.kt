@@ -43,6 +43,7 @@ fun DevicesScreen(vm: MainViewModel) {
     Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
         verticalArrangement=Arrangement.spacedBy(12.dp)) {
         Text(stringResource(R.string.devices_intro), style=MaterialTheme.typography.bodyMedium)
+        Text(stringResource(R.string.devices_register_primary_hint),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
         OutlinedButton(onClick={vm.registerCurrentDevice()},modifier=Modifier.fillMaxWidth()) { Text(stringResource(R.string.devices_register_primary)) }
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(16.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
@@ -72,7 +73,7 @@ fun DevicesScreen(vm: MainViewModel) {
             Column(Modifier.padding(16.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.devices_sync_title),style=MaterialTheme.typography.titleMedium)
                 Text(stringResource(R.string.devices_sync_warning),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
-                devices.filter { it.status==TrustedDeviceStatus.APPROVED }.forEach { device ->
+                devices.filter { it.status==TrustedDeviceStatus.APPROVED && it.deviceId!=vm.localDeviceId() }.forEach { device ->
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
                         Column(Modifier.weight(1f)) {
                             Text(device.displayName,style=MaterialTheme.typography.titleSmall)
