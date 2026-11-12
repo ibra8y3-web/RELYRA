@@ -235,7 +235,11 @@ class GroupEngine(
         if (fresh.isEmpty()) return@manage Verdict.Deny(GroupResult.INVALID)
         if (members.size + fresh.size > GroupLimits.MAX_MEMBERS) return@manage Verdict.Deny(GroupResult.INVALID)
         if (fresh.any { peers.status(it) != PeerStatus.Known }) return@manage Verdict.Deny(GroupResult.UNKNOWN_CONTACT)
-        Verdict.Apply(g.name, g.owner, members + fresh.map { GroupMemberRef(it, GroupRole.MEMBER) }, emptySet())
+        if (g.mlsEnabled && roleOf(members, me) == GroupRole.ADMIN) {
+            Verdict.Propose("add", fresh)
+        } else {
+            Verdict.Apply(g.name, g.owner, members + fresh.map { GroupMemberRef(it, GroupRole.MEMBER) }, emptySet())
+        }
     }
 
     suspend fun removeMember(groupId: String, memberId: String): GroupResult = manage(groupId) { g, members, me ->
@@ -244,7 +248,11 @@ class GroupEngine(
         val allowed = memberId != me && target != GroupRole.OWNER &&
             (mine == GroupRole.OWNER || (mine == GroupRole.ADMIN && target == GroupRole.MEMBER))
         if (!allowed) return@manage Verdict.Deny(GroupResult.NOT_ALLOWED)
-        Verdict.Apply(g.name, g.owner, members.filter { it.id != memberId }, setOf(memberId))
+        if (g.mlsEnabled && mine == GroupRole.ADMIN) {
+            Verdict.Propose("remove", listOf(memberId))
+        } else {
+            Verdict.Apply(g.name, g.owner, members.filter { it.id != memberId }, setOf(memberId))
+        }
     }
 
     suspend fun setAdmin(groupId: String, memberId: String, admin: Boolean): GroupResult = manage(groupId) { g, members, me ->
@@ -279,6 +287,7 @@ class GroupEngine(
     private sealed interface Verdict {
         class Deny(val result: GroupResult) : Verdict
         class Apply(val name: String, val owner: String, val members: List<GroupMemberRef>, val removed: Set<String>) : Verdict
+        class Propose(val action: String, val targets: List<String>) : Verdict
     }
 
     private suspend fun manage(
@@ -291,6 +300,24 @@ class GroupEngine(
         val previousMembers = store.members(groupId)
         when (val v = decide(g, previousMembers, me)) {
             is Verdict.Deny -> v.result
+            is Verdict.Propose -> {
+                if (!g.mlsEnabled || roleOf(previousMembers, me) != GroupRole.ADMIN || g.owner == me) {
+                    return@withLock GroupResult.NOT_ALLOWED
+                }
+                val proposalId = newId()
+                val payload = GroupChangeProposalCodec.encode(
+                    GroupChangeProposal(proposalId, groupId, g.epoch, g.mlsEpoch, v.action, v.targets)
+                )
+                val now = clock().coerceAtLeast(1L)
+                store.enqueue(listOf(OutboxRow(
+                    proposalId, groupId, g.owner, null,
+                    EnvelopeCodec.encode(Envelope.GroupMls(
+                        proposalId, me, g.owner, groupId, GroupMlsKind.MEMBERSHIP_PROPOSAL, payload
+                    )),
+                    now, 0, now, acked = false, failed = false,
+                )))
+                GroupResult.PROPOSAL_QUEUED
+            }
             is Verdict.Apply -> {
                 val changesMlsMembership = v.members != previousMembers
                 // Keep MLS membership and epoch changes single-writer until a distributed proposal
