@@ -102,6 +102,71 @@ func TestPrivateAccessProofBindsMethodPathIdentityAndTime(t *testing.T) {
 	}
 }
 
+func TestSignedBanBlocksPrivateMembershipAndUnbanAllowsFreshAcceptance(t *testing.T) {
+    ctx := context.Background()
+    now := time.Unix(1_800_000_000, 0)
+    store := testStore(now)
+    owner := membershipIdentity(t)
+    member := membershipIdentity(t)
+    manifest := signedManifest(t, owner, "a1b2c3d4-e5f6-4789-8abc-0123456789ab", "private", nil, now)
+    if _, err := store.PublishManifest(ctx, mustJSON(t, manifest)); err != nil { t.Fatal(err) }
+
+    tokenBytes := make([]byte, 32)
+    if _, err := rand.Read(tokenBytes); err != nil { t.Fatal(err) }
+    token := base64.RawURLEncoding.EncodeToString(tokenBytes)
+    digest, _ := invitationTokenHash(token)
+    invitation := Invitation{
+        Version: ManifestVersion,
+        InviteID: "b1b2c3d4-e5f6-4789-8abc-0123456789ab",
+        CommunityID: manifest.CommunityID,
+        OwnerPublicID: owner.id,
+        MemberPublicID: member.id,
+        PolicyVersion: manifest.PolicyVersion,
+        TokenHash: digest,
+        CreatedAt: now.UnixMilli(),
+        ExpiresAt: now.Add(24 * time.Hour).UnixMilli(),
+    }
+    payload, err := CanonicalInvitation(invitation)
+    if err != nil { t.Fatal(err) }
+    invitation.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(owner.private, payload))
+    raw := mustJSON(t, invitation)
+    if _, err := store.CreateInvitation(ctx, raw, token); err != nil { t.Fatal(err) }
+
+    ban := signedEvent(t, owner, manifest, 1, "ban", member.id, now)
+    if _, err := store.AppendModerationEvent(ctx, mustJSON(t, ban)); err != nil { t.Fatal(err) }
+    if banned, err := store.IsBanned(ctx, manifest.CommunityID, member.id); err != nil || !banned {
+        t.Fatalf("signed ban was not persisted: banned=%v err=%v", banned, err)
+    }
+    if store.CanReadPrivate(ctx, manifest.CommunityID, member.id) {
+        t.Fatal("banned member retained private community access")
+    }
+
+    acceptance := InvitationAcceptance{
+        Version: ManifestVersion,
+        InviteID: invitation.InviteID,
+        CommunityID: invitation.CommunityID,
+        MemberPublicID: member.id,
+        AcceptedAt: now.UnixMilli(),
+    }
+    acceptancePayload, _ := CanonicalInvitationAcceptance(acceptance, invitation.TokenHash)
+    acceptance.Signature = base64.RawURLEncoding.EncodeToString(ed25519.Sign(member.private, acceptancePayload))
+    if _, err := store.AcceptInvitation(ctx, raw, token, acceptance); err == nil {
+        t.Fatal("banned identity redeemed a previously issued invitation")
+    }
+
+    unban := signedEvent(t, owner, manifest, 2, "unban", member.id, now)
+    if _, err := store.AppendModerationEvent(ctx, mustJSON(t, unban)); err != nil { t.Fatal(err) }
+    if banned, err := store.IsBanned(ctx, manifest.CommunityID, member.id); err != nil || banned {
+        t.Fatalf("unban did not clear the restriction: banned=%v err=%v", banned, err)
+    }
+    if _, err := store.AcceptInvitation(ctx, raw, token, acceptance); err != nil {
+        t.Fatalf("identity could not accept its still-valid invitation after unban: %v", err)
+    }
+    if !store.CanReadPrivate(ctx, manifest.CommunityID, member.id) {
+        t.Fatal("member did not regain private access after unban and acceptance")
+    }
+}
+
 func TestOwnerRemovalRevokesPrivateCommunityMembership(t *testing.T) {
 	ctx := context.Background()
 	now := time.Unix(1_800_000_000, 0)
