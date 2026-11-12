@@ -26,7 +26,7 @@ class BackupRestoreSqlCipherIntegrationTest {
 
     @Test
     fun everyHistoricalMigrationExecutesAgainstAnEncryptedSqlCipherDatabase() {
-        val name = "migration-\${UUID.randomUUID()}.db"
+        val name = "migration-${UUID.randomUUID()}.db"
         val key = ByteArray(32) { (it + 11).toByte() }
         val helper = SupportOpenHelperFactory(key).create(
             SupportSQLiteOpenHelper.Configuration.builder(context)
@@ -59,7 +59,7 @@ class BackupRestoreSqlCipherIntegrationTest {
                 db.beginTransaction()
                 try {
                     migration.migrate(db)
-                    db.execSQL("PRAGMA user_version = \${index + 2}")
+                    db.execSQL("PRAGMA user_version = ${index + 2}")
                     db.setTransactionSuccessful()
                 } finally {
                     db.endTransaction()
