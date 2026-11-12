@@ -11,7 +11,6 @@ import (
 	datastore "github.com/ipfs/go-datastore"
 	"github.com/ipfs/go-datastore/sync"
 
-	identity "github.com/ibra8y3-web/RELYRA/services/discovery/internal/protocol"
 )
 
 func membershipIdentity(t *testing.T) testIdentity {
