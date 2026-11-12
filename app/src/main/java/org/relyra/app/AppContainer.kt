@@ -48,7 +48,9 @@ class AppContainer(context: Context) {
     val contacts: ContactRepository by lazy { ContactRepository(database, events) { ids, paths -> transfers.clean(ids, paths) } }
     val messages by lazy { RoomMessageStore(database) }
     val groupStore by lazy { RoomGroupStore(database) }
-    val mls by lazy { org.relyra.app.core.messaging.MlsEngine(appContext, secure) }
+    val mls by lazy {
+        org.relyra.app.core.messaging.MlsEngine(appContext, secure) { bytes -> identities.sign(bytes) }
+    }
     val communityClient by lazy {
         org.relyra.app.core.community.CommunityClient(
             baseUrl = { network.discoveryGateways.value.firstOrNull { it.enabled }?.url },
