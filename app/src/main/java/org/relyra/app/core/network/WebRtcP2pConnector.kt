@@ -289,6 +289,7 @@ class WebRtcP2pConnector(
         val observer = object : PeerConnection.Observer {
             override fun onSignalingChange(state: PeerConnection.SignalingState) = Unit
             override fun onIceConnectionChange(state: PeerConnection.IceConnectionState) {
+                if (peers[peerId] !== peer) return
                 val mapped = when (state) {
                     PeerConnection.IceConnectionState.CONNECTED,
                     PeerConnection.IceConnectionState.COMPLETED ->
@@ -526,6 +527,16 @@ class WebRtcP2pConnector(
             try {
                 repeat(WebRtcReconnectPolicy.MAX_ATTEMPTS) { attempt ->
                     if (!approvedPeers.contains(key)) return@launch
+                    if (expected != null) {
+                        val iceState = expected!!.connection.iceConnectionState()
+                        if (expected!!.channel?.state() == DataChannel.State.OPEN &&
+                            (iceState == PeerConnection.IceConnectionState.CONNECTED ||
+                                iceState == PeerConnection.IceConnectionState.COMPLETED)
+                        ) {
+                            states.value = states.value + (key to InternetPeerState.CONNECTED)
+                            return@launch
+                        }
+                    }
                     if (expected == null) {
                         if (peers.containsKey(key)) return@launch
                     } else if (peers[key] !== expected) {
@@ -595,10 +606,16 @@ class WebRtcP2pConnector(
     }
 
     private fun attachChannel(peerId: String, peer: Peer, channel: DataChannel) {
+        if (peers[peerId] !== peer) {
+            runCatching { channel.close() }
+            runCatching { channel.dispose() }
+            return
+        }
         peer.channel = channel
         channel.registerObserver(object : DataChannel.Observer {
             override fun onBufferedAmountChange(previousAmount: Long) = Unit
             override fun onStateChange() {
+                if (peers[peerId] !== peer) return
                 states.value = states.value + (peerId to when (channel.state()) {
                     DataChannel.State.OPEN -> InternetPeerState.CONNECTED
                     DataChannel.State.CONNECTING -> InternetPeerState.CONNECTING
@@ -607,6 +624,7 @@ class WebRtcP2pConnector(
                 })
             }
             override fun onMessage(buffer: DataChannel.Buffer) {
+                if (peers[peerId] !== peer) return
                 if (!buffer.binary || buffer.data.remaining() !in WebRtcFrameCodec.ACK_BYTES..MAX_DATA_CHANNEL_MESSAGE) return
                 val decoded = WebRtcFrameCodec.decode(buffer.data) ?: return
                 when (decoded) {
