@@ -422,7 +422,7 @@ class CommunityClient(
             (review.status != "in_review" && !review.reviewerPublicId.equals(manifest.ownerPublicId, true))) return false
         if (review.status != "in_review" && review.note.isBlank()) return false
         val now = System.currentTimeMillis()
-        if (review.createdAt > now + 5 * 60 * 1000 || now - review.createdAt > 30L * 24 * 60 * 60 * 1000) return false
+        if (review.createdAt > now + 5 * 60 * 1000) return false
         val key = IdentityCrypto.parsePublicId(review.reviewerPublicId) ?: return false
         val signature = decodeSignature(review.signature) ?: return false
         return IdentityCrypto.verify(key, signature, canonicalReview(review))
