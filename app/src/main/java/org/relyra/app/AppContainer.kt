@@ -199,13 +199,12 @@ class AppContainer(context: Context) {
             incoming = incomingListener,
             onP2pSignal = { peerId, signal ->
                 when (signal.kind) {
-                    P2pSignalKind.OFFER -> {
-                        // A signed signal is not consent. Queue it for explicit approval in Network settings.
-                        internetP2p.requestIncomingOffer(peerId, signal.signedSignal)
-                    }
-                    P2pSignalKind.ANSWER -> {
-                        internetP2p.acceptAnswer(peerId, signal.signedSignal)
-                    }
+                    P2pSignalKind.OFFER -> internetP2p.requestIncomingOffer(peerId, signal.signedSignal)
+                    P2pSignalKind.ANSWER -> internetP2p.acceptAnswer(peerId, signal.signedSignal)
+                    P2pSignalKind.CALL_OFFER -> calls.receiveOffer(peerId, signal.signedSignal)
+                    P2pSignalKind.CALL_ANSWER -> calls.receiveAnswer(peerId, signal.signedSignal)
+                    P2pSignalKind.CALL_DECLINE -> calls.receiveDecline(peerId, signal.signedSignal)
+                    P2pSignalKind.CALL_END -> calls.receiveEnd(peerId, signal.signedSignal)
                 }
             },
         )
