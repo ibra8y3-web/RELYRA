@@ -1137,7 +1137,13 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun syncDevicesNow() {
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { ctr().deviceSyncNetwork.syncNow() }
-                .onSuccess { deviceMessage.value = "Encrypted device synchronization sent to approved devices through enabled relays." }
+                .onSuccess { count ->
+                    deviceMessage.value = if (count > 0) {
+                        "Encrypted device synchronization sent to $count approved device(s)."
+                    } else {
+                        "No enabled relay or no other approved device is available for synchronization."
+                    }
+                }
                 .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
         }
     }
