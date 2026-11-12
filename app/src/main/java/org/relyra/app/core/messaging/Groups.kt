@@ -548,8 +548,14 @@ class GroupEngine(
                 if (allowedTargets.isEmpty()) return
                 val acceptedEpoch = runCatching {
                     engine.processProposal(env.payload, env.messageId, env.from, allowedTargets, allowAdd = false, allowRemove = true)
-                }.getOrNull() ?: return
-                if (acceptedEpoch != group.mlsEpoch) return
+                }.getOrNull()
+                if (acceptedEpoch == null || acceptedEpoch != group.mlsEpoch) {
+                    // A malformed, unauthorized, replayed or stale proposal is terminally
+                    // rejected at this epoch; acknowledge it so the sender does not retry forever.
+                    store.recordControlMessage(env.messageId, clock())
+                    ack(me, env.from, env.messageId)
+                    return
+                }
                 if (!store.recordControlMessage(env.messageId, clock())) { ack(me, env.from, env.messageId); return }
                 refreshPendingMlsProposalsLocked(env.groupId)
                 ack(me, env.from, env.messageId)
