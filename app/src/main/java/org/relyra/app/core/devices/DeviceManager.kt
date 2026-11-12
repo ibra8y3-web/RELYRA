@@ -85,7 +85,7 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
     suspend fun approvePairingRequest(encoded: String): String {
         val identity = checkNotNull(db.identityDao().get())
         val rootSeed = checkNotNull(secure.loadSeed())
-        ensureLocalDevice()
+        val local = ensureLocalDevice()
         val (body, sig) = open(encoded, REQUEST)
         val values = DataInputStream(ByteArrayInputStream(body)).use { i ->
             require(i.readUTF() == REQUEST)
@@ -101,7 +101,8 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         db.trustedDeviceDao().insertPending(TrustedDeviceEntity(id,account,name,platform,signPub,encPub,
             TrustedDeviceStatus.PENDING,created,now,null,null,1,0))
         check(db.trustedDeviceDao().approvePending(id,account,now)==1)
-        val approval=transcript(APPROVAL,account,id,b64(challenge),now.toString(),b64(identity.publicKey))
+        val approval=transcript(APPROVAL,account,id,b64(challenge),now.toString(),b64(identity.publicKey),
+            local.deviceId,local.displayName,local.platform,b64(local.signingPublicKey),b64(local.encryptionPublicKey))
         log(EventType.DEVICE_APPROVED,id)
         return envelope(APPROVAL,approval,IdentityCrypto.sign(rootSeed,approval))
     }
