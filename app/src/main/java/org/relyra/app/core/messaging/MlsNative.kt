@@ -23,7 +23,7 @@ internal object MlsNative {
     @JvmStatic external fun nativeProposeAddMember(groupId: ByteArray, keyPackage: ByteArray): ByteArray
     @JvmStatic external fun nativeProposeRemoveMember(groupId: ByteArray, credentialIdentity: ByteArray): ByteArray
     @JvmStatic external fun nativeProcessProposal(message: ByteArray, messageId: String, expectedPublicId: String, allowedTargetPublicIds: Array<String>, allowAdd: Boolean, allowRemove: Boolean): Long
-    @JvmStatic external fun nativeCommitPendingProposals(groupId: ByteArray): String
+    @JvmStatic external fun nativePreparePendingProposalsCommit(groupId: ByteArray): String
     @JvmStatic external fun nativePendingCommitInfo(groupId: ByteArray): String
     @JvmStatic external fun nativeMergePendingCommit(groupId: ByteArray): Long
     @JvmStatic external fun nativePendingProposalCount(groupId: ByteArray): Long
