@@ -85,6 +85,6 @@ tasks.withType<Test>().configureEach {
         events("started", "passed", "failed", "skipped")
         showStandardStreams = true
     }
-    maxParallelForks = 2
+    maxParallelForks = 1
     forkEvery = 1
 }
