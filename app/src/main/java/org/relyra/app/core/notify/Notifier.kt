@@ -90,6 +90,19 @@ class Notifier(context: Context, private val settings: AppSettings) {
     }
 
 
+    fun postSecurity(title: String, detail: String) {
+        if (!settings.notifications.value || !systemAllows()) return
+        val notification = NotificationCompat.Builder(ctx, CH_MESSAGES)
+            .setSmallIcon(R.drawable.ic_stat_relyra)
+            .setContentTitle(title)
+            .setContentText(detail)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(detail))
+            .setCategory(NotificationCompat.CATEGORY_STATUS)
+            .setVisibility(NotificationCompat.VISIBILITY_PRIVATE)
+            .setAutoCancel(true).build()
+        try { NotificationManagerCompat.from(ctx).notify((title + detail).hashCode(), notification) }
+        catch (_: SecurityException) { }
+    }
     fun postCall(peerId: String, title: String) {
         if (!settings.notifications.value || !systemAllows() || (Foreground.visible && Foreground.openChat == peerId)) return
         val text = ctx.getString(R.string.call_incoming_notification)
