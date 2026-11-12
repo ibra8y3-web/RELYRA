@@ -353,4 +353,7 @@
     <string name="call_notification_channel_desc">Incoming RELYRA calls</string>
     <string name="call_incoming_notification">Incoming RELYRA call</string>
     <string name="call_return">Return to call</string>
+    <string name="call_connection_interrupted">Connection interrupted. Trying to restore the call.</string>
+    <string name="call_connection_failed">The call connection failed.</string>
+    <string name="call_no_answer">No answer or media connection timeout.</string>
 </resources>
