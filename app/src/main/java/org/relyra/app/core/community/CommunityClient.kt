@@ -349,8 +349,10 @@ class CommunityClient(
 
     fun verifyEvent(event: CommunityEvent, manifest: CommunityManifest): Boolean {
         if (!event.communityId.equals(manifest.communityId, true) ||
+            !validCommunityId(event.eventId) ||
             event.policyVersion != manifest.policyVersion || event.sequence < 1 ||
             event.reasonCode.isBlank() || event.createdAt <= 0 ||
+            IdentityCrypto.parsePublicId(event.subjectPublicId) == null ||
             event.action !in setOf("ban", "unban", "mute", "slow_mode", "remove_member", "allow_post")
         ) return false
         val now = System.currentTimeMillis()
