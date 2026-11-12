@@ -41,6 +41,7 @@ fun DevicesScreen(vm: MainViewModel) {
     var approvalInput by remember { mutableStateOf("") }
     var syncInput by remember { mutableStateOf("") }
     var revocationInput by remember { mutableStateOf("") }
+    var rotationInput by remember { mutableStateOf("") }
     var selectedDeviceId by remember { mutableStateOf<String?>(null) }
     val exportLauncher = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         val target = selectedDeviceId
@@ -83,6 +84,9 @@ fun DevicesScreen(vm: MainViewModel) {
             Column(Modifier.padding(16.dp), verticalArrangement=Arrangement.spacedBy(8.dp)) {
                 Text(stringResource(R.string.devices_sync_title),style=MaterialTheme.typography.titleMedium)
                 Text(stringResource(R.string.devices_sync_warning),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.error)
+                Text(stringResource(R.string.devices_auto_sync),style=MaterialTheme.typography.bodySmall,color=MaterialTheme.colorScheme.onSurfaceVariant)
+                Button(onClick={vm.syncDevicesNow()},modifier=Modifier.fillMaxWidth()) { Text(stringResource(R.string.devices_sync_now)) }
+                OutlinedButton(onClick={vm.rotateLocalDeviceKeys()},modifier=Modifier.fillMaxWidth()) { Text(stringResource(R.string.devices_rotate_keys)) }
                 devices.filter { it.status==TrustedDeviceStatus.APPROVED && it.deviceId!=vm.localDeviceId() }.forEach { device ->
                     Row(Modifier.fillMaxWidth(),horizontalArrangement=Arrangement.SpaceBetween) {
                         Column(Modifier.weight(1f)) {
@@ -93,6 +97,8 @@ fun DevicesScreen(vm: MainViewModel) {
                     }
                 }
                 OutlinedTextField(value=syncInput,onValueChange={syncInput=it},label={Text(stringResource(R.string.devices_sync_code))},modifier=Modifier.fillMaxWidth(),minLines=3)
+                OutlinedTextField(value=rotationInput,onValueChange={rotationInput=it},label={Text(stringResource(R.string.devices_rotation_code))},modifier=Modifier.fillMaxWidth(),minLines=3)
+                OutlinedButton(onClick={vm.applyDeviceKeyRotation(rotationInput)},enabled=rotationInput.isNotBlank(),modifier=Modifier.fillMaxWidth()) { Text(stringResource(R.string.devices_apply_rotation)) }
                 OutlinedTextField(value=revocationInput,onValueChange={revocationInput=it},label={Text(stringResource(R.string.devices_revocation_code))},modifier=Modifier.fillMaxWidth(),minLines=3)
                 OutlinedButton(onClick={vm.applyDeviceRevocation(revocationInput)},enabled=revocationInput.isNotBlank(),modifier=Modifier.fillMaxWidth()) { Text(stringResource(R.string.devices_apply_revocation)) }
                 Button(onClick={importLauncher.launch(arrayOf("application/octet-stream", "application/*", "*/*"))},modifier=Modifier.fillMaxWidth()) {
