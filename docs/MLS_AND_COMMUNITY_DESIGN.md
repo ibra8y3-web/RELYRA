@@ -1,128 +1,61 @@
-# RELYRA Phase 3 — MLS and Community Protocol Design
+# RELYRA — MLS and Community implementation status
 
-Status: protocol design and partial implementation. Phase 3 is merged into `main` by PR #27. The PR-head workflow #418 passed Android, Go discovery-service, and OpenMLS native jobs. Post-merge `main` workflow #419 was still running at the last check; independent-device interoperability gates remain open.
+This document describes the code on `main`, not an aspirational protocol diagram. The authoritative inventory and schedule are [MAIN_BRANCH_AUDIT_AR.md](MAIN_BRANCH_AUDIT_AR.md) and [IMPLEMENTATION_PHASES_AR.md](IMPLEMENTATION_PHASES_AR.md).
 
-## 0. Implementation status
+## 1. MLS implementation currently present
 
-The current branch contains:
-- Phase-2 community posts signed by the author, ordered by a per-author sequence, deduplicated on retry, and served through a verified feed.
-- Service-enforced ban, mute, slow mode and owner allow-post overrides; slow mode uses server receipt time rather than client timestamps.
-- Opt-in community reports with persisted review state, moderator assignment, owner-only resolution/dismissal and ordered signed audit history.
-- Android community feed, publishing, report review and audit screens with Arabic and English resources.
-- MLS membership-change proposals from admins are carried over authenticated one-to-one sessions to the owner, checked against the exact group/MLS base epochs, and serialized by the owner; stale concurrent proposals are rejected and the current snapshot is returned.
-- Group read receipts bound to the exact per-member message-copy ID.
-- OpenMLS 0.9.2 through Rust/JNI, with SQLCipher-backed group state.
-- RELYRA account/device credentials signed by the existing Ed25519 identity key and verified before KeyPackage acceptance.
-- KeyPackage, Welcome, Commit, ApplicationData, owner-serialized membership commits, member removal and a SQLCipher reopen-recovery regression test.
-- MLS-encrypted group file descriptors, Blossom ciphertext upload/download, and digest verification tests.
-- Signed community manifests/events, private invitations and access proofs, private membership ban/unban, and a moderator-only report inbox.
+- OpenMLS 0.9.2 pinned in `native/mls/Cargo.toml`, exposed to Kotlin through JNI.
+- MLS state stored in a separate SQLCipher database using the app's Keystore-derived database key.
+- RELYRA identity/device credential is bound to OpenMLS BasicCredential; account Ed25519 identity signs the public ID and stable installation device ID.
+- KeyPackage generation and validation, Welcome join, Commit processing, ApplicationData, epoch/member queries, add/remove membership operations and SQLCipher reopen tests.
+- Native group operations are serialized by a Kotlin Mutex.
+- MLS group attachment descriptors are carried inside MLS ApplicationData; file bytes are encrypted before Blossom upload.
+- Group read receipts currently use authenticated per-recipient RELYRA control messages, not MLS ApplicationData.
 
-Still open: native RFC 9420 proposal creation/merge across multiple admins (the implemented owner-routed control proposals are not native MLS Proposal messages), public replication of the community index beyond the local Pebble-backed service, service deployment/rate-limit tuning under hostile traffic, and independent Android-device/ABI interoperability.
+## 2. Exact boundary: existing app-level proposal vs RFC 9420 Proposal
 
-## 1. Current group baseline
+The Android group engine currently allows an admin to send a RELYRA-specific membership request to the owner. The request is authenticated by the existing one-to-one session and carries the group epoch and MLS epoch at which it was created. The owner validates both epochs and applies membership changes; only the owner writes an MLS Commit.
 
-Legacy groups retain the earlier pairwise RELYRA one-to-one Double Ratchet fan-out path. New groups created with the phase-3 implementation set MLS enabled and use one OpenMLS group epoch for application data. Existing legacy groups are not silently migrated into MLS; the distinction is carried in stored group state and shown by the UI.
+This is a useful serialization guard, but it is **not** an RFC 9420 MLS Proposal message. It does not create a native OpenMLS Add/Remove Proposal, does not populate the OpenMLS proposal store on all members, and does not provide a standards-based batch commit of multiple pending proposals.
 
-## 2. MLS implementation decision
+The remaining MLS task is to complete that native flow on top of the existing OpenMLS engine:
+1. Generate native Add/Remove proposals through OpenMLS where authorized.
+2. Authenticate and process each received MLS proposal through OpenMLS; inspect its sender, proposal type, group ID and epoch before accepting it into the pending proposal store.
+3. Persist pending proposals in OpenMLS SQLCipher storage and recover them after process restart.
+4. Let the owner review/accept/reject pending proposals and create a Commit covering the accepted proposal set using OpenMLS's pending-proposal commit API.
+5. Merge the owner's pending commit locally only under a delivery policy that prevents an unpersisted state advance; distribute the Commit and any required Welcome to the correct members.
+6. Each recipient validates and merges the staged Commit; stale epoch, replay, duplicate, unauthorized sender, conflicting remove/add and removed-member cases must fail safely.
+7. Update group metadata only after native MLS epoch and membership state agree. Never advance the Room epoch from an app-level request alone.
 
-Use the IETF Messaging Layer Security protocol defined by RFC 9420. The merged implementation pins OpenMLS 0.9.2 (Rust) behind a JNI boundary for Android. Do not write a new Kotlin implementation of the MLS state machine. Native build and Rust tests pass in the phase-3 PR CI; independent client interoperability and device-process recovery remain open.
+The current owner-routed custom proposal path must remain clearly distinguished until the native proposal flow and UI are fully integrated. Do not claim RFC 9420 multi-admin proposal coordination is complete before tests prove it.
 
-- Protocol: https://www.rfc-editor.org/rfc/rfc9420.html
-- Candidate implementation: https://github.com/openmls/openmls
-- API guide: https://book.openmls.tech/
+## 3. MLS security and recovery requirements
 
-Integration gates:
-- Pin a reviewed OpenMLS release and its complete Rust dependency graph.
-- Build and link the native library for each Android ABI RELYRA supports.
-- Define a JNI interface with bounded byte-array input/output, deterministic error mapping and no secret material in logs.
-- Run RFC 9420 test vectors and two-independent-client interoperability tests.
-- Complete threat-model, license and dependency review before enabling MLS by default.
+- A removed member must not decrypt application data from a later epoch, including after reopening SQLCipher storage.
+- Stale and duplicate proposals/commits must be idempotently rejected or acknowledged without double application.
+- Concurrent proposals from different admins must be collected and reconciled by one authorized committer; invalid combinations must not partially advance the group.
+- Pending proposal and pending commit recovery must be tested across process restart.
+- Delivery metadata and native epoch transitions must not leave a committed state without a retryable packet.
+- Credentials must bind the authenticated RELYRA account and device; unknown/blocked identities cannot join merely by presenting a KeyPackage.
+- Never log plaintext, private keys, KeyPackages containing sensitive material, or MLS secrets.
 
-A successful native compilation and unit tests do not by themselves prove cross-device MLS interoperability or correct behaviour under concurrent membership changes.
+## 4. Community implementation currently present
 
-## 3. Identity and credential binding
+- Go discovery service and Android client.
+- Signed community manifests, signed posts and moderation events.
+- Private invitations and signed access proofs; membership, ban/unban and publication authorization.
+- Per-author post sequence and deduplication; reports, persisted audit trail and moderator screens.
+- Publication enforcement exists for ban, mute, slow-mode and allow-post controls.
+- Community index is local to each Pebble-backed discovery service. It is not currently replicated over the DHT.
+- **Privacy limit:** post bodies are stored as plaintext at the discovery service. Signatures prove origin/integrity; they do not provide end-to-end confidentiality. Do not publish sensitive private conversation content there.
 
-- A RELYRA account identity remains the existing Ed25519 public identity; MLS does not replace it.
-- The current credential binds the RELYRA public ID and stable per-installation device identifier inside the OpenMLS BasicCredential.
-- The canonical account/device tuple is signed by the existing RELYRA Ed25519 identity key and verified when the authenticated RELYRA sender presents a KeyPackage.
-- OpenMLS signing keys remain separate from the account identity key. Multi-device registration, revocation and device-specific key lifecycle remain future work.
-- Unknown or blocked contacts cannot be added merely because a valid MLS KeyPackage is presented. Local trust and explicit invitation acceptance remain mandatory.
+## 5. MLS/community non-goals for this work batch
 
-## 4. Group state, epochs and membership lifecycle
+Do not rewrite the existing OpenMLS engine, community protocol, backup system or UI surfaces that already work. Complete only the missing native proposal lifecycle and required tests. Distributed community-directory replication is deferred with the remaining Phase 3 work until after Phases 4–10.
 
-Persist each MLS group independently in SQLCipher:
-- group ID and ciphersuite;
-- current epoch and serialized MLS group state;
-- local credential/device binding;
-- pending proposals and pending commit metadata;
-- last accepted authenticated transcript hash;
-- active member credential references and removal state.
+## 6. Verification levels
 
-Commit state transactionally with epoch and delivery metadata. Never persist an advanced MLS state without the packet needed to retry its delivery.
-
-Lifecycle:
-1. The creator creates an MLS group and emits an authenticated Add/Commit/Welcome flow for invited members.
-2. An invited member verifies the creator credential, checks that the RELYRA contact is trusted, and explicitly accepts before installing Welcome state.
-3. The current app serializes MLS membership-changing operations through the group owner. The owner produces the Commit/Welcome update; admins cannot independently advance epochs.
-4. A removed member is excluded from the new epoch secret. Future application messages use only the committed epoch. History access is governed by the explicit history policy.
-5. Membership-changing MLS commits are owner-only. An admin's add/remove request is sent as an authenticated owner-routed control proposal carrying the base group and MLS epochs. The owner accepts only the first proposal based on the current epochs, rejects stale concurrent proposals and returns the current snapshot. Admin-supplied MLS Commit packets are rejected and are not marked as processed. This prevents competing epoch writes; native RFC 9420 Proposal messages, distributed proposal merging and fork resolution remain separate work.
-6. OpenMLS state is stored in SQLCipher and has a Rust close/reopen regression test. Android process death, reinstall/recovery and independent-device restore still require validation.
-
-Default history policy: new members receive no earlier message history. Existing members retain only history already stored on their own devices. Removal cannot erase content already decrypted or copied by the removed member.
-
-## 5. Group messages, receipts and attachments
-
-Group application messages are encrypted once per MLS group epoch, rather than once per member. Transports and relays see ciphertext only. Receipts are authenticated control/application messages and identify the original message and receipt-producing credential.
-
-Attachments:
-- Encrypt file bytes on the sender device with a fresh content key.
-- Upload only ciphertext to Blossom.
-- Deliver a group-encrypted descriptor containing the content-key material, digests, sizes, MIME type and immutable blob reference.
-- Keep downloads user initiated; verify ciphertext and plaintext hashes before opening.
-- Never send the file key in an unencrypted group control packet.
-
-Read receipts currently use authenticated per-recipient RELYRA control packets bound to the exact group-message copy; they are not yet encoded as MLS application/control messages. For MLS-enabled groups, attachment descriptors are sent inside MLS ApplicationData and encrypted file bytes are uploaded to Blossom. JVM tests verify download, ciphertext digest, decryption and plaintext digest. A real-device transfer test remains a release gate.
-
-## 6. Public communities are a separate protocol surface
-
-Private groups and public communities have different trust and abuse models. A public community must not reuse private-group membership snapshots as a public directory.
-
-A future community manifest is signed by its owner identity and includes:
-- stable community ID and manifest version;
-- public display name and description;
-- explicit public/private discoverability setting;
-- owner credential and moderator credential references;
-- policy version and public moderation keyset;
-- optional public entry point, without publishing private member lists.
-
-Discovery:
-- Publish a community record only after explicit owner/admin opt-in.
-- Keep community discovery records separate from RELYRA peer-presence records and private contact information.
-- Discovery does not add a contact, join a community or grant posting permissions.
-- Private communities are invitation-only; they do not publish member lists or private metadata.
-
-Moderation:
-- Owner/moderator actions are signed events tied to one community ID and policy version.
-- Every action includes actor credential, action sequence, target, reason code, issue time and expiry where applicable.
-- Receivers verify moderator authority against locally accepted community state. A role claim inside an untrusted event is never sufficient.
-- Actions are idempotent and replay-protected; conflicting actions use a canonical sequence/epoch rule.
-- Block, mute, report, slow-mode and member removal are distinct actions with explicit scopes.
-- Reports are opt-in and redact private message content by default. A report must never upload private conversations automatically.
-- Network services enforce bounded request sizes, per-IP and per-identity rate limits, abuse monitoring and retention limits. Client-only rate limiting is insufficient against hostile clients.
-- Moderation cannot retroactively erase content already decrypted or copied by another participant.
-
-## 7. Non-goals and release gates
-
-The branch implements signed community manifests, private invitations and access proofs, signed moderation events, replay sequences, private membership ban/unban, signed posts and feed retrieval, and an opt-in report lifecycle with persisted status and append-only signed audit entries. Private-community posts are access-controlled by membership but are stored as signed plaintext at the discovery service; the Android UI warns users not to publish sensitive material there until an MLS/E2EE community content layer exists. MLS membership changes from admins are owner-routed and epoch-checked; the owner alone creates cryptographic membership commits. The service enforces publication permissions for public and private communities; private publishing additionally requires current membership. Ban, mute and slow-mode are checked in the publish path, and only the owner may apply the allow-post override or close a report. Android exposes the feed, publishing, moderation, report review and audit actions in the community screen. The public directory is still a local Pebble-backed index, not a globally replicated community DHT.
-
-Phase 3 is not complete until:
-- MLS state is genuinely produced and consumed by the pinned OpenMLS integration on supported Android ABIs.
-- RFC 9420 vectors and independent clients interoperate.
-- A removed member cannot decrypt messages created after its committed removal epoch.
-- Restart recovery, duplicate commits, stale commits, concurrent proposals and member churn are covered by tests.
-- Group attachments and optional read receipts pass the current JVM/native regression tests; independent Android-device transfer remains open.
-- Community event signatures, owner/moderator authorization, per-actor sequence replay controls, private ban/unban effects, report authorization and service-side rate limiting are implemented and tested.
-- Distributed MLS proposal reconciliation and community-index replication remain separate incomplete items.
-- CI passes from a clean checkout and supported Android ABIs interoperate.
-
-Until those gates pass, the current pairwise group transport remains active and must be labelled accurately.
+- Rust tests verify native OpenMLS behaviour and SQLCipher persistence.
+- JVM tests verify the Android orchestration and app-level envelope rules.
+- Emulator instrumentation verifies Android JNI/SQLCipher integration where configured.
+- Independent physical Android devices, supported ABI coverage and network interoperability remain Phase 10 acceptance gates.
