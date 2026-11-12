@@ -99,6 +99,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val pendingCount = MutableStateFlow(0)
     val groups = MutableStateFlow<List<GroupEntity>>(emptyList())
     val pendingMlsProposals get() = rely.container.groups.pendingMlsProposals
+    val pendingMlsProposalDeliveries get() = rely.container.groups.pendingMlsProposalDeliveries
     val savedCommunities = MutableStateFlow<List<CommunityEntity>>(emptyList())
     val discoveredCommunities = MutableStateFlow<List<CommunityManifest>>(emptyList())
     val communityEvents = MutableStateFlow<Map<String, List<CommunityEvent>>>(emptyMap())
