@@ -211,6 +211,9 @@ func newServer(ctx context.Context) (*server, error) {
 	if value := os.Getenv("RELYRA_TURN_TTL_SECONDS"); value != "" {
 		seconds, parseErr := strconv.Atoi(value)
 		if parseErr != nil || seconds < 60 || seconds > 600 {
+			_ = router.Close()
+			_ = p2pHost.Close()
+			_ = datastore.Close()
 			return nil, errors.New("RELYRA_TURN_TTL_SECONDS must be between 60 and 600")
 		}
 		turnTTL = time.Duration(seconds) * time.Second
