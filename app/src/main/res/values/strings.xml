@@ -304,6 +304,7 @@
     <string name="settings_cat_diagnostics_desc">Connection diagnostics, app status and technical logs.</string>
 
     <string name="communities_posts_title">Community feed</string>
+    <string name="communities_private_feed_notice">Private membership limits who can read this feed, but posts are not end-to-end encrypted and the discovery service can read them. Do not post sensitive information.</string>
     <string name="communities_post_hint">Write a community post</string>
     <string name="communities_post_publish">Publish signed post</string>
     <string name="communities_post_published">Signed community post published.</string>
