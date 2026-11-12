@@ -45,6 +45,9 @@ interface GroupDao {
     @Query("SELECT groupId, MAX(createdAt) AS lastAt, SUM(CASE WHEN outgoing = 0 AND readLocally = 0 THEN 1 ELSE 0 END) AS unread FROM group_messages GROUP BY groupId")
     fun observeSummaries(): Flow<List<GroupSummary>>
 
+    @Query("SELECT * FROM group_messages WHERE groupId = :id AND outgoing = 0 AND readLocally = 0 ORDER BY createdAt ASC")
+    suspend fun unreadMessages(id: String): List<GroupMessageEntity>
+
     @Query("UPDATE group_messages SET readLocally = 1 WHERE groupId = :id AND outgoing = 0")
     suspend fun markRead(id: String)
 
@@ -63,8 +66,11 @@ interface GroupDao {
     @Query("UPDATE group_outbox SET acked = 1 WHERE id = :id AND memberId = :memberId")
     suspend fun ack(id: String, memberId: String): Int
 
-    @Query("SELECT baseMessageId AS messageId, COUNT(*) AS total, SUM(acked) AS delivered FROM group_outbox WHERE groupId = :id AND baseMessageId IS NOT NULL GROUP BY baseMessageId")
+    @Query("SELECT baseMessageId AS messageId, COUNT(*) AS total, SUM(acked) AS delivered, SUM(CASE WHEN readAt IS NOT NULL THEN 1 ELSE 0 END) AS readCount FROM group_outbox WHERE groupId = :id AND baseMessageId IS NOT NULL GROUP BY baseMessageId")
     fun observeDelivery(id: String): Flow<List<GroupDeliveryCount>>
+
+    @Query("UPDATE group_outbox SET acked = 1, readAt = COALESCE(readAt, :readAt) WHERE id = :copyId AND groupId = :groupId AND memberId = :memberId AND baseMessageId IS NOT NULL")
+    suspend fun markReadReceipt(copyId: String, groupId: String, memberId: String, readAt: Long): Int
 
     @Query("DELETE FROM group_messages WHERE groupId = :id")
     suspend fun deleteMessages(id: String)
@@ -78,11 +84,29 @@ interface GroupDao {
     @Query("SELECT COUNT(*) FROM group_messages")
     suspend fun countMessages(): Int
 
+    @Query("SELECT EXISTS(SELECT 1 FROM processed_ids WHERE messageId = :id)")
+    suspend fun hasProcessedId(id: String): Boolean
+
     @Query("DELETE FROM group_outbox WHERE groupId = :id")
     suspend fun deleteOutbox(id: String)
 
     @Query("DELETE FROM chat_groups WHERE groupId = :id")
     suspend fun deleteGroup(id: String)
+
+    @Insert(onConflict = OnConflictStrategy.ABORT)
+    suspend fun insertGroupAttachment(entity: GroupAttachmentEntity)
+
+    @Update
+    suspend fun updateGroupAttachment(entity: GroupAttachmentEntity)
+
+    @Query("SELECT * FROM group_attachments WHERE messageId = :id")
+    suspend fun groupAttachment(id: String): GroupAttachmentEntity?
+
+    @Query("SELECT * FROM group_attachments WHERE groupId = :id ORDER BY createdAt ASC")
+    fun observeGroupAttachments(id: String): Flow<List<GroupAttachmentEntity>>
+
+    @Query("DELETE FROM group_attachments WHERE groupId = :id")
+    suspend fun deleteGroupAttachments(id: String)
 
     @Query("SELECT COUNT(*) FROM group_outbox WHERE acked = 0 AND failed = 0")
     fun observePending(): Flow<Int>

@@ -31,6 +31,7 @@ import (
 	ma "github.com/multiformats/go-multiaddr"
 
 	presence "github.com/ibra8y3-web/RELYRA/services/discovery/internal/protocol"
+	communities "github.com/ibra8y3-web/RELYRA/services/discovery/internal/community"
 )
 
 const (
@@ -38,6 +39,9 @@ const (
 	maxConcurrent  = 64
 	recordRate     = 120
 	turnRate       = 6
+	communityReadRate = 60
+	communityWriteRate = 30
+	communityReportRate = 8
 )
 
 type fixedWindow struct {
@@ -76,6 +80,7 @@ type server struct {
 	dht          *dht.IpfsDHT
 	host         host.Host
 	datastore    *pebbleds.Datastore
+	communities  *communities.Store
 	turnSecret   string
 	turnRealm    string
 	turnURLs     []string
@@ -224,6 +229,7 @@ func newServer(ctx context.Context) (*server, error) {
 
 	return &server{
 		dht: router, host: p2pHost, datastore: datastore,
+		communities: communities.NewStore(datastore),
 		turnSecret: os.Getenv("RELYRA_TURN_SHARED_SECRET"),
 		turnRealm: env("RELYRA_TURN_REALM", "turn.relyra.invalid"),
 		turnURLs: turnURLs, turnTTL: turnTTL,
@@ -245,6 +251,18 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("POST /v1/records", s.publishRecord)
 	mux.HandleFunc("GET /v1/records/{publicID}", s.lookupRecord)
 	mux.HandleFunc("POST /v1/turn-credentials", s.turnCredentials)
+	mux.HandleFunc("GET /v1/communities", s.discoverCommunities)
+	mux.HandleFunc("POST /v1/communities", s.publishCommunity)
+	mux.HandleFunc("GET /v1/communities/{communityID}", s.getCommunity)
+	mux.HandleFunc("GET /v1/communities/{communityID}/private", s.getPrivateCommunity)
+	mux.HandleFunc("POST /v1/communities/{communityID}/invitations", s.createCommunityInvitation)
+	mux.HandleFunc("POST /v1/communities/{communityID}/invitations/accept", s.acceptCommunityInvitation)
+	mux.HandleFunc("POST /v1/communities/{communityID}/events", s.publishCommunityEvent)
+	mux.HandleFunc("GET /v1/communities/{communityID}/events", s.listCommunityEvents)
+	mux.HandleFunc("GET /v1/communities/{communityID}/private/events", s.listPrivateCommunityEvents)
+	mux.HandleFunc("GET /v1/communities/{communityID}/sequence/{actorPublicID}", s.communitySequence)
+	mux.HandleFunc("POST /v1/communities/{communityID}/reports", s.submitCommunityReport)
+	mux.HandleFunc("GET /v1/communities/{communityID}/reports", s.listCommunityReports)
 	return s.guard(mux)
 }
 
@@ -266,8 +284,17 @@ func (s *server) guard(next http.Handler) http.Handler {
 		}
 		ip := clientIP(r)
 		limit := recordRate
-		if strings.Contains(r.URL.Path, "/turn-credentials") {
+		switch {
+		case strings.Contains(r.URL.Path, "/turn-credentials"):
 			limit = turnRate
+		case strings.Contains(r.URL.Path, "/reports"):
+			limit = communityReportRate
+		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/events"):
+			limit = communityWriteRate
+		case r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, "/v1/communities"):
+			limit = communityWriteRate
+		case strings.HasPrefix(r.URL.Path, "/v1/communities"):
+			limit = communityReadRate
 		}
 		if !s.limiter.allow(ip, limit, time.Minute) {
 			writeError(w, http.StatusTooManyRequests, "rate limit exceeded")
@@ -352,6 +379,300 @@ func (s *server) lookupRecord(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	_, _ = w.Write(value)
+}
+
+func (s *server) discoverCommunities(w http.ResponseWriter, r *http.Request) {
+	limit := 20
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > communities.MaxDiscoverPage {
+			writeError(w, http.StatusBadRequest, "invalid discovery limit")
+			return
+		}
+		limit = value
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	result, err := s.communities.Discover(ctx, limit)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "community discovery unavailable")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"communities": result})
+}
+
+func (s *server) publishCommunity(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, communities.MaxManifestBytes)
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid or oversized community manifest")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	manifest, err := s.communities.PublishManifest(ctx, raw)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "community": manifest})
+}
+
+func (s *server) privateMemberFromRequest(r *http.Request, communityID string) (string, error) {
+	memberID := r.Header.Get("X-RELYRA-Public-ID")
+	timestampText := r.Header.Get("X-RELYRA-Timestamp")
+	signature := r.Header.Get("X-RELYRA-Signature")
+	timestamp, err := strconv.ParseInt(timestampText, 10, 64)
+	if err != nil {
+		return "", errors.New("missing or invalid private community access timestamp")
+	}
+	if err := communities.VerifyAccessProof(r.Method, r.URL.RequestURI(), memberID, timestamp, signature, time.Now()); err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if !s.communities.CanReadPrivate(ctx, communityID, memberID) {
+		return "", errors.New("identity is not a member of this private community")
+	}
+	return memberID, nil
+}
+
+func (s *server) getPrivateCommunity(w http.ResponseWriter, r *http.Request) {
+	communityID := r.PathValue("communityID")
+	memberID, err := s.privateMemberFromRequest(r, communityID)
+	if err != nil {
+		writeError(w, http.StatusForbidden, "private community access denied")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	manifest, err := s.communities.GetManifestForMember(ctx, communityID, memberID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "private community not found")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, manifest)
+}
+
+func (s *server) createCommunityInvitation(w http.ResponseWriter, r *http.Request) {
+	type invitationRequest struct {
+		Invitation json.RawMessage `json:"invitation"`
+		Token string `json:"token"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, communities.MaxInvitationBytes+2048)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	var input invitationRequest
+	if err := decoder.Decode(&input); err != nil || len(input.Invitation) == 0 {
+		writeError(w, http.StatusBadRequest, "invalid community invitation request")
+		return
+	}
+	var invitation communities.Invitation
+	if err := json.Unmarshal(input.Invitation, &invitation); err != nil ||
+		!strings.EqualFold(invitation.CommunityID, r.PathValue("communityID")) {
+		writeError(w, http.StatusBadRequest, "community ID does not match invitation")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	accepted, err := s.communities.CreateInvitation(ctx, input.Invitation, input.Token)
+	if err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "invitation": accepted})
+}
+
+func (s *server) acceptCommunityInvitation(w http.ResponseWriter, r *http.Request) {
+	type acceptanceRequest struct {
+		Invitation json.RawMessage `json:"invitation"`
+		Token string `json:"token"`
+		Acceptance communities.InvitationAcceptance `json:"acceptance"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, communities.MaxInvitationBytes+2048)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	var input acceptanceRequest
+	if err := decoder.Decode(&input); err != nil || len(input.Invitation) == 0 {
+		writeError(w, http.StatusBadRequest, "invalid community invitation acceptance")
+		return
+	}
+	var invitation communities.Invitation
+	if err := json.Unmarshal(input.Invitation, &invitation); err != nil ||
+		!strings.EqualFold(invitation.CommunityID, r.PathValue("communityID")) {
+		writeError(w, http.StatusBadRequest, "community ID does not match invitation")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	membership, err := s.communities.AcceptInvitation(ctx, input.Invitation, input.Token, input.Acceptance)
+	if err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "membership": membership})
+}
+
+func (s *server) getCommunity(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	manifest, err := s.communities.GetManifest(ctx, r.PathValue("communityID"), false)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "public community not found")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, manifest)
+}
+
+func (s *server) publishCommunityEvent(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, communities.MaxEventBytes)
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid or oversized moderation event")
+		return
+	}
+	var event communities.ModerationEvent
+	if err := json.Unmarshal(raw, &event); err != nil || !strings.EqualFold(event.CommunityID, r.PathValue("communityID")) {
+		writeError(w, http.StatusBadRequest, "community ID does not match event")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	accepted, err := s.communities.AppendModerationEvent(ctx, raw)
+	if err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "event": accepted})
+}
+
+func (s *server) listCommunityEvents(w http.ResponseWriter, r *http.Request) {
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > communities.MaxEventsPage {
+			writeError(w, http.StatusBadRequest, "invalid event page size")
+			return
+		}
+		limit = value
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	result, err := s.communities.Events(ctx, r.PathValue("communityID"), limit)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "public community events not found")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"events": result})
+}
+
+func (s *server) listPrivateCommunityEvents(w http.ResponseWriter, r *http.Request) {
+	communityID := r.PathValue("communityID")
+	memberID, err := s.privateMemberFromRequest(r, communityID)
+	if err != nil {
+		writeError(w, http.StatusForbidden, "private community access denied")
+		return
+	}
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > communities.MaxEventsPage {
+			writeError(w, http.StatusBadRequest, "invalid event page size")
+			return
+		}
+		limit = value
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	result, err := s.communities.EventsForMember(ctx, communityID, memberID, limit)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "private community events not found")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"events": result})
+}
+
+func (s *server) communitySequence(w http.ResponseWriter, r *http.Request) {
+	communityID := r.PathValue("communityID")
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	manifest, err := s.communities.GetManifest(ctx, communityID, true)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "community not found")
+		return
+	}
+	if manifest.Visibility == "private" {
+		if _, err := s.privateMemberFromRequest(r, communityID); err != nil {
+			writeError(w, http.StatusForbidden, "private community access denied")
+			return
+		}
+	}
+	sequence, err := s.communities.LastSequence(ctx, communityID, r.PathValue("actorPublicID"))
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid community or moderator identity")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"lastSequence": sequence})
+}
+
+func (s *server) listCommunityReports(w http.ResponseWriter, r *http.Request) {
+    communityID := r.PathValue("communityID")
+    requesterID, err := s.privateMemberFromRequest(r, communityID)
+    if err != nil {
+        writeError(w, http.StatusForbidden, "community report access denied")
+        return
+    }
+    limit := 50
+    if raw := r.URL.Query().Get("limit"); raw != "" {
+        value, parseErr := strconv.Atoi(raw)
+        if parseErr != nil || value < 1 || value > communities.MaxEventsPage {
+            writeError(w, http.StatusBadRequest, "invalid reports page size")
+            return
+        }
+        limit = value
+    }
+    ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+    defer cancel()
+    reports, err := s.communities.Reports(ctx, communityID, requesterID, limit)
+    if err != nil {
+        writeError(w, http.StatusForbidden, "community report access denied")
+        return
+    }
+    w.Header().Set("Cache-Control", "no-store")
+    writeJSON(w, http.StatusOK, map[string]any{"reports": reports})
+}
+
+func (s *server) submitCommunityReport(w http.ResponseWriter, r *http.Request) {
+	r.Body = http.MaxBytesReader(w, r.Body, communities.MaxReportBytes)
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid or oversized community report")
+		return
+	}
+	var report communities.Report
+	if err := json.Unmarshal(raw, &report); err != nil || !strings.EqualFold(report.CommunityID, r.PathValue("communityID")) {
+		writeError(w, http.StatusBadRequest, "community ID does not match report")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	accepted, err := s.communities.SubmitReport(ctx, raw)
+	if err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "reportId": accepted.ReportID})
 }
 
 func (s *server) turnCredentials(w http.ResponseWriter, r *http.Request) {

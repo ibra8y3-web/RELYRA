@@ -190,6 +190,82 @@ class TransferEngine(
         }
     }
 
+    /**
+     * Downloads a group attachment only after an explicit user action. The
+     * Blossom object is verified and decrypted before it becomes exportable.
+     */
+    suspend fun downloadGroupAttachment(
+        attachment: org.relyra.app.core.messaging.GroupAttachmentRecord,
+        update: suspend (org.relyra.app.core.messaging.GroupAttachmentRecord) -> Unit,
+    ): DownloadResult {
+        val progressId = "group:${attachment.messageId}"
+        if (!active.add(progressId)) return DownloadResult.Busy
+        try {
+            if (attachment.phase == org.relyra.app.core.messaging.GroupAttachmentPhase.READY &&
+                attachment.localPath?.let { File(it).isFile } == true
+            ) return DownloadResult.Done
+            val url = BlossomUrl.normalize(attachment.serverUrl, allowPrivate = false)
+                ?: return DownloadResult.Failed("the file server address is not allowed")
+            update(attachment.copy(phase = org.relyra.app.core.messaging.GroupAttachmentPhase.DOWNLOADING))
+            val groupInbox = File(inbox, "groups")
+            groupInbox.mkdirs()
+            val part = File(groupInbox, "${attachment.messageId}.part")
+            val result = client.download(url, Hex.encode(attachment.blobSha256), part, attachment.blobSize) { bytes ->
+                progress.update { it + (progressId to bytes) }
+            }
+            if (result is BlossomDownload.Failed) {
+                update(attachment.copy(phase = if (result.retryable) {
+                    org.relyra.app.core.messaging.GroupAttachmentPhase.REMOTE
+                } else {
+                    org.relyra.app.core.messaging.GroupAttachmentPhase.FAILED
+                }))
+                return DownloadResult.Failed(result.reason)
+            }
+            val targetDir = File(groupInbox, attachment.messageId)
+            targetDir.mkdirs()
+            val target = File(targetDir, FileNames.sanitize(attachment.name))
+            val valid = withContext(Dispatchers.IO) {
+                isInside(target, targetDir) &&
+                    FileCrypto.decrypt(part, target, attachment.fileKey, attachment.plainSha256, attachment.size)
+            }
+            part.delete()
+            if (!valid) {
+                target.delete()
+                update(attachment.copy(phase = org.relyra.app.core.messaging.GroupAttachmentPhase.FAILED))
+                return DownloadResult.Failed("the group file failed decryption or SHA-256 verification")
+            }
+            update(attachment.copy(
+                phase = org.relyra.app.core.messaging.GroupAttachmentPhase.READY,
+                localPath = target.absolutePath,
+            ))
+            return DownloadResult.Done
+        } finally {
+            progress.update { it - progressId }
+            active.remove(progressId)
+        }
+    }
+
+    suspend fun exportGroupAttachment(
+        resolver: ContentResolver,
+        attachment: org.relyra.app.core.messaging.GroupAttachmentRecord,
+        dest: Uri,
+    ): Boolean = withContext(Dispatchers.IO) {
+        if (attachment.phase != org.relyra.app.core.messaging.GroupAttachmentPhase.READY) return@withContext false
+        val path = attachment.localPath ?: return@withContext false
+        val groupInbox = File(inbox, "groups")
+        val file = File(path)
+        if (!isInside(file, groupInbox) || !file.isFile) return@withContext false
+        try {
+            val out = resolver.openOutputStream(dest, "w") ?: return@withContext false
+            out.use { output -> file.inputStream().use { it.copyTo(output) } }
+            true
+        } catch (_: IOException) {
+            false
+        } catch (_: RuntimeException) {
+            false
+        }
+    }
+
     /** Copies a downloaded file to a place the user picked (Storage Access Framework). */
     suspend fun export(resolver: ContentResolver, messageId: String, dest: Uri): Boolean = withContext(Dispatchers.IO) {
         val path = store.attachment(messageId)?.localPath ?: return@withContext false

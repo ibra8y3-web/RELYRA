@@ -41,6 +41,17 @@ class SecureStore(context: Context) {
         }
     }
 
+    /** Stable random identifier for this app installation; encrypted with the Android Keystore key. */
+    fun deviceId(): String {
+        val current = read(DEVICE_ID)?.toString(Charsets.UTF_8)
+        if (current != null && runCatching { java.util.UUID.fromString(current).toString() == current }.getOrDefault(false)) {
+            return current
+        }
+        val created = java.util.UUID.randomUUID().toString()
+        write(DEVICE_ID, created.toByteArray(Charsets.UTF_8))
+        return created
+    }
+
     fun saveSeed(seed: ByteArray) = write(SEED, seed)
     fun loadSeed(): ByteArray? = read(SEED)
     fun clearSeed() { prefs.edit().remove(SEED).commit() }
@@ -61,5 +72,6 @@ class SecureStore(context: Context) {
     private companion object {
         const val DB_KEY = "db_key_v1"
         const val SEED = "identity_seed_v1"
+        const val DEVICE_ID = "device_id_v1"
     }
 }

@@ -7,6 +7,7 @@ import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.Campaign
+import androidx.compose.material.icons.filled.Forum
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -60,12 +61,14 @@ import org.relyra.app.ui.screens.PrivacySecuritySettingsScreen
 import org.relyra.app.ui.screens.StorageSettingsScreen
 import org.relyra.app.ui.screens.NotificationsSettingsScreen
 import org.relyra.app.ui.screens.BrowserDocumentsSettingsScreen
+import org.relyra.app.ui.screens.CommunitiesScreen
 
 private object Routes {
     const val HOME = "home"
     const val CHATS = "chats"
     const val GROUPS = "groups"
     const val CHANNELS = "channels"
+    const val COMMUNITIES = "communities"
     const val CHANNEL_NEW = "channels/new"
     const val CHAT = "chat/{id}"
     const val CONTACTS = "contacts"
@@ -96,6 +99,7 @@ private val tabs = listOf(
     Tab(Routes.CHATS, R.string.nav_direct_chats, Icons.Default.Email),
     Tab(Routes.GROUPS, R.string.nav_groups, Icons.Default.Group),
     Tab(Routes.CHANNELS, R.string.nav_channels, Icons.Default.Campaign),
+    Tab(Routes.COMMUNITIES, R.string.nav_communities, Icons.Default.Forum),
     Tab(Routes.CONTACTS, R.string.nav_contacts, Icons.Default.Person),
     Tab(Routes.SETTINGS, R.string.nav_settings, Icons.Default.Settings),
 )
@@ -106,6 +110,7 @@ private fun titleFor(route: String): Int = when (route) {
     Routes.CHATS, Routes.CHAT -> R.string.nav_direct_chats
     Routes.GROUPS, Routes.GROUP -> R.string.nav_groups
     Routes.CHANNELS, Routes.CHANNEL_NEW -> R.string.nav_channels
+    Routes.COMMUNITIES -> R.string.nav_communities
     Routes.GROUP_NEW -> R.string.groups_new_title
     Routes.GROUP_INFO -> R.string.groups_info
     Routes.CONTACTS -> R.string.nav_contacts
@@ -240,6 +245,7 @@ fun AppNav(
                 GroupsSectionScreen(vm, org.relyra.app.core.messaging.GroupKind.CHANNEL,
                     onOpen = { nav.navigate("group/$it") }, onCreate = { nav.navigate(Routes.CHANNEL_NEW) })
             }
+            composable(Routes.COMMUNITIES) { CommunitiesScreen(vm) }
             composable(Routes.GROUP) { entry -> GroupChatScreen(vm, entry.arguments?.getString("id") ?: "") }
             composable(Routes.GROUP_INFO) { entry ->
                 GroupInfoScreen(vm, entry.arguments?.getString("id") ?: "", onGone = {

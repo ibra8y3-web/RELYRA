@@ -13,6 +13,8 @@
     <string name="groups_create_action">Create</string>
     <string name="groups_no_contacts">You have no contact with an encryption key yet. Add one from Contacts first. You can still create an empty group and add people later.</string>
     <string name="groups_state_invited">Invitation</string>
+    <string name="groups_state_joining">Joining MLS group</string>
+    <string name="groups_state_joining_detail">Your device sent its MLS KeyPackage. The group owner must add it and return a Welcome before this device can send or receive group messages.</string>
     <string name="groups_state_left">You left</string>
     <string name="groups_state_removed">You were removed</string>
     <string name="groups_kind_group_short">Group</string>
@@ -22,7 +24,9 @@
     <string name="groups_accept">Accept</string>
     <string name="groups_decline">Decline</string>
     <string name="groups_banner_group">Every message is encrypted separately for each member with their one-to-one session. Members must be your contacts. Not MLS.</string>
-    <string name="groups_banner_channel">Channel: only the owner and admins can post. Each message is encrypted separately for every subscriber.</string>
+    <string name="groups_banner_channel">Legacy channel: only the owner and admins can post. Messages use separate one-to-one encryption.</string>
+    <string name="groups_banner_mls_group">Messages use MLS group encryption. Membership changes advance the group epoch and update its shared cryptographic state.</string>
+    <string name="groups_banner_mls_channel">MLS broadcast channel: only the owner and admins can post. Messages use the shared group epoch.</string>
     <string name="groups_readonly">Only the owner and admins can post in this channel.</string>
     <string name="groups_inactive">You are no longer part of this group. Your copy of the messages stays on this device.</string>
     <string name="groups_info">Group info</string>
@@ -31,6 +35,14 @@
     <string name="groups_role_member">Member</string>
     <string name="groups_you">You</string>
     <string name="groups_delivered">Delivered to %1$d of %2$d</string>
+    <string name="groups_read">Read by %1$d of %2$d</string>
+    <string name="groups_attach_file">Attach file</string>
+    <string name="groups_files_require_mls">Group attachments require an MLS-enabled group.</string>
+    <string name="groups_file_download">Download encrypted attachment</string>
+    <string name="groups_file_downloading">Downloading and verifying file…</string>
+    <string name="groups_file_save">Save file</string>
+    <string name="groups_file_uploaded">Encrypted file attached</string>
+    <string name="err_group_file_upload">The encrypted file could not be uploaded. Check your Blossom server and try again.</string>
     <string name="groups_add_members">Add members</string>
     <string name="groups_add_none">All your usable contacts are already in this group.</string>
     <string name="groups_rename">Rename</string>
@@ -53,4 +65,5 @@
     <string name="err_group_contact">Every member must be one of your contacts with an encryption key.</string>
     <string name="err_group_invalid">This is not valid (empty name, nobody to add, or too many members).</string>
     <string name="err_group_state">This group is not active.</string>
+    <string name="err_mls_unavailable">The OpenMLS native engine is not available in this build. MLS group operations are blocked rather than falling back to weaker encryption.</string>
 </resources>

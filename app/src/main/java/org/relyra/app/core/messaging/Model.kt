@@ -42,9 +42,14 @@ enum class P2pSignalKind { OFFER, ANSWER }
 
 enum class GroupKind { GROUP, CHANNEL }
 enum class GroupRole { MEMBER, ADMIN, OWNER }
-enum class GroupState { INVITED, ACTIVE, LEFT, REMOVED }
+enum class GroupState { INVITED, JOINING, ACTIVE, LEFT, REMOVED }
+enum class GroupMlsKind { KEY_PACKAGE, COMMIT, WELCOME, APPLICATION, JOIN_ACK }
 
-class GroupMemberRef(val id: String, val role: GroupRole)
+data class GroupMemberRef(
+    val id: String,
+    val role: GroupRole,
+    val mlsJoined: Boolean = false,
+)
 
 object GroupLimits {
     const val MAX_MEMBERS = 200
@@ -64,10 +69,31 @@ sealed interface Envelope {
     /** Full membership snapshot of a group. Receivers accept it only from someone who is an admin/owner in THEIR copy. */
     class GroupSync(override val messageId: String, override val from: String, override val to: String,
                     val groupId: String, val name: String, val kind: GroupKind, val epoch: Long,
-                    val owner: String, val members: List<GroupMemberRef>) : Envelope
+                    val owner: String, val members: List<GroupMemberRef>,
+                    val mlsEnabled: Boolean = false, val mlsEpoch: Long = 0) : Envelope
 
     class GroupLeave(override val messageId: String, override val from: String, override val to: String,
                      val groupId: String) : Envelope
+
+    /** MLS protocol packet, always carried inside the sender's authenticated RELYRA session. */
+    class GroupMls(
+        override val messageId: String,
+        override val from: String,
+        override val to: String,
+        val groupId: String,
+        val kind: GroupMlsKind,
+        val payload: ByteArray,
+    ) : Envelope
+
+    /** A member read a specific per-recipient copy of a group message. */
+    class GroupReadReceipt(
+        override val messageId: String,
+        override val from: String,
+        override val to: String,
+        val groupId: String,
+        val originalMessageId: String,
+        val readAt: Long,
+    ) : Envelope
 
     class Chat(override val messageId: String, override val from: String, override val to: String,
                val sentAt: Long, val body: String) : Envelope
@@ -109,13 +135,15 @@ object AttachmentLimits {
         size in 1L..MAX_BYTES && blobSize > size && blobSize <= size + size / 1000 + 1024
 }
 
-/** Compact binary wire format (version 1). It is always wrapped in end-to-end encryption before it reaches a transport. */
+/** Compact binary wire format. It is always wrapped in end-to-end encryption before it reaches a transport. */
 object EnvelopeCodec {
     const val MAX_BODY = 4_000
     private const val MAX_PACKET = 64 * 1024
+    private const val MAX_MLS_PAYLOAD = 48 * 1024
     private const val M1 = 0x52
     private const val M2 = 0x4C
-    private const val VERSION = 1
+    private const val VERSION_1 = 1
+    private const val VERSION_2 = 2
     private const val T_CHAT = 1
     private const val T_ACK = 2
     private const val T_ATTACH = 3
@@ -123,12 +151,15 @@ object EnvelopeCodec {
     private const val T_GROUP_SYNC = 5
     private const val T_GROUP_LEAVE = 6
     private const val T_P2P_SIGNAL = 7
+    private const val T_GROUP_READ_RECEIPT = 8
+    private const val T_GROUP_MLS = 9
     const val MAX_P2P_SIGNAL_CHARS = 48_000
 
     fun encode(e: Envelope): ByteArray {
         val bos = ByteArrayOutputStream()
         DataOutputStream(bos).use { o ->
-            o.writeByte(M1); o.writeByte(M2); o.writeByte(VERSION)
+            val wireVersion = if (e is Envelope.GroupSync || e is Envelope.GroupMls) VERSION_2 else VERSION_1
+            o.writeByte(M1); o.writeByte(M2); o.writeByte(wireVersion)
             when (e) {
                 is Envelope.Chat -> {
                     o.writeByte(T_CHAT)
@@ -168,13 +199,29 @@ object EnvelopeCodec {
                     o.writeUTF(e.messageId); o.writeUTF(e.from); o.writeUTF(e.to)
                     o.writeUTF(e.groupId); o.writeUTF(e.name)
                     o.writeByte(e.kind.ordinal); o.writeLong(e.epoch); o.writeUTF(e.owner)
+                    o.writeBoolean(e.mlsEnabled); o.writeLong(e.mlsEpoch)
                     o.writeShort(e.members.size)
-                    for (m in e.members) { o.writeUTF(m.id); o.writeByte(m.role.ordinal) }
+                    for (m in e.members) {
+                        o.writeUTF(m.id); o.writeByte(m.role.ordinal); o.writeBoolean(m.mlsJoined)
+                    }
                 }
                 is Envelope.GroupLeave -> {
                     o.writeByte(T_GROUP_LEAVE)
                     o.writeUTF(e.messageId); o.writeUTF(e.from); o.writeUTF(e.to)
                     o.writeUTF(e.groupId)
+                }
+                is Envelope.GroupReadReceipt -> {
+                    require(e.readAt > 0)
+                    o.writeByte(T_GROUP_READ_RECEIPT)
+                    o.writeUTF(e.messageId); o.writeUTF(e.from); o.writeUTF(e.to)
+                    o.writeUTF(e.groupId); o.writeUTF(e.originalMessageId); o.writeLong(e.readAt)
+                }
+                is Envelope.GroupMls -> {
+                    require(e.payload.isNotEmpty() && e.payload.size <= MAX_MLS_PAYLOAD)
+                    o.writeByte(T_GROUP_MLS)
+                    o.writeUTF(e.messageId); o.writeUTF(e.from); o.writeUTF(e.to)
+                    o.writeUTF(e.groupId); o.writeByte(e.kind.ordinal)
+                    o.writeInt(e.payload.size); o.write(e.payload)
                 }
             }
         }
@@ -186,7 +233,9 @@ object EnvelopeCodec {
         if (bytes.size > MAX_PACKET) return null
         return try {
             DataInputStream(ByteArrayInputStream(bytes)).use { i ->
-                if (i.readUnsignedByte() != M1 || i.readUnsignedByte() != M2 || i.readUnsignedByte() != VERSION) return null
+                if (i.readUnsignedByte() != M1 || i.readUnsignedByte() != M2) return null
+                val wireVersion = i.readUnsignedByte()
+                if (wireVersion !in VERSION_1..VERSION_2) return null
                 val type = i.readUnsignedByte()
                 val id = i.readUTF()
                 val from = i.readUTF()
@@ -239,6 +288,9 @@ object EnvelopeCodec {
                         val kind = GroupKind.entries.getOrNull(i.readUnsignedByte()) ?: return null
                         val epoch = i.readLong()
                         val owner = i.readUTF()
+                        val mlsEnabled = if (wireVersion >= VERSION_2) i.readBoolean() else false
+                        val mlsEpoch = if (wireVersion >= VERSION_2) i.readLong() else 0L
+                        if (mlsEpoch < 0) return null
                         val count = i.readUnsignedShort()
                         if (count !in 1..GroupLimits.MAX_MEMBERS || name.length > GroupLimits.MAX_NAME || owner.length > 100 || epoch < 0) return null
                         val members = ArrayList<GroupMemberRef>(count)
@@ -246,14 +298,34 @@ object EnvelopeCodec {
                             val mid = i.readUTF()
                             val role = GroupRole.entries.getOrNull(i.readUnsignedByte()) ?: return null
                             if (mid.isEmpty() || mid.length > 100) return null
-                            members += GroupMemberRef(mid, role)
+                            val mlsJoined = if (wireVersion >= VERSION_2) i.readBoolean() else false
+                            members += GroupMemberRef(mid, role, mlsJoined)
                         }
-                        Envelope.GroupSync(id, from, to, gid, name, kind, epoch, owner, members)
+                        Envelope.GroupSync(id, from, to, gid, name, kind, epoch, owner, members, mlsEnabled, mlsEpoch)
                     }
                     T_GROUP_LEAVE -> {
                         val gid = i.readUTF()
                         UUID.fromString(gid)
                         Envelope.GroupLeave(id, from, to, gid)
+                    }
+                    T_GROUP_READ_RECEIPT -> {
+                        val gid = i.readUTF()
+                        val originalId = i.readUTF()
+                        val readAt = i.readLong()
+                        UUID.fromString(gid)
+                        UUID.fromString(originalId)
+                        if (readAt <= 0) return null
+                        Envelope.GroupReadReceipt(id, from, to, gid, originalId, readAt)
+                    }
+                    T_GROUP_MLS -> {
+                        if (wireVersion < VERSION_2) return null
+                        val gid = i.readUTF()
+                        UUID.fromString(gid)
+                        val kind = GroupMlsKind.entries.getOrNull(i.readUnsignedByte()) ?: return null
+                        val length = i.readInt()
+                        if (length !in 1..MAX_MLS_PAYLOAD || length > i.available()) return null
+                        val payload = ByteArray(length).also { i.readFully(it) }
+                        Envelope.GroupMls(id, from, to, gid, kind, payload)
                     }
                     else -> null
                 }
