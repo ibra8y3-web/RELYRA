@@ -88,7 +88,7 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
         try {
             require(plain.size<=MAX)
             val root=JSONObject(String(plain,Charsets.UTF_8))
-            require(root.optString("format")==FORMAT && root.optInt("version")==VERSION)
+            require(root.optString("format")==FORMAT && root.optInt("version") in 1..VERSION)
             val identity=checkNotNull(db.identityDao().get())
             require(root.optString("account")==identity.publicId)
             val ca=root.getJSONArray("contacts"); val ma=root.getJSONArray("messages"); val pa=root.getJSONArray("preferences")
