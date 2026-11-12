@@ -135,6 +135,11 @@ pub fn open_database(path: &str, key: &[u8]) -> Result<OpenDatabase, MlsError> {
              slot INTEGER PRIMARY KEY CHECK(slot = 1),
              public_key BLOB NOT NULL,
              key_pair BLOB NOT NULL
+         );
+         CREATE TABLE IF NOT EXISTS relyra_processed_mls_proposals (
+             group_id BLOB NOT NULL,
+             message_id TEXT NOT NULL,
+             PRIMARY KEY(group_id, message_id)
          );"
     ).map_err(MlsError::Sql)?;
     Ok(OpenDatabase { connection, _key: key })
