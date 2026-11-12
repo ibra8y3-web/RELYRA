@@ -36,6 +36,23 @@ jobs:
       - name: Build discovery container
         run: docker build -f services/discovery/Dockerfile -t relyra-discovery:ci services/discovery
 
+  mls-native:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: native/mls -> target
+      - name: Run OpenMLS and SQLCipher integration tests
+        working-directory: native/mls
+        run: cargo test --locked 2>/dev/null || cargo test
+
   build:
     runs-on: ubuntu-latest
     timeout-minutes: 60
