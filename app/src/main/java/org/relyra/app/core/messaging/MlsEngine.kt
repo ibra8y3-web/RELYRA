@@ -39,7 +39,9 @@ interface GroupMlsProvider {
     suspend fun proposeRemoveMember(groupId: String, relyraPublicId: String): ByteArray
     /** Stores a native RFC 9420 proposal only when its MLS credential matches the authenticated envelope sender. */
     suspend fun processProposal(message: ByteArray, messageId: String, expectedSenderPublicId: String, allowedTargetPublicIds: Set<String>, allowAdd: Boolean, allowRemove: Boolean): Long
-    suspend fun commitPendingProposals(groupId: String): MlsCommitBundle
+    suspend fun commitPendingProposals(groupId: String): MlsPreparedCommit
+    suspend fun pendingCommitInfo(groupId: String): MlsPreparedCommit?
+    suspend fun mergePendingCommit(groupId: String): Long
     suspend fun pendingProposalCount(groupId: String): Int
     suspend fun epoch(groupId: String): Long
     suspend fun members(groupId: String): List<String>
@@ -197,13 +199,34 @@ class MlsEngine(
             .also { check(it >= 0) { "OpenMLS rejected the proposal or its sender identity" } }
     }
 
-    override suspend fun commitPendingProposals(groupId: String): MlsCommitBundle = runNative {
-        val json = JSONObject(MlsNative.nativeCommitPendingProposals(groupIdBytes(groupId)))
-        MlsCommitBundle(
+    override suspend fun commitPendingProposals(groupId: String): MlsPreparedCommit = runNative {
+        decodePreparedCommit(MlsNative.nativeCommitPendingProposals(groupIdBytes(groupId)))
+    }
+
+    override suspend fun pendingCommitInfo(groupId: String): MlsPreparedCommit? = runNative {
+        val json = MlsNative.nativePendingCommitInfo(groupIdBytes(groupId))
+        if (json == "null" || json.isBlank()) null else decodePreparedCommit(json)
+    }
+
+    override suspend fun mergePendingCommit(groupId: String): Long = runNative {
+        MlsNative.nativeMergePendingCommit(groupIdBytes(groupId)).also {
+            check(it >= 0) { "OpenMLS could not merge the durable pending Commit" }
+        }
+    }
+
+    private fun decodePreparedCommit(raw: String): MlsPreparedCommit {
+        val json = JSONObject(raw)
+        fun stringSet(name: String) = buildSet {
+            val array = json.optJSONArray(name) ?: return@buildSet
+            for (index in 0 until array.length()) add(array.getString(index).lowercase())
+        }
+        return MlsPreparedCommit(
             commit = Base64.getDecoder().decode(json.getString("commit")),
             welcome = json.optString("welcome").takeIf { it.isNotBlank() && it != "null" }
                 ?.let(Base64.getDecoder()::decode),
             epoch = json.getLong("epoch"),
+            removedIds = stringSet("removed_ids"),
+            addedIds = stringSet("added_ids"),
         )
     }
 
