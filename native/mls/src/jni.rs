@@ -1,7 +1,7 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use crate::{
     add_members, create_group, encrypt, epoch, generate_key_package, join_group, members,
-    open_database, process_message, provider_with_signer, remove_member, MlsError, OpenDatabase,
+    key_package_identity, open_database, process_message, provider_with_signer, remove_member, MlsError, OpenDatabase,
 };
 use jni::{
     objects::{JByteArray, JClass, JObjectArray, JString},
@@ -140,6 +140,20 @@ pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeGenera
         Err(error) => { throw(&mut env, error); return ptr::null_mut(); }
     };
     let result = catch_result(&mut env, || with_database(|db| generate_key_package(db, &credential)));
+    result.map(|value| output_bytes(&mut env, &value)).unwrap_or(ptr::null_mut())
+}
+
+#[no_mangle]
+pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeKeyPackageIdentity(
+    mut env: JNIEnv,
+    _class: JClass,
+    key_package: JByteArray,
+) -> jbyteArray {
+    let key_package = match input_bytes(&mut env, key_package) {
+        Ok(value) => value,
+        Err(error) => { throw(&mut env, error); return ptr::null_mut(); }
+    };
+    let result = catch_result(&mut env, || with_database(|db| key_package_identity(db, &key_package)));
     result.map(|value| output_bytes(&mut env, &value)).unwrap_or(ptr::null_mut())
 }
 
