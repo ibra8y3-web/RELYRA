@@ -58,7 +58,7 @@ data class GroupChangeProposal(
 object GroupChangeProposalCodec {
     private const val MAGIC = "RELYRA-GROUP-CHANGE-PROPOSAL-V1"
     private const val VERSION = 1
-    private const val MAX_BYTES = 12 * 1024
+    private const val MAX_BYTES = 40 * 1024
 
     fun encode(proposal: GroupChangeProposal): ByteArray {
         require(runCatching { UUID.fromString(proposal.proposalId) }.isSuccess)
