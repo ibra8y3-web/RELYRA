@@ -7,6 +7,8 @@ import kotlinx.coroutines.flow.StateFlow
 
 enum class ThemeMode { SYSTEM, LIGHT, DARK, AMOLED }
 
+data class SyncablePreferences(val updatedAt: Long, val notifications: Boolean, val notificationPreview: Boolean, val listPreview: Boolean)
+
 /** Preferences that are not secrets. Shared by the UI, the notifier and the background service. */
 class AppSettings(context: Context) {
     private val prefs = context.applicationContext.getSharedPreferences("relyra_settings", Context.MODE_PRIVATE)
@@ -34,14 +36,21 @@ class AppSettings(context: Context) {
     private fun readTheme(): ThemeMode =
         ThemeMode.entries.getOrNull(prefs.getInt(K_THEME, 0)) ?: ThemeMode.SYSTEM
 
-    fun setNotifications(v: Boolean) { prefs.edit { putBoolean(K_NOTIF, v) }; _notifications.value = v }
-    fun setNotifPreview(v: Boolean) { prefs.edit { putBoolean(K_NOTIF_PREVIEW, v) }; _notifPreview.value = v }
-    fun setListPreview(v: Boolean) { prefs.edit { putBoolean(K_LIST_PREVIEW, v) }; _listPreview.value = v }
+    fun setNotifications(v: Boolean) { prefs.edit { putBoolean(K_NOTIF, v); putLong(K_SYNC_UPDATED, System.currentTimeMillis()) }; _notifications.value = v }
+    fun setNotifPreview(v: Boolean) { prefs.edit { putBoolean(K_NOTIF_PREVIEW, v); putLong(K_SYNC_UPDATED, System.currentTimeMillis()) }; _notifPreview.value = v }
+    fun setListPreview(v: Boolean) { prefs.edit { putBoolean(K_LIST_PREVIEW, v); putLong(K_SYNC_UPDATED, System.currentTimeMillis()) }; _listPreview.value = v }
     fun setKeepConnected(v: Boolean) { prefs.edit { putBoolean(K_KEEP, v) }; _keepConnected.value = v }
     fun setBlockScreenshots(v: Boolean) { prefs.edit { putBoolean(K_SHOTS, v) }; _blockShots.value = v }
     fun setWifiOnlyDownloads(v: Boolean) { prefs.edit { putBoolean(K_WIFI, v) }; _wifiOnly.value = v }
     fun setTheme(m: ThemeMode) { prefs.edit { putInt(K_THEME, m.ordinal) }; _theme.value = m }
 
+    fun exportSyncable() = SyncablePreferences(prefs.getLong(K_SYNC_UPDATED, 0L), _notifications.value, _notifPreview.value, _listPreview.value)
+    fun applySyncable(incoming: SyncablePreferences): Boolean {
+        if (incoming.updatedAt <= prefs.getLong(K_SYNC_UPDATED, 0L)) return false
+        prefs.edit { putBoolean(K_NOTIF, incoming.notifications); putBoolean(K_NOTIF_PREVIEW, incoming.notificationPreview); putBoolean(K_LIST_PREVIEW, incoming.listPreview); putLong(K_SYNC_UPDATED, incoming.updatedAt) }
+        _notifications.value = incoming.notifications; _notifPreview.value = incoming.notificationPreview; _listPreview.value = incoming.listPreview
+        return true
+    }
     /** Reloads in-memory flows after a verified backup restores SharedPreferences at process startup. */
     fun reload() {
         _notifications.value = prefs.getBoolean(K_NOTIF, true)
@@ -61,5 +70,6 @@ class AppSettings(context: Context) {
         const val K_SHOTS = "block_screenshots"
         const val K_WIFI = "wifi_only_downloads"
         const val K_THEME = "theme_mode"
+        const val K_SYNC_UPDATED = "syncable_prefs_updated_at"
     }
 }
