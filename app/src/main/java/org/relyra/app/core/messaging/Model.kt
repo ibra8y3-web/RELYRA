@@ -45,7 +45,7 @@ enum class GroupRole { MEMBER, ADMIN, OWNER }
 enum class GroupState { INVITED, JOINING, ACTIVE, LEFT, REMOVED }
 enum class GroupMlsKind { KEY_PACKAGE, COMMIT, WELCOME, APPLICATION, JOIN_ACK }
 
-class GroupMemberRef(
+data class GroupMemberRef(
     val id: String,
     val role: GroupRole,
     val mlsJoined: Boolean = false,
