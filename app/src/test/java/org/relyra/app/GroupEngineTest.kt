@@ -40,6 +40,17 @@ internal class FakeGroupStore : GroupStore {
         outbox[id] = r.copy(acked = true)
         return true
     }
+    override suspend fun markMessagesRead(groupId: String): List<GroupMessage> {
+        val unread = messages.values.filter { it.groupId == groupId && !it.outgoing && !it.readLocally }
+        unread.forEach { messages[it.messageId] = it.copy(readLocally = true) }
+        return unread
+    }
+    override suspend fun markReadReceipt(copyId: String, groupId: String, memberId: String, readAt: Long): Boolean {
+        val row = outbox[copyId] ?: return false
+        if (row.groupId != groupId || row.memberId != memberId || row.baseMessageId == null) return false
+        outbox[copyId] = row.copy(acked = true, readAt = row.readAt ?: readAt)
+        return true
+    }
     override suspend fun deleteGroup(groupId: String) {
         groups.remove(groupId); memberMap.remove(groupId)
         messages.values.removeAll { it.groupId == groupId }
@@ -261,6 +272,45 @@ class GroupEngineTest {
         assertTrue(names.single() == "Bob's edit" || names.single() == "Carol's edit")
         val epochs = listOf(alice, bob, carol, dave).map { it.store.group(gid)!!.epoch }.toSet()
         assertEquals(setOf(4L), epochs)
+    }
+
+    @Test fun groupReadReceiptsAreBoundToTheExactMemberCopyAndRespectPreference() = runBlocking {
+        val gid = groupWith(GroupKind.GROUP, bob, carol)
+        alice.engine.send(gid, "read me")
+        pump()
+
+        val bobCopy = alice.store.outbox.values.single { it.baseMessageId != null && it.memberId == "bob" }
+        val carolCopy = alice.store.outbox.values.single { it.baseMessageId != null && it.memberId == "carol" }
+
+        val forged = Envelope.GroupReadReceipt(
+            UUID.randomUUID().toString(), "carol", "alice", gid, bobCopy.id, now + 1
+        )
+        alice.engine.onEnvelope(forged)
+        assertNull(alice.store.outbox[bobCopy.id]!!.readAt)
+
+        bob.engine.markRead(gid, sendReceipts = true)
+        pump()
+        assertNotNull(alice.store.outbox[bobCopy.id]!!.readAt)
+        assertNull(alice.store.outbox[carolCopy.id]!!.readAt)
+
+        // Local read state is saved, but no receipt leaves the device when the preference is off.
+        carol.engine.markRead(gid, sendReceipts = false)
+        pump()
+        assertTrue(carol.store.messages.values.all { it.readLocally })
+        assertNull(alice.store.outbox[carolCopy.id]!!.readAt)
+    }
+
+    @Test fun readReceiptCodecRoundTripsAndRejectsTruncatedFrames() {
+        val receipt = Envelope.GroupReadReceipt(
+            UUID.randomUUID().toString(), "alice", "bob", UUID.randomUUID().toString(),
+            UUID.randomUUID().toString(), 1234L
+        )
+        val encoded = EnvelopeCodec.encode(receipt)
+        val decoded = EnvelopeCodec.decode(encoded) as Envelope.GroupReadReceipt
+        assertEquals(receipt.groupId, decoded.groupId)
+        assertEquals(receipt.originalMessageId, decoded.originalMessageId)
+        assertEquals(1234L, decoded.readAt)
+        assertNull(EnvelopeCodec.decode(encoded.copyOf(encoded.size - 1)))
     }
 
     @Test fun codecRoundTripAndMalformedInput() {
