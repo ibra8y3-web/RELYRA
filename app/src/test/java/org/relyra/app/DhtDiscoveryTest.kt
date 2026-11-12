@@ -38,7 +38,7 @@ class DhtDiscoveryTest {
         assertNull(PeerPresenceCodec.decode(json.replace("webrtc-data-v1", "unknown-v1"), publicId, now))
         assertNull(PeerPresenceCodec.decode(json, otherId, now))
         assertNull(PeerPresenceCodec.decode(json, publicId, now + PeerPresenceCodec.TTL_SECONDS + 1))
-        assertNull(PeerPresenceCodec.decode(json + " ", publicId, now))
+        assertNull(PeerPresenceCodec.decode(json.dropLast(1), publicId, now))
     }
 
     @Test fun discoveryGatewaysRequireHttpsAndRejectUrlCredentials() {
