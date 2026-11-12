@@ -582,7 +582,7 @@ class GroupEngineTest {
         }
         entered.await()
 
-        val mutation = kotlinx.coroutines.async { alice.engine.rename(gid, "after snapshot") }
+        val mutation = async { alice.engine.rename(gid, "after snapshot") }
         yield()
         assertFalse("group mutation must wait for the cross-store snapshot", mutation.isCompleted)
 
