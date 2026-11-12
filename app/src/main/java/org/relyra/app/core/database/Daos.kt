@@ -109,6 +109,9 @@ interface TrustedDeviceDao {
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertPending(device: TrustedDeviceEntity)
 
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun putSnapshot(device: TrustedDeviceEntity)
+
     @Query("UPDATE trusted_devices SET status = 'APPROVED', approvedAt = :approvedAt, lastSeenAt = :approvedAt WHERE deviceId = :deviceId AND accountId = :accountId AND status = 'PENDING'")
     suspend fun approvePending(deviceId: String, accountId: String, approvedAt: Long): Int
 
