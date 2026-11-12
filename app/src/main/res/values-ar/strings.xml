@@ -330,4 +330,26 @@
 
     <string name="groups_mls_pending_delivery_hint">بانتظار تأكيد استلام %1$d من الأعضاء. لن يُتاح الاعتماد حتى يخزن كل عضو المقترح.</string>
 
+    <string name="call_voice">مكالمة صوتية</string>
+    <string name="call_video">مكالمة فيديو</string>
+    <string name="call_incoming_voice">مكالمة صوتية واردة</string>
+    <string name="call_incoming_video">مكالمة فيديو واردة</string>
+    <string name="call_accept">قبول</string>
+    <string name="call_decline">رفض</string>
+    <string name="call_outgoing">جارٍ الاتصال…</string>
+    <string name="call_connecting">جارٍ الاتصال…</string>
+    <string name="call_active">المكالمة متصلة</string>
+    <string name="call_failed">فشلت المكالمة</string>
+    <string name="call_mute">كتم الصوت</string>
+    <string name="call_unmute">إلغاء الكتم</string>
+    <string name="call_speaker">مكبر الصوت</string>
+    <string name="call_earpiece">سماعة الأذن</string>
+    <string name="call_camera_off">إيقاف الكاميرا</string>
+    <string name="call_camera_on">تشغيل الكاميرا</string>
+    <string name="call_switch_camera">تبديل الكاميرا</string>
+    <string name="call_end">إنهاء المكالمة</string>
+    <string name="call_start_failed">تعذر بدء المكالمة. تحقق من الأذونات والاتصال.</string>
+    <string name="call_notification_channel">المكالمات</string>
+    <string name="call_notification_channel_desc">مكالمات RELYRA الواردة</string>
+    <string name="call_incoming_notification">لديك مكالمة واردة عبر RELYRA</string>
 </resources>
