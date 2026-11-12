@@ -92,6 +92,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val storage = MutableStateFlow<StorageState>(StorageState.Opening)
     val identity = MutableStateFlow<IdentityState>(IdentityState.Loading)
     val contacts = MutableStateFlow<List<ContactEntity>>(emptyList())
+    val trustedDevices = MutableStateFlow<List<org.relyra.app.core.database.TrustedDeviceEntity>>(emptyList())
+    val deviceCode = MutableStateFlow<String?>(null)
+    val deviceSyncCode = MutableStateFlow<String?>(null)
+    val deviceMessage = MutableStateFlow<String?>(null)
     val events = MutableStateFlow<List<SecurityEventEntity>>(emptyList())
     val eventCount = MutableStateFlow(0)
     val myCard = MutableStateFlow<String?>(null)
@@ -1077,6 +1081,58 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
 
+    fun refreshTrustedDevices() {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val account = checkNotNull(ctr().database.identityDao().get()).publicId
+                ctr().devices.ensureLocalDevice()
+                ctr().devices.observeTrustedDevices(account).collect { trustedDevices.value = it }
+            }.onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
+        }
+    }
+    fun createDevicePairingRequest(displayName: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { ctr().devices.createPairingRequest(displayName) }
+                .onSuccess { deviceCode.value = it; deviceMessage.value = null }
+                .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
+        }
+    }
+    fun approveDeviceRequest(code: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { ctr().devices.approvePairingRequest(code.trim()) }
+                .onSuccess { deviceSyncCode.value = it; deviceMessage.value = "Approval created. Send it to the new device." }
+                .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
+        }
+    }
+    fun acceptDeviceApproval(code: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { ctr().devices.acceptPairingApproval(code.trim()) }
+                .onSuccess { deviceMessage.value = "This device is now approved."; refreshTrustedDevices() }
+                .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
+        }
+    }
+    fun revokeDevice(deviceId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { ctr().devices.revoke(deviceId) }
+                .onSuccess { deviceMessage.value = "Device revoked." }
+                .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
+        }
+    }
+    fun exportDeviceSync(deviceId: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { ctr().deviceSync.exportEncrypted(deviceId) }
+                .onSuccess { deviceSyncCode.value = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(it) }
+                .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
+        }
+    }
+    fun importDeviceSync(code: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { ctr().deviceSync.importEncrypted(java.util.Base64.getUrlDecoder().decode(code.trim())) }
+                .onSuccess { report -> deviceMessage.value = "Imported " + report.contactsAdded + " contacts, " + report.messagesAdded + " messages; " + report.preferencesUpdated + " preferences updated; " + report.conflictsKept + " conflicts kept." }
+                .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
+        }
+    }
+    fun clearDeviceCodes() { deviceCode.value = null; deviceSyncCode.value = null }
     fun relock() {
         vaultUnlocked.value = false
         if (lockEnabled.value) unlocked.value = false
