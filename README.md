@@ -39,7 +39,7 @@ The current `main` branch contains the following implemented code. A green CI ru
 | Groups | Legacy groups use per-member Double Ratchet fan-out. New MLS groups use OpenMLS 0.9.2 through Rust/JNI, with KeyPackage, Welcome, Commit, ApplicationData, membership changes and persisted epochs |
 | MLS attachments and receipts | Group attachment descriptors travel in MLS ApplicationData; encrypted blobs use Blossom. Per-recipient group read receipts exist as authenticated RELYRA control messages (not MLS ApplicationData) |
 | Communities | Go discovery service and Android client; signed manifests/posts/moderation events, private invitations/access proofs, membership controls, reports and audit records. Community post bodies are currently stored as plaintext at the discovery service; signatures provide authenticity, not end-to-end confidentiality |
-| Network | Nostr WSS relays; WebRTC P2P DataChannel; signed presence through an operator-deployed Go/libp2p Kademlia service and HTTPS gateway; coturn configuration and short-lived TURN credentials |
+| Network | Nostr WSS relays; WebRTC P2P DataChannel; Bluetooth Classic/Wi-Fi Direct/Nearby LAN; opt-in BLE GATT Mesh source (unverified on devices); signed presence through an operator-deployed Go/libp2p Kademlia service and HTTPS gateway; coturn configuration and short-lived TURN credentials |
 | Nearby connections | Bluetooth Classic for already-paired devices, Wi-Fi Direct and Nearby LAN; authenticated known-contact handshakes. These are not BLE mesh or multi-hop relaying |
 | Files and local tools | Encrypted Blossom attachments, resumable HTTP Range downloads, local encrypted Vault, restricted WebView, read-only PDF viewer, file inspection and diagnostics |
 | Backup and restore | Passphrase-protected archive includes the database, Vault, inbox/outbox, MLS data and portable network/server preferences; archive paths, sizes and hashes are checked; restore stages data and supports guarded rollback |
@@ -142,7 +142,7 @@ app/src/main/java/org/relyra/app/
 │   ├── diagnostics/  Device and application diagnostics
 │   ├── identity/     Identity and contact repositories
 │   ├── messaging/    Delivery engine, envelopes and groups
-│   ├── network/      WebRTC P2P, DHT HTTPS client, Nostr, LAN, Bluetooth and Wi-Fi Direct
+│   ├── network/      WebRTC P2P, DHT HTTPS client, Nostr, LAN, Bluetooth Classic/LE Mesh and Wi-Fi Direct
 │   ├── notify/       Message notifications
 │   ├── storage/      Private attachment storage
 │   ├── tools/        On-device file inspection tools
