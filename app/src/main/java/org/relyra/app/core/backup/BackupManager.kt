@@ -302,11 +302,10 @@ object RestoreApplier {
                     throw java.io.IOException("could not checkpoint restored database")
                 }
             }
-            sdb.query("PRAGMA journal_mode=DELETE").use { cursor ->
-                if (!cursor.moveToFirst() || !cursor.getString(0).equals("delete", ignoreCase = true)) {
-                    throw java.io.IOException("could not finalize restored database")
-                }
-            }
+            // Do not switch journal_mode while Room's connection pool is open: SQLCipher
+            // may still hold pooled connections, making journal_mode=DELETE fail with SQLITE_LOCKED.
+            // A successful TRUNCATE checkpoint followed by closing Room is sufficient; the WAL
+            // sidecar is verified and removed below after every connection has been closed.
         } finally {
             restoredDb.close()
         }
