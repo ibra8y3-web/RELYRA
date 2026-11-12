@@ -46,7 +46,7 @@ WebRTC MediaTracks; encrypted/signed signaling; complete outgoing/incoming call 
 Secure device enrollment and approval, device inventory, revoke, key rotation, account/device binding, authenticated synchronization, conflict handling and settings UI.
 
 ### Phase 6 — offline Mesh
-Bluetooth LE distinct from existing Bluetooth Classic; authenticated multi-hop routing; local Store-and-Forward with TTL, deduplication, loop prevention, storage quotas, consent and controls/diagnostics in the app.
+**Source implementation added; build/runtime verification pending.** RELYRA now has an opt-in Bluetooth LE GATT transport, signed origin and per-hop transit envelopes, an eight-hop limit, 24-hour TTL, replay/deduplication tracking, loop prevention, a Keystore-encrypted local Store-and-Forward queue, a configurable 5–100 MB quota, independent relay consent, and Arabic/English network controls and diagnostics. The adaptive router uses BLE as an offline fallback after existing online/direct transports. No APK build, automated tests or physical-device interoperability checks were run; BLE multi-hop and background reliability are not verified. See [Phase 6 implementation notes](PHASE6_OFFLINE_MESH.md).
 
 ### Phase 7 — integrations
 Matrix and XMPP/OMEMO bridges with explicit trust boundaries; sandboxed Plugin SDK/runtime and permissions; authenticated Local API; optional IPFS integration; working settings/management screens.
