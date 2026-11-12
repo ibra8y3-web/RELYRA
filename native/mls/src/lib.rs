@@ -420,6 +420,151 @@ pub fn remove_member(
     Ok(CommitBundle { commit: BASE64.encode(commit), welcome, epoch: group.epoch().as_u64() })
 }
 
+
+/// Extract the account ID from RELYRA's BasicCredential framing. The credential
+/// is authenticated by OpenMLS and was account-signature-verified when its
+/// KeyPackage was admitted; this parser binds an incoming proposal to the
+/// authenticated RELYRA envelope sender.
+fn credential_public_id(encoded: &[u8]) -> Option<&str> {
+    if encoded.len() > 512 || encoded.len() < 5 + 2 + 2 + 64 ||
+        &encoded[..4] != b"RMLC" || encoded[4] != 1 {
+        return None;
+    }
+    let mut offset = 5usize;
+    let id_len = u16::from_be_bytes([*encoded.get(offset)?, *encoded.get(offset + 1)?]) as usize;
+    offset += 2;
+    let id_end = offset.checked_add(id_len)?;
+    let public_id = std::str::from_utf8(encoded.get(offset..id_end)?).ok()?;
+    offset = id_end;
+    let device_len = u16::from_be_bytes([*encoded.get(offset)?, *encoded.get(offset + 1)?]) as usize;
+    offset += 2;
+    let device_end = offset.checked_add(device_len)?;
+    let device_id = std::str::from_utf8(encoded.get(offset..device_end)?).ok()?;
+    offset = device_end;
+    if public_id.is_empty() || device_id.is_empty() || encoded.len() != offset + 64 {
+        return None;
+    }
+    Some(public_id)
+}
+
+/// Process and store one authenticated RFC 9420 Proposal. The outer RELYRA
+/// session sender is checked against the MLS BasicCredential before the
+/// proposal enters OpenMLS' persistent proposal store.
+pub fn process_proposal(
+    database: &mut OpenDatabase,
+    message: &[u8],
+    expected_public_id: &str,
+) -> Result<u64, MlsError> {
+    if message.is_empty() || message.len() > 1024 * 1024 ||
+        expected_public_id.is_empty() || expected_public_id.len() > 256 {
+        return Err(MlsError::InvalidMessage);
+    }
+    let (provider, _signer) = provider_with_signer(database)?;
+    let incoming = MlsMessageIn::tls_deserialize_exact_bytes(message)
+        .map_err(|_| MlsError::InvalidMessage)?;
+    let protocol: ProtocolMessage = incoming.try_into_protocol_message()
+        .map_err(|_| MlsError::InvalidMessage)?;
+    let id = GroupId::from_slice(protocol.group_id().as_slice());
+    let mut group = MlsGroup::load(provider.storage(), &id)
+        .map_err(|e| MlsError::Storage(e.to_string()))?
+        .ok_or(MlsError::GroupNotFound)?;
+    if !group.is_active() {
+        return Err(MlsError::Inactive);
+    }
+    let processed = group.process_message(&provider, protocol)
+        .map_err(|_| MlsError::InvalidMessage)?;
+    if !matches!(processed.sender(), Sender::Member(_)) ||
+        !credential_public_id(processed.credential().serialized_content())
+            .is_some_and(|id| id.eq_ignore_ascii_case(expected_public_id)) {
+        return Err(MlsError::IdentityMismatch);
+    }
+    match processed.into_content() {
+        ProcessedMessageContent::ProposalMessage(proposal) => {
+            group.store_pending_proposal(provider.storage(), *proposal)
+                .map_err(|e| MlsError::Storage(e.to_string()))?;
+        }
+        _ => return Err(MlsError::InvalidMessage),
+    }
+    Ok(group.epoch().as_u64())
+}
+
+/// Create a native RFC 9420 Add Proposal. The message is not committed until
+/// an authorized committer accepts it through commit_pending_proposals().
+pub fn propose_add_member(
+    database: &mut OpenDatabase,
+    group_id: &[u8],
+    key_package_bytes: &[u8],
+) -> Result<Vec<u8>, MlsError> {
+    if key_package_bytes.is_empty() || key_package_bytes.len() > 64 * 1024 {
+        return Err(MlsError::InvalidKeyPackage);
+    }
+    let (provider, signer) = provider_with_signer(database)?;
+    let id = GroupId::from_slice(group_id);
+    let mut group = MlsGroup::load(provider.storage(), &id)
+        .map_err(|e| MlsError::Storage(e.to_string()))?
+        .ok_or(MlsError::GroupNotFound)?;
+    let key_package = KeyPackageIn::tls_deserialize_exact_bytes(key_package_bytes)
+        .map_err(|_| MlsError::InvalidKeyPackage)?
+        .validate(provider.crypto(), ProtocolVersion::Mls10)
+        .map_err(|_| MlsError::InvalidKeyPackage)?;
+    let (message, _proposal_ref) = group.propose_add_member(&provider, &signer, &key_package)
+        .map_err(|_| MlsError::Rejected)?;
+    message.tls_serialize_detached().map_err(|_| MlsError::InvalidMessage)
+}
+
+/// Create a native RFC 9420 Remove Proposal for the member carrying this
+/// already-verified RELYRA account/device credential.
+pub fn propose_remove_member(
+    database: &mut OpenDatabase,
+    group_id: &[u8],
+    member_identity: &[u8],
+) -> Result<Vec<u8>, MlsError> {
+    let (provider, signer) = provider_with_signer(database)?;
+    let id = GroupId::from_slice(group_id);
+    let mut group = MlsGroup::load(provider.storage(), &id)
+        .map_err(|e| MlsError::Storage(e.to_string()))?
+        .ok_or(MlsError::GroupNotFound)?;
+    let target_index = group.members()
+        .find(|member| member.credential.serialized_content() == member_identity)
+        .map(|member| member.index)
+        .ok_or(MlsError::IdentityMismatch)?;
+    let (message, _proposal_ref) = group.propose_remove_member(&provider, &signer, target_index)
+        .map_err(|_| MlsError::Rejected)?;
+    message.tls_serialize_detached().map_err(|_| MlsError::InvalidMessage)
+}
+
+/// Commit all validated proposals currently queued in OpenMLS. The caller is
+/// responsible for enforcing the RELYRA owner/admin policy before invoking it.
+pub fn commit_pending_proposals(
+    database: &mut OpenDatabase,
+    group_id: &[u8],
+) -> Result<CommitBundle, MlsError> {
+    let (provider, signer) = provider_with_signer(database)?;
+    let id = GroupId::from_slice(group_id);
+    let mut group = MlsGroup::load(provider.storage(), &id)
+        .map_err(|e| MlsError::Storage(e.to_string()))?
+        .ok_or(MlsError::GroupNotFound)?;
+    if !group.has_pending_proposals() {
+        return Err(MlsError::Rejected);
+    }
+    let (commit, welcome, _group_info) = group.commit_to_pending_proposals(&provider, &signer)
+        .map_err(|_| MlsError::Rejected)?;
+    group.merge_pending_commit(&provider).map_err(|_| MlsError::Rejected)?;
+    let commit = commit.tls_serialize_detached().map_err(|_| MlsError::InvalidMessage)?;
+    let welcome = welcome.map(|message| message.tls_serialize_detached().map(|bytes| BASE64.encode(bytes)))
+        .transpose().map_err(|_| MlsError::InvalidMessage)?;
+    Ok(CommitBundle { commit: BASE64.encode(commit), welcome, epoch: group.epoch().as_u64() })
+}
+
+pub fn pending_proposal_count(database: &mut OpenDatabase, group_id: &[u8]) -> Result<usize, MlsError> {
+    let (provider, _signer) = provider_with_signer(database)?;
+    let id = GroupId::from_slice(group_id);
+    let group = MlsGroup::load(provider.storage(), &id)
+        .map_err(|e| MlsError::Storage(e.to_string()))?
+        .ok_or(MlsError::GroupNotFound)?;
+    Ok(group.pending_proposals().count())
+}
+
 pub fn epoch(database: &mut OpenDatabase, group_id: &[u8]) -> Result<u64, MlsError> {
     let (provider, _signer) = provider_with_signer(database)?;
     let id = GroupId::from_slice(group_id);
