@@ -333,7 +333,8 @@ fun GroupChatScreen(vm: MainViewModel, groupId: String) {
                     val d = deliveryById[m.messageId]
                     if (mine && d != null) {
                         Text(
-                            stringResource(R.string.groups_delivered, d.delivered, d.total),
+                            stringResource(R.string.groups_delivered, d.delivered, d.total) +
+                                if (d.readCount > 0) " · " + stringResource(R.string.groups_read, d.readCount, d.total) else "",
                             style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
                     }
