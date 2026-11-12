@@ -1152,7 +1152,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             runCatching { ctr().devices.rotateLocalDeviceKeys() }
                 .onSuccess { code ->
                     deviceSyncCode.value = code
-                    deviceMessage.value = "This device's keys were rotated. Other trusted devices receive the new public keys through automatic sync."
+                    deviceMessage.value = "This device's signing key was rotated. Other trusted devices receive the new public key through automatic sync."
                     refreshTrustedDevices()
                 }
                 .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
