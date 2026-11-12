@@ -225,13 +225,12 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         val (body,signature)=open(encoded,ROTATION)
         val values=DataInputStream(ByteArrayInputStream(body)).use { input ->
             require(input.readUTF()==ROTATION)
-            List(10) { input.readUTF() }.also { require(input.available()==0) }
+            List(9) { input.readUTF() }.also { require(input.available()==0) }
         }
         val account=values[0]; val deviceId=values[1]; val timestamp=values[2]
         val oldVersion=values[3].toLong(); val newVersion=values[4].toLong()
         val oldSigning=un64(values[5]); val newSigning=un64(values[6])
         val oldEncryption=un64(values[7]); val newEncryption=un64(values[8])
-        require(values[9].isEmpty())
         val device=checkNotNull(db.trustedDeviceDao().get(deviceId)) { "Unknown rotating device" }
         require(account==identity.publicId && device.accountId==account &&
             device.status==TrustedDeviceStatus.APPROVED && device.keyVersion==oldVersion &&
