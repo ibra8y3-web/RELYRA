@@ -17,6 +17,8 @@ data class GroupRecord(
     val state: GroupState,
     val createdAt: Long,
     val invitedBy: String,
+    val mlsEnabled: Boolean = false,
+    val mlsEpoch: Long = 0,
 )
 
 data class GroupMessage(
@@ -63,6 +65,8 @@ interface GroupStore {
     suspend fun markMessagesRead(groupId: String): List<GroupMessage>
     /** Accepts a read receipt only for the exact per-member copy stored in this outbox. */
     suspend fun markReadReceipt(copyId: String, groupId: String, memberId: String, readAt: Long): Boolean
+    /** Atomically records a one-time group control packet (MLS handshake/commit). */
+    suspend fun recordControlMessage(id: String, receivedAt: Long): Boolean
     suspend fun deleteGroup(groupId: String)
 }
 
