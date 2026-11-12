@@ -37,6 +37,7 @@
     <string name="groups_delivered">Delivered to %1$d of %2$d</string>
     <string name="groups_read">Read by %1$d of %2$d</string>
     <string name="groups_attach_file">Attach file</string>
+    <string name="groups_files_require_mls">Group attachments require an MLS-enabled group.</string>
     <string name="groups_file_download">Download encrypted attachment</string>
     <string name="groups_file_downloading">Downloading and verifying file…</string>
     <string name="groups_file_save">Save file</string>
