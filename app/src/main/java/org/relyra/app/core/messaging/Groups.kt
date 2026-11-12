@@ -121,6 +121,12 @@ class GroupEngine(
 ) : GroupInbound {
     private val lock = Mutex()
 
+    /**
+     * Holds the same lock used by every group state transition while a cross-store
+     * snapshot is taken. Backup callers must acquire this before the MLS native barrier.
+     */
+    suspend fun <T> withBackupBarrier(block: suspend () -> T): T = lock.withLock { block() }
+
     // ---- creating and posting ------------------------------------------------------------------------------
 
     suspend fun create(name: String, kind: GroupKind, memberIds: List<String>): GroupOutcome = lock.withLock {
