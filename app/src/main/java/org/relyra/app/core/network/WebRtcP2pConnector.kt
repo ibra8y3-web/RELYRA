@@ -300,6 +300,11 @@ class WebRtcP2pConnector(
                     else -> InternetPeerState.NEW
                 }
                 states.value = states.value + (peerId to mapped)
+                if (state == PeerConnection.IceConnectionState.DISCONNECTED ||
+                    state == PeerConnection.IceConnectionState.FAILED
+                ) {
+                    scheduleRecovery(peerId, peer)
+                }
             }
             override fun onIceConnectionReceivingChange(receiving: Boolean) = Unit
             override fun onIceGatheringChange(state: PeerConnection.IceGatheringState) {
