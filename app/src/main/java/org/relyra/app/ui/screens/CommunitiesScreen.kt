@@ -486,21 +486,19 @@ fun CommunitiesScreen(vm: MainViewModel) {
                     }
                     OutlinedButton(onClick = { expanded = true }) { Text(actionLabel) }
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
-                        val availableActions = if (isOwner) {
-                            listOf(
-                                "ban" to R.string.communities_action_ban,
-                                "mute" to R.string.communities_action_mute,
-                                "slow_mode" to R.string.communities_action_slow_mode,
+                        val commonActions = listOf(
+                            "ban" to R.string.communities_action_ban,
+                            "mute" to R.string.communities_action_mute,
+                            "slow_mode" to R.string.communities_action_slow_mode,
+                        )
+                        val availableActions = when {
+                            isOwner -> commonActions + listOf(
                                 "unban" to R.string.communities_action_unban,
-                                "remove_member" to R.string.communities_action_remove_member,
                                 "allow_post" to R.string.communities_action_allow_post,
-                            )
-                        } else {
-                            listOf(
-                                "ban" to R.string.communities_action_ban,
-                                "mute" to R.string.communities_action_mute,
-                                "slow_mode" to R.string.communities_action_slow_mode,
-                            )
+                            ) + if (selectedManifest.visibility == "private") {
+                                listOf("remove_member" to R.string.communities_action_remove_member)
+                            } else emptyList()
+                            else -> commonActions
                         }
                         availableActions.forEach { (value, label) ->
                             DropdownMenuItem(
