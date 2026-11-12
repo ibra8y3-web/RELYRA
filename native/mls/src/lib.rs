@@ -776,6 +776,9 @@ mod tests {
         let key_package = generate_key_package(&mut invitee, &invitee_credential).unwrap();
         let proposal = propose_add_member(&mut owner, gid, &key_package).unwrap();
         assert_eq!(process_proposal(&mut owner, &proposal, "proposal-add-1", "alice", &["bob".to_owned()], true, false).unwrap(), 0);
+        // Re-delivery after a lost application ACK must not double-store or reject
+        // the already accepted native proposal.
+        assert_eq!(process_proposal(&mut owner, &proposal, "proposal-add-1", "alice", &["bob".to_owned()], true, false).unwrap(), 0);
         assert_eq!(pending_proposal_count(&mut owner, gid).unwrap(), 1);
 
         let committed = commit_pending_proposals(&mut owner, gid).unwrap();
