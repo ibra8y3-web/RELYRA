@@ -114,3 +114,13 @@ jobs:
           profile: pixel_2
           disable-animations: true
           script: gradle --no-daemon --console=plain connectedDebugAndroidTest
+
+      - name: Upload SQLCipher instrumentation reports
+        if: always()
+        uses: actions/upload-artifact@v7
+        with:
+          name: relyra-sqlcipher-instrumentation-reports
+          path: |
+            app/build/reports/androidTests/connected/debug/
+            app/build/outputs/androidTest-results/connected/debug/
+          if-no-files-found: warn
