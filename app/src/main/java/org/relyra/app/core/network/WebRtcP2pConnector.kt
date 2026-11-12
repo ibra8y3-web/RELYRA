@@ -411,6 +411,7 @@ class WebRtcP2pConnector(
             }
             if (answer != null) {
                 approvedPeers.add(targetId)
+                peers[targetId]?.let { watchConnectionEstablishment(targetId, it) }
                 dismissIncomingOffer(targetId)
             } else {
                 retirePeer(targetId)
@@ -433,6 +434,7 @@ class WebRtcP2pConnector(
         return try {
             setDescription(peer.connection, false, SessionDescription(SessionDescription.Type.ANSWER, signal.sdp))
             approvedPeers.add(targetId)
+            watchConnectionEstablishment(targetId, peer)
             true
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -627,6 +629,18 @@ class WebRtcP2pConnector(
         }
     }
 
+    private fun watchConnectionEstablishment(peerId: String, expectedPeer: Peer) {
+        scope.launch(Dispatchers.IO) {
+            delay(NEGOTIATION_WATCHDOG_MS)
+            if (peers[peerId] !== expectedPeer || !approvedPeers.contains(peerId)) return@launch
+            val ice = expectedPeer.connection.iceConnectionState()
+            val connected = expectedPeer.channel?.state() == DataChannel.State.OPEN &&
+                (ice == PeerConnection.IceConnectionState.CONNECTED ||
+                    ice == PeerConnection.IceConnectionState.COMPLETED)
+            if (!connected) scheduleRecovery(peerId, expectedPeer)
+        }
+    }
+
     private suspend fun awaitInternet(): Boolean {
         repeat(WebRtcReconnectPolicy.NETWORK_WAIT_ATTEMPTS) {
             val active = connectivityManager.activeNetwork
@@ -754,5 +768,6 @@ class WebRtcP2pConnector(
         private const val MAX_BUFFERED_BYTES = 512L * 1024L
         private const val ACK_TIMEOUT_MS = 8_000L
         private const val SDP_CALLBACK_TIMEOUT_MS = 12_000L
+        private const val NEGOTIATION_WATCHDOG_MS = 30_000L
     }
 }
