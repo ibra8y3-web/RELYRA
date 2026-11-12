@@ -132,7 +132,8 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         require(challenge.length in 40..64 && approved.toLong() <= System.currentTimeMillis()+60_000)
         require(secure.loadDevicePairingChallenge(id)?.contentEquals(un64(challenge)) == true) { "Pairing challenge does not match this installation" }
         val approverPublicKey=un64(approverSign)
-        require(approverPublicKey.size==32 && IdentityCrypto.verify(approverPublicKey,sig,body)) {
+        require(approverPublicKey.size==32 &&
+            (IdentityCrypto.verify(approverPublicKey,sig,body) || IdentityCrypto.verify(identity.publicKey,sig,body))) {
             "Approval signature invalid"
         }
         val row=checkNotNull(db.trustedDeviceDao().get(id))
@@ -172,15 +173,22 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         val (body, signature) = open(encoded, REVOCATION)
         val values = DataInputStream(ByteArrayInputStream(body)).use { input ->
             require(input.readUTF() == REVOCATION)
-            List(5) { input.readUTF() }.also { require(input.available() == 0) }
+            buildList { while(input.available()>0) add(input.readUTF()) }
         }
-        val (account, target, timestamp, signerDeviceId, signerKey) = values
-        val signer=checkNotNull(db.trustedDeviceDao().get(signerDeviceId)) { "Unknown revocation signer" }
-        val signerPublic=un64(signerKey)
-        require(account == identity.publicId && signer.accountId==account &&
-            signer.status==TrustedDeviceStatus.APPROVED && signer.signingPublicKey.contentEquals(signerPublic))
-        require(timestamp.toLong() <= System.currentTimeMillis() + 60_000)
-        require(IdentityCrypto.verify(signerPublic, signature, body)) { "Invalid revocation signature" }
+        require(values.size==4 || values.size==5) { "Invalid revocation token" }
+        val account=values[0]; val target=values[1]; val timestamp=values[2]
+        require(account==identity.publicId && timestamp.toLong()<=System.currentTimeMillis()+60_000)
+        if(values.size==4) {
+            // Accept previously issued root-signed revocation tokens.
+            require(un64(values[3]).contentEquals(identity.publicKey) &&
+                IdentityCrypto.verify(identity.publicKey,signature,body)) { "Invalid legacy revocation signature" }
+        } else {
+            val signer=checkNotNull(db.trustedDeviceDao().get(values[3])) { "Unknown revocation signer" }
+            val signerPublic=un64(values[4])
+            require(signer.accountId==account && signer.status==TrustedDeviceStatus.APPROVED &&
+                signer.signingPublicKey.contentEquals(signerPublic) &&
+                IdentityCrypto.verify(signerPublic,signature,body)) { "Invalid revocation signature" }
+        }
         val now = System.currentTimeMillis()
         val existing = db.trustedDeviceDao().get(target)
         when (existing?.status) {
