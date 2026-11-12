@@ -33,6 +33,7 @@ import (
 
 	presence "github.com/ibra8y3-web/RELYRA/services/discovery/internal/protocol"
 	communities "github.com/ibra8y3-web/RELYRA/services/discovery/internal/community"
+	mailbox "github.com/ibra8y3-web/RELYRA/services/discovery/internal/mailbox"
 	dhtdirectory "github.com/ibra8y3-web/RELYRA/services/discovery/internal/dhtdirectory"
 	dhtvalidation "github.com/ibra8y3-web/RELYRA/services/discovery/internal/dhtvalidation"
 )
@@ -85,6 +86,8 @@ type server struct {
 	nodeKey      crypto.PrivKey
 	datastore    *pebbleds.Datastore
 	communities  *communities.Store
+	mailbox *mailbox.Store
+	storeForwardEnabled bool
 	turnSecret   string
 	turnRealm    string
 	turnURLs     []string
@@ -236,6 +239,8 @@ func newServer(ctx context.Context) (*server, error) {
 	return &server{
 		dht: router, host: p2pHost, nodeKey: privateKey, datastore: datastore,
 		communities: communities.NewStore(datastore),
+		mailbox: mailbox.NewStore(datastore),
+		storeForwardEnabled: strings.EqualFold(strings.TrimSpace(os.Getenv("RELYRA_STORE_FORWARD_ENABLED")), "true"),
 		turnSecret: os.Getenv("RELYRA_TURN_SHARED_SECRET"),
 		turnRealm: env("RELYRA_TURN_REALM", "turn.relyra.invalid"),
 		turnURLs: turnURLs, turnTTL: turnTTL,
@@ -256,6 +261,9 @@ func (s *server) routes() http.Handler {
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /healthz", s.health)
 	mux.HandleFunc("POST /v1/records", s.publishRecord)
+	mux.HandleFunc("POST /v1/mailbox", s.enqueueMailbox)
+	mux.HandleFunc("GET /v1/mailbox", s.listMailbox)
+	mux.HandleFunc("DELETE /v1/mailbox/{messageID}", s.deleteMailbox)
 	mux.HandleFunc("GET /v1/records/{publicID}", s.lookupRecord)
 	mux.HandleFunc("POST /v1/turn-credentials", s.turnCredentials)
 	mux.HandleFunc("GET /v1/communities", s.discoverCommunities)
@@ -299,6 +307,8 @@ func (s *server) guard(next http.Handler) http.Handler {
 		switch {
 		case strings.Contains(r.URL.Path, "/turn-credentials"):
 			limit = turnRate
+		case strings.HasPrefix(r.URL.Path, "/v1/mailbox"):
+			limit = 30
 		case strings.Contains(r.URL.Path, "/reports"):
 			limit = communityReportRate
 		case r.Method == http.MethodPost && strings.Contains(r.URL.Path, "/events"):
@@ -316,6 +326,90 @@ func (s *server) guard(next http.Handler) http.Handler {
 	})
 }
 
+
+
+func (s *server) enqueueMailbox(w http.ResponseWriter, r *http.Request) {
+	if !s.storeForwardEnabled {
+		writeError(w, http.StatusServiceUnavailable, "store-and-forward is disabled by this relay operator")
+		return
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, mailbox.MaxEnvelopeBytes)
+	raw, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "invalid or oversized mailbox envelope")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	inserted, err := s.mailbox.Put(ctx, raw)
+	if errors.Is(err, mailbox.ErrQuotaExceeded) {
+		writeError(w, http.StatusTooManyRequests, "recipient mailbox quota exceeded")
+		return
+	}
+	if err != nil {
+		writeError(w, http.StatusBadRequest, err.Error())
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "duplicate": !inserted})
+}
+
+func (s *server) listMailbox(w http.ResponseWriter, r *http.Request) {
+	if !s.storeForwardEnabled {
+		writeError(w, http.StatusServiceUnavailable, "store-and-forward is disabled by this relay operator")
+		return
+	}
+	actorID, err := s.communityActorFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusForbidden, "mailbox identity proof rejected")
+		return
+	}
+	limit := 20
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		value, parseErr := strconv.Atoi(raw)
+		if parseErr != nil || value < 1 || value > mailbox.MaxListPage {
+			writeError(w, http.StatusBadRequest, "invalid mailbox page size")
+			return
+		}
+		limit = value
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	items, err := s.mailbox.List(ctx, actorID, limit)
+	if err != nil {
+		writeError(w, http.StatusServiceUnavailable, "mailbox lookup unavailable")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"messages": items})
+}
+
+func (s *server) deleteMailbox(w http.ResponseWriter, r *http.Request) {
+	if !s.storeForwardEnabled {
+		writeError(w, http.StatusServiceUnavailable, "store-and-forward is disabled by this relay operator")
+		return
+	}
+	actorID, err := s.communityActorFromRequest(r)
+	if err != nil {
+		writeError(w, http.StatusForbidden, "mailbox identity proof rejected")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 3*time.Second)
+	defer cancel()
+	err = s.mailbox.Delete(ctx, actorID, r.PathValue("messageID"))
+	switch {
+	case errors.Is(err, mailbox.ErrNotFound):
+		writeError(w, http.StatusNotFound, "mailbox item not found")
+	case errors.Is(err, mailbox.ErrUnauthorized):
+		writeError(w, http.StatusForbidden, "mailbox acknowledgement denied")
+	case err != nil:
+		writeError(w, http.StatusServiceUnavailable, "mailbox acknowledgement failed")
+	default:
+		w.Header().Set("Cache-Control", "no-store")
+		writeJSON(w, http.StatusOK, map[string]any{"deleted": true})
+	}
+}
+
 func (s *server) health(w http.ResponseWriter, r *http.Request) {
 	routingTableSize := s.dht.RoutingTable().Size()
 	connectedPeers := len(s.host.Network().Peers())
@@ -328,6 +422,7 @@ func (s *server) health(w http.ResponseWriter, r *http.Request) {
 		"routingTableSize": routingTableSize,
 		"connectedPeers": connectedPeers,
 		"dhtReady": routingTableSize > 0 && connectedPeers > 0,
+		"storeForwardEnabled": s.storeForwardEnabled,
 	})
 }
 

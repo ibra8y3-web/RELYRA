@@ -34,6 +34,28 @@ Lookup is identity-indexed: a user needs the exact RELYRA public ID to query the
 
 The node's peer ID is stable across restarts as long as the persistent volume is retained. Losing the volume changes the peer ID and requires bootstrap addresses to be updated.
 
+## Opt-in Store-and-Forward mailbox
+
+Store-and-Forward is disabled by default. A relay operator must explicitly set
+`RELYRA_STORE_FORWARD_ENABLED=true` in the server environment to accept mailbox
+traffic. The Compose deployment exposes the same opt-in through
+`RELYRA_STORE_FORWARD_ENABLED` in `.env`.
+
+The mailbox stores only a sender-signed RELYRA wire packet. The app encrypts the
+message end-to-end before it reaches this service; the service verifies the
+sender signature and payload digest but cannot decrypt the packet. Each recipient
+mailbox is limited to 256 unexpired records and 16 MiB, each packet is capped at
+64 KiB, and each item expires within 24 hours. A recipient authenticates inbox
+reads and acknowledgements with an identity signature; successful delivery is
+acknowledged by deleting the queued item. Operators must still protect the host,
+monitor disk usage, and understand that metadata (sender, recipient, time and
+packet size) remains visible to the relay.
+
+API:
+- `POST /v1/mailbox` — submit a signed opaque packet (operator opt-in required).
+- `GET /v1/mailbox?limit=20` — list the authenticated identity's pending packets.
+- `DELETE /v1/mailbox/<message-id>` — acknowledge and delete a packet as its recipient.
+
 ## TURN credentials
 
 The discovery API issues a short-lived coturn REST credential only after verifying a signed Ed25519 challenge from a valid RELYRA identity. A nonce can be used once, challenge timestamps are limited to a 60-second window, and each identity/IP is rate-limited. The default credential lifetime is five minutes and can be set between 60 and 600 seconds.
