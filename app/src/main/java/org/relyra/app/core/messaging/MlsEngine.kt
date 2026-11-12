@@ -18,6 +18,15 @@ data class MlsCommitBundle(
     val epoch: Long,
 )
 
+data class MlsPreparedCommit(
+    val commit: ByteArray,
+    val welcome: ByteArray?,
+    val epoch: Long,
+    val removedIds: Set<String>,
+    val addedIds: Set<String>,
+    val controlMessageId: String?,
+)
+
 data class MlsProcessedMessage(
     val kind: String,
     val groupId: String,
