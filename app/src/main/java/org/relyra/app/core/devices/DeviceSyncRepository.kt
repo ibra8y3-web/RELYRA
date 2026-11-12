@@ -4,6 +4,7 @@ import androidx.room.withTransaction
 import org.json.JSONArray
 import org.json.JSONObject
 import org.relyra.app.core.database.*
+import org.relyra.app.core.crypto.IdentityCrypto
 import java.util.Base64
 
 data class DeviceSyncReport(val contactsAdded:Int,val messagesAdded:Int,val preferencesUpdated:Int,val conflictsKept:Int)
@@ -60,7 +61,9 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
                 for(i in 0 until ca.length()) {
                     val j=ca.getJSONObject(i); val id=j.getString("id")
                     require(id.isNotBlank()&&id.length<=128)
-                    val incoming=ContactEntity(id,j.getString("name").take(80),dec(j.getString("pub"),128),
+                    val publicKey=dec(j.getString("pub"),128)
+                    require(IdentityCrypto.publicId(publicKey)==id) { "Contact identity does not match its public key" }
+                    val incoming=ContactEntity(id,j.getString("name").take(80),publicKey,
                         j.optBoolean("verified"),j.optBoolean("blocked"),j.optBoolean("cardSigned"),j.getLong("addedAt"),
                         j.optNullableBytes("enc"),j.optNullableBytes("nostr"),j.optNullableLong("spkId"),
                         j.optNullableBytes("spk"),j.optNullableLong("spkExp"),j.optNullableBytes("spkSig"),
