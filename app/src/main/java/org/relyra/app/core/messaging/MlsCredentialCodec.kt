@@ -61,7 +61,7 @@ object MlsCredentialCodec {
                 if (input.readInt() != MAGIC || input.readUnsignedByte() != VERSION) return null
                 val publicId = input.readUTF()
                 val deviceId = input.readUTF()
-                val signature = ByteArray(SIGNATURE_BYTES).also(input::readFully)
+                val signature = ByteArray(SIGNATURE_BYTES).also { input.readFully(it) }
                 if (input.available() != 0) return null
                 signingPayload(publicId, deviceId)
                 MlsIdentityCredential(publicId, deviceId, signature)
