@@ -49,6 +49,13 @@ class AppContainer(context: Context) {
     val messages by lazy { RoomMessageStore(database) }
     val groupStore by lazy { RoomGroupStore(database) }
     val mls by lazy { org.relyra.app.core.messaging.MlsEngine(appContext, secure) }
+    val communityClient by lazy {
+        org.relyra.app.core.community.CommunityClient(
+            baseUrl = { network.discoveryGateways.value.firstOrNull { it.enabled }?.url },
+            ownPublicId = { database.identityDao().get()?.publicId },
+            sign = { bytes -> identities.sign(bytes) ?: throw IllegalStateException("RELYRA signing key is unavailable") },
+        )
+    }
     val data: DataManager by lazy {
         DataManager(
             db = database,
