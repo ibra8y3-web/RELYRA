@@ -380,4 +380,9 @@
 
     <string name="devices_revocation_code">Signed device revocation code</string>
     <string name="devices_apply_revocation">Apply signed revocation</string>
+    <string name="ev_device_pending">Device enrollment requested</string>
+    <string name="ev_device_approved">Device approved</string>
+    <string name="ev_device_revoked">Device trust revoked</string>
+    <string name="ev_device_key_rotated">Device keys rotated</string>
+    <string name="ev_device_sync_conflict">Device sync conflict</string>
 </resources>
