@@ -52,6 +52,11 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
             check(row.accountId == identity.publicId && row.status == TrustedDeviceStatus.APPROVED) { "This device is not trusted" }
             return row
         }
+        // A device may bootstrap itself only when this account has no device records at all.
+        // A second installation must complete the signed pairing flow; never auto-trust it here.
+        check(db.trustedDeviceDao().countForAccount(identity.publicId) == 0) {
+            "This installation is not trusted. Complete pairing from an already trusted device."
+        }
         val signing = IdentityCrypto.generate()
         val enc = ByteArray(32).also { SecureRandom().nextBytes(it) }
         secure.saveDeviceSigningSeed(id, signing.seed); secure.saveDeviceEncryptionSecret(id, enc)
