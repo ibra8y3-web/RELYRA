@@ -213,7 +213,7 @@ class GroupEngine(
             )
         }
         val attachment = GroupAttachmentRecord(
-            messageId, groupId, me, FileNameSanitizer.safe(file.name), file.mime,
+            messageId, groupId, me, org.relyra.app.core.transfer.FileNames.sanitize(file.name), file.mime,
             file.size, file.blobSize, file.plainSha256, file.blobSha256, file.fileKey,
             normalizedUrl, null, GroupAttachmentPhase.UPLOADED, now, true,
         )
@@ -540,7 +540,7 @@ class GroupEngine(
                             app.file.serverUrl, allowPrivate = false,
                         ) ?: return
                         val attachment = GroupAttachmentRecord(
-                            app.messageId, env.groupId, env.from, FileNameSanitizer.safe(app.file.name),
+                            app.messageId, env.groupId, env.from, org.relyra.app.core.transfer.FileNames.sanitize(app.file.name),
                             app.file.mime, app.file.size, app.file.blobSize, app.file.plainSha256,
                             app.file.blobSha256, app.file.fileKey, safeUrl, null,
                             GroupAttachmentPhase.REMOTE, app.sentAt, false,
