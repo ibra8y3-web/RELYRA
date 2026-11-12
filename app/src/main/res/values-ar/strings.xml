@@ -378,4 +378,6 @@
     <string name="devices_last_seen">آخر ظهور (توقيت محلي)</string>
     <string name="devices_revoke">إلغاء الثقة</string>
 
+    <string name="devices_revocation_code">رمز إلغاء الثقة الموقّع</string>
+    <string name="devices_apply_revocation">تطبيق إلغاء الثقة الموقّع</string>
 </resources>
