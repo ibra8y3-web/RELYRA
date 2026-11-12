@@ -38,6 +38,7 @@ const (
 	eventPrefix = "/relyra/community/event/"
 	sequencePrefix = "/relyra/community/sequence/"
 	reportPrefix = "/relyra/community/report/"
+	banPrefix = "/relyra/community/ban/"
 	manifestDomain = "RELYRA-COMMUNITY-MANIFEST-V1"
 	eventDomain = "RELYRA-COMMUNITY-MODERATION-V1"
 	reportDomain = "RELYRA-COMMUNITY-REPORT-V1"
@@ -185,7 +186,7 @@ func canonicalEvent(e ModerationEvent) ([]byte, error) {
 		return nil, errors.New("invalid moderation sequence, policy or timestamps")
 	}
 	switch e.Action {
-	case "ban", "mute", "slow_mode", "remove_member", "allow_post":
+	case "ban", "unban", "mute", "slow_mode", "remove_member", "allow_post":
 	default:
 		return nil, errors.New("unsupported moderation action")
 	}
@@ -228,7 +229,7 @@ func VerifyModerationEvent(e ModerationEvent, m Manifest, now time.Time) error {
 		if strings.EqualFold(id, e.ActorPublicID) { isModerator = true; break }
 	}
 	if !isOwner && !isModerator { return errors.New("actor is not an authorized community moderator") }
-	if !isOwner && (e.Action == "remove_member" || e.Action == "allow_post") {
+	if !isOwner && (e.Action == "remove_member" || e.Action == "allow_post" || e.Action == "unban") {
 		return errors.New("only the community owner may remove members or change posting permissions")
 	}
 	payload, err := canonicalEvent(e)
@@ -358,6 +359,34 @@ func sequenceStorageKey(id, actor string) string {
 	return sequencePrefix + strings.ToLower(id) + "/" + strings.ToLower(actor)
 }
 
+func banStorageKey(id, member string) string {
+	return banPrefix + strings.ToLower(id) + "/" + strings.ToLower(member)
+}
+
+// IsBanned fails closed on corrupt ban records. Expired records are removed lazily.
+func (s *Store) IsBanned(ctx context.Context, communityID, memberPublicID string) (bool, error) {
+	if !validCommunityID(communityID) { return false, errors.New("invalid community ID") }
+	if _, err := identityKey(memberPublicID); err != nil { return false, err }
+	key := datastore.NewKey(banStorageKey(communityID, memberPublicID))
+	raw, err := s.ds.Get(ctx, key)
+	if errors.Is(err, datastore.ErrNotFound) { return false, nil }
+	if err != nil { return true, err }
+	var event ModerationEvent
+	if json.Unmarshal(raw, &event) != nil ||
+		!strings.EqualFold(event.CommunityID, communityID) ||
+		!strings.EqualFold(event.SubjectPublicID, memberPublicID) ||
+		event.Action != "ban" {
+		return true, errors.New("stored ban record is corrupt")
+	}
+	if event.ExpiresAt != 0 && !time.UnixMilli(event.ExpiresAt).After(s.clock()) {
+		if err := s.ds.Delete(ctx, key); err != nil && !errors.Is(err, datastore.ErrNotFound) {
+			return true, err
+		}
+		return false, nil
+	}
+	return true, nil
+}
+
 func (s *Store) AppendModerationEvent(ctx context.Context, raw []byte) (ModerationEvent, error) {
 	var e ModerationEvent
 	if len(raw) == 0 || len(raw) > MaxEventBytes { return e, errors.New("moderation event is oversized") }
@@ -383,9 +412,25 @@ func (s *Store) AppendModerationEvent(ctx context.Context, raw []byte) (Moderati
 	if err := s.ds.Put(ctx, seqKey, []byte(strconv.FormatUint(e.Sequence, 10))); err != nil {
 		return e, err
 	}
-	if e.Action == "remove_member" {
-		if err := s.ds.Delete(ctx, membershipKey(e.CommunityID, e.SubjectPublicID)); err != nil && !errors.Is(err, datastore.ErrNotFound) {
+	switch e.Action {
+	case "ban":
+		if err := s.ds.Put(ctx, datastore.NewKey(banStorageKey(e.CommunityID, e.SubjectPublicID)), encoded); err != nil {
 			return e, err
+		}
+		if m.Visibility == "private" {
+			if err := s.ds.Delete(ctx, membershipKey(e.CommunityID, e.SubjectPublicID)); err != nil && !errors.Is(err, datastore.ErrNotFound) {
+				return e, err
+			}
+		}
+	case "unban":
+		if err := s.ds.Delete(ctx, datastore.NewKey(banStorageKey(e.CommunityID, e.SubjectPublicID))); err != nil && !errors.Is(err, datastore.ErrNotFound) {
+			return e, err
+		}
+	case "remove_member":
+		if m.Visibility == "private" {
+			if err := s.ds.Delete(ctx, membershipKey(e.CommunityID, e.SubjectPublicID)); err != nil && !errors.Is(err, datastore.ErrNotFound) {
+				return e, err
+			}
 		}
 	}
 	return e, nil
