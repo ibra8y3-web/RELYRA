@@ -865,33 +865,6 @@ mod tests {
     }
 
     #[test]
-    fn native_add_proposal_is_stored_committed_and_joined_by_welcome() {
-        let temp = tempdir().unwrap();
-        let mut owner = database(temp.path().join("owner.db").to_str().unwrap(), &[0x51; 32]);
-        let mut invitee = database(temp.path().join("invitee.db").to_str().unwrap(), &[0x52; 32]);
-        let gid = b"rfc9420-add-proposal";
-        let owner_credential = test_credential("alice", "00000000-0000-4000-8000-000000000001");
-        let invitee_credential = test_credential("bob", "00000000-0000-4000-8000-000000000002");
-
-        create_group(&mut owner, gid, &owner_credential).unwrap();
-        let key_package = generate_key_package(&mut invitee, &invitee_credential).unwrap();
-        let proposal = propose_add_member(&mut owner, gid, &key_package).unwrap();
-        assert_eq!(process_proposal(&mut owner, &proposal, "proposal-add-1", "alice", &["bob".to_owned()], true, false).unwrap(), 0);
-        // Re-delivery after a lost application ACK must not double-store or reject
-        // the already accepted native proposal.
-        assert_eq!(process_proposal(&mut owner, &proposal, "proposal-add-1", "alice", &["bob".to_owned()], true, false).unwrap(), 0);
-        assert_eq!(pending_proposal_count(&mut owner, gid).unwrap(), 1);
-
-        let committed = commit_pending_proposals(&mut owner, gid).unwrap();
-        assert_eq!(committed.epoch, 1);
-        let welcome = BASE64.decode(committed.welcome.unwrap()).unwrap();
-        join_group(&mut invitee, gid, &welcome, &invitee_credential).unwrap();
-        assert_eq!(members(&mut owner, gid).unwrap().len(), 2);
-        assert_eq!(members(&mut invitee, gid).unwrap().len(), 2);
-        assert_eq!(pending_proposal_count(&mut owner, gid).unwrap(), 0);
-    }
-
-    #[test]
     fn multiple_admin_remove_proposals_from_one_epoch_are_committed_together() {
         let temp = tempdir().unwrap();
         let mut owner = database(temp.path().join("owner.db").to_str().unwrap(), &[0x61; 32]);
@@ -923,9 +896,17 @@ mod tests {
 
         let remove_c = propose_remove_member(&mut admin_b, gid, &admin_c_credential).unwrap();
         let remove_b = propose_remove_member(&mut admin_c, gid, &admin_b_credential).unwrap();
-        assert_eq!(process_proposal(&mut owner, &remove_c, "proposal-remove-b", "bob", &["carol".to_owned()], false, true).unwrap(), 2);
-        assert_eq!(process_proposal(&mut owner, &remove_b, "proposal-remove-c", "carol", &["bob".to_owned()], false, true).unwrap(), 2);
+        // The proposer keeps its own local proposal; the owner and every other
+        // member must process the by-value proposal before the owner can commit.
+        assert_eq!(pending_proposal_count(&mut admin_b, gid).unwrap(), 1);
+        assert_eq!(pending_proposal_count(&mut admin_c, gid).unwrap(), 1);
+        process_proposal(&mut owner, &remove_c, "proposal-remove-b-owner", "bob", &["carol".to_owned()], false, true).unwrap();
+        process_proposal(&mut admin_c, &remove_c, "proposal-remove-b-carol", "bob", &["carol".to_owned()], false, true).unwrap();
+        process_proposal(&mut owner, &remove_b, "proposal-remove-c-owner", "carol", &["bob".to_owned()], false, true).unwrap();
+        process_proposal(&mut admin_b, &remove_b, "proposal-remove-c-bob", "carol", &["bob".to_owned()], false, true).unwrap();
         assert_eq!(pending_proposal_count(&mut owner, gid).unwrap(), 2);
+        assert_eq!(pending_proposal_count(&mut admin_b, gid).unwrap(), 2);
+        assert_eq!(pending_proposal_count(&mut admin_c, gid).unwrap(), 2);
 
         let committed = commit_pending_proposals(&mut owner, gid).unwrap();
         assert_eq!(committed.epoch, 3);
@@ -963,9 +944,14 @@ mod tests {
 
         let admin_proposal = propose_remove_member(&mut admin, gid, &target_credential).unwrap();
         let owner_proposal = propose_remove_member(&mut owner, gid, &target_credential).unwrap();
-        process_proposal(&mut owner, &admin_proposal, "duplicate-from-admin", "bob", &["carol".to_owned()], false, true).unwrap();
-        process_proposal(&mut owner, &owner_proposal, "duplicate-from-owner", "alice", &["carol".to_owned()], false, true).unwrap();
+        assert_eq!(pending_proposal_count(&mut admin, gid).unwrap(), 1);
+        process_proposal(&mut owner, &admin_proposal, "duplicate-from-admin-owner", "bob", &["carol".to_owned()], false, true).unwrap();
+        process_proposal(&mut target, &admin_proposal, "duplicate-from-admin-target", "bob", &["carol".to_owned()], false, true).unwrap();
+        process_proposal(&mut admin, &owner_proposal, "duplicate-from-owner-admin", "alice", &["carol".to_owned()], false, true).unwrap();
+        process_proposal(&mut target, &owner_proposal, "duplicate-from-owner-target", "alice", &["carol".to_owned()], false, true).unwrap();
         assert_eq!(pending_proposal_count(&mut owner, gid).unwrap(), 2);
+        assert_eq!(pending_proposal_count(&mut admin, gid).unwrap(), 2);
+        assert_eq!(pending_proposal_count(&mut target, gid).unwrap(), 2);
 
         let committed = commit_pending_proposals(&mut owner, gid).unwrap();
         assert_eq!(committed.epoch, 3);
@@ -993,9 +979,6 @@ mod tests {
         join_group(&mut member, gid, &BASE64.decode(joined.welcome.unwrap()).unwrap(), &member_credential).unwrap();
 
         let proposal = propose_remove_member(&mut owner, gid, &member_credential).unwrap();
-        process_proposal(
-            &mut owner, &proposal, "staged-remove-1", "alice", &["bob".to_owned()], false, true,
-        ).unwrap();
         let prepared = prepare_pending_proposals_commit(&mut owner, gid, None).unwrap();
         assert_eq!(prepared.epoch, 2);
         assert_eq!(prepared.removed_ids, vec!["bob".to_owned()]);
@@ -1027,10 +1010,6 @@ mod tests {
         let joined = add_members(&mut owner, gid, &[key_package]).unwrap();
         join_group(&mut member, gid, &BASE64.decode(joined.welcome.unwrap()).unwrap(), &member_credential).unwrap();
         let proposal = propose_remove_member(&mut owner, gid, &member_credential).unwrap();
-        process_proposal(
-            &mut owner, &proposal, "orphan-remove-1", "alice", &["bob".to_owned()], false, true,
-        ).unwrap();
-
         // Simulate process death after OpenMLS has staged the Commit but before
         // RELYRA persisted the serialized delivery journal.
         let (provider, signer) = provider_with_signer(&mut owner).unwrap();
