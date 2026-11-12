@@ -1,11 +1,11 @@
-mod jni;
-
 //! RELYRA's native MLS engine.
 //!
 //! OpenMLS 0.9.2 is pinned deliberately. All OpenMLS storage is backed by a
 //! SQLCipher database keyed with the same Keystore-derived database key used
 //! by the Android app. The key is supplied for each process initialization and
 //! is never written to disk by this crate.
+
+mod jni;
 
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use openmls::{
@@ -45,12 +45,12 @@ impl Codec for JsonCodec {
 /// in the encrypted database, not in process memory.
 pub struct SqlCipherMlsProvider<'a> {
     crypto: OpenMlsRustCrypto,
-    storage: SqliteStorageProvider<'a, JsonCodec>,
+    storage: SqliteStorageProvider<JsonCodec, &'a mut Connection>,
 }
 
 impl<'a> SqlCipherMlsProvider<'a> {
     pub fn new(connection: &'a mut Connection) -> Result<Self, MlsError> {
-        let mut storage = SqliteStorageProvider::<JsonCodec>::new(connection);
+        let mut storage = SqliteStorageProvider::<JsonCodec, _>::new(connection);
         storage.run_migrations().map_err(|e| MlsError::Storage(e.to_string()))?;
         Ok(Self {
             crypto: OpenMlsRustCrypto::default(),
@@ -62,7 +62,7 @@ impl<'a> SqlCipherMlsProvider<'a> {
 impl<'a> OpenMlsProvider for SqlCipherMlsProvider<'a> {
     type CryptoProvider = <OpenMlsRustCrypto as OpenMlsProvider>::CryptoProvider;
     type RandProvider = <OpenMlsRustCrypto as OpenMlsProvider>::RandProvider;
-    type StorageProvider = SqliteStorageProvider<'a, JsonCodec>;
+    type StorageProvider = SqliteStorageProvider<JsonCodec, &'a mut Connection>;
 
     fn storage(&self) -> &Self::StorageProvider {
         &self.storage
@@ -290,10 +290,12 @@ pub fn join_group(
     expected_identity: &[u8],
 ) -> Result<u64, MlsError> {
     let (provider, _signer) = provider_with_signer(database)?;
-    let welcome = MlsMessageIn::tls_deserialize_exact_bytes(welcome_bytes)
-        .map_err(|_| MlsError::InvalidMessage)?
-        .into_welcome()
+    let welcome_message = MlsMessageIn::tls_deserialize_exact_bytes(welcome_bytes)
         .map_err(|_| MlsError::InvalidMessage)?;
+    let welcome = match welcome_message.extract() {
+        MlsMessageBodyIn::Welcome(welcome) => welcome,
+        _ => return Err(MlsError::InvalidMessage),
+    };
     let staged = StagedWelcome::new_from_welcome(
         &provider,
         &MlsGroupJoinConfig::default(),
@@ -380,7 +382,6 @@ pub fn process_message(
             ("own_commit".to_owned(), None)
         }
         ProcessedMessageContent::OwnPrivateMessage => ("own_message".to_owned(), None),
-        ProcessedMessageContent::UnresolvedAppDataCommit(_) => return Err(MlsError::Rejected),
     };
     Ok(ProcessResult {
         kind,
