@@ -203,7 +203,7 @@ object RestoreApplier {
         if (seedSize > 128 || seedSize > d.available()) throw BackupException("invalid staged identity key")
         val seed = ByteArray(seedSize).also { d.readFully(it) }
         val keySize = d.readUnsignedShort()
-        if (keySize != 32 || d.available() != keySize) throw BackupException("invalid staged database key")
+        if (keySize != 32 || d.available() < keySize) throw BackupException("invalid staged database key")
         val key = ByteArray(keySize).also { d.readFully(it) }
         val prekeys = linkedMapOf<String, ByteArray>()
         if (d.available() > 0) {
