@@ -6,6 +6,7 @@ import (
 	"encoding/base32"
 	"encoding/base64"
 	"encoding/json"
+	"bytes"
 	"errors"
 	"fmt"
 	"sort"
@@ -78,10 +79,10 @@ func (r PeerRecord) signingBytes() ([]byte, error) {
 		return nil, err
 	}
 	providedKey, err := base64.RawURLEncoding.DecodeString(r.PublicKey)
-	if err != nil || len(providedKey) != ed25519.PublicKeySize || !ed25519.PublicKey(providedKey).Equal(publicKey) {
+	if err != nil || len(providedKey) != ed25519.PublicKeySize || !bytes.Equal(providedKey, publicKey) {
 		return nil, errors.New("public key does not match RELYRA ID")
 	}
-	if r.IssuedAt <= 0 || r.ExpiresAt <= r.IssuedAt || time.Duration(r.ExpiresAt-r.IssuedAt)*time.Second > RecordTTL {
+	if r.IssuedAt <= 0 || r.ExpiresAt <= r.IssuedAt || r.ExpiresAt-r.IssuedAt > int64(RecordTTL.Seconds()) {
 		return nil, errors.New("invalid record lifetime")
 	}
 	capabilities := append([]string(nil), r.Capabilities...)
