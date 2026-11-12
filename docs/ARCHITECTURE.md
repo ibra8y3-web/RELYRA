@@ -1,93 +1,72 @@
-# RELYRA architecture
+# RELYRA architecture — current main branch
 
-This document describes the implementation currently present in the repository. It is not a claim that planned transports or services are already available.
+This document describes implemented source. Planned features are not represented as active services until their end-to-end path is connected.
 
-![RELYRA architecture map](assets/relyra-architecture.svg)
+## Layers
 
-## Layer map
-
-![RELYRA architecture](assets/relyra-architecture.svg)
-
-| Layer | Main responsibility | Current implementation |
-|---|---|---|
-| UI | User interaction, Arabic/English presentation | Jetpack Compose screens and navigation |
-| Application | Dependency wiring and lifecycle | AppContainer, ViewModel, workers and optional connection service |
-| Messaging | Queue, envelope validation, delivery state, group fan-out | DeliveryEngine, Group engine and persistent Room records |
-| Cryptography | Identity, peer authentication, payload protection and ratchet state | Tink-backed crypto, X25519 and Double Ratchet |
-| Persistence | Private application state | Room + SQLCipher; key material wrapped by Android Keystore |
-| Transport | Carry already encrypted wire payloads | Transport/Connector contracts, AdaptiveRouter, Nearby LAN connector and NostrConnector |
-| File transfer | Encrypt, upload and retrieve file blobs | FileCrypto and Blossom client |
-| Local utilities and resources | Diagnostics, safe file inspection and live app resource samples | Diagnostics, tools, vault and resources packages |
+| Layer | Current implementation |
+|---|---|
+| UI | Jetpack Compose screens/navigation, Arabic RTL and English resources |
+| Application | AppContainer, ViewModels, WorkManager and optional foreground connection service |
+| Identity/security | Ed25519 identity/contact cards, Android Keystore, device/biometric lock |
+| Messaging | X3DH, Double Ratchet, durable queue, ACK/retry/deduplication, group engine |
+| MLS | OpenMLS 0.9.2 Rust/JNI engine, separate SQLCipher database, KeyPackage/Welcome/Commit/ApplicationData |
+| Persistence | Room + SQLCipher, encrypted local Vault and app-private attachment directories |
+| Transport | Nostr WSS, WebRTC P2P DataChannel, Bluetooth Classic RFCOMM, Wi-Fi Direct and Nearby LAN |
+| Discovery service | Separate Go/libp2p Kademlia DHT + Pebble datastore + HTTPS gateway and presence API |
+| TURN | coturn deployment configuration and signed short-lived REST credentials; actual public service deployment is operator-owned |
+| File transfer | Locally encrypted attachment payloads and Blossom-compatible storage; downloads support HTTP Range resume |
+| Communities | Go service and Android client for signed manifests/posts/moderation, membership, reports and audit |
+| Backup | Encrypted archive, passphrase crypto, staged restore, rollback artifacts and key/session sanitization |
+| Local tools | Vault, restricted WebView, read-only PDF viewer, file inspection and diagnostics/resource sampling |
 
 ## Direct message path
 
-![Message and attachment flow](assets/relyra-message-flow.svg)
+1. The UI submits a message to the delivery engine.
+2. The engine persists a stable message ID and outgoing state.
+3. X3DH/Double Ratchet protects the payload for the recipient.
+4. AdaptiveRouter sends the opaque protected payload through an available registered connector.
+5. The recipient authenticates, decrypts, persists and deduplicates the message before acknowledging.
+6. Sender state advances only from authenticated delivery/relay acknowledgement.
 
-```mermaid
-sequenceDiagram
-    participant U as Sender UI
-    participant D as DeliveryEngine
-    participant P as PayloadProtector
-    participant R as AdaptiveRouter
-    participant N as NostrConnector
-    participant S as WSS relay
-    participant V as Recipient
+Transport connectors must never receive plaintext message bodies or private ratchet keys.
 
-    U->>D: enqueue message
-    D->>D: persist fresh MessageID
-    D->>P: protect(peer, envelope)
-    P-->>D: authenticated ciphertext
-    D->>R: send(peer, ciphertext)
-    R->>N: first ready connector
-    N->>S: signed Nostr event (kind 4747)
-    S-->>V: recipient subscription event
-    V->>V: verify event, authenticate and decrypt
-    V->>V: persist message ID + message
-    V-->>S: encrypted acknowledgement via Nostr
-    S-->>D: acknowledgement
-    D->>D: advance delivery state
-```
+## Group path
 
-The transport boundary receives ciphertext only. A transport must not be given plaintext message bodies or ratchet private keys.
+- Legacy groups fan out a separately protected copy through one-to-one sessions.
+- MLS-enabled groups protect group application payloads with OpenMLS ApplicationData.
+- Current membership request handling is owner-routed at the RELYRA application layer. This is not yet native RFC 9420 Proposal coordination across admins.
+- Group attachments put the descriptor inside MLS ApplicationData; encrypted file bytes travel through Blossom.
+- Group read receipts are authenticated per-recipient RELYRA control messages, not MLS ApplicationData.
 
-## Attachment path
+## Discovery and Internet transport boundary
 
-1. The app creates a random file key and encrypts the file locally in authenticated segments.
-2. The ciphertext is uploaded to a user-configured Blossom-compatible server.
-3. The file descriptor (including server address, hashes, size and file key) is included in the end-to-end encrypted message.
-4. The recipient manually starts a download, validates the blob and decrypts it locally.
+The Android application calls the discovery service's HTTPS gateway. The Go service runs libp2p Kademlia and stores records in Pebble. The Android application is not itself a libp2p DHT host. The repository contains deployment configuration, not a live public multi-operator DHT/TURN network. Operators must deploy reachable nodes and configure bootstrap, DNS, firewall and TURN.
 
-The file server can observe the uploader's IP address, upload time and ciphertext size. It does not receive the plaintext file from the RELYRA upload path.
+WebRTC in the current application is a P2P DataChannel. It is not voice/video MediaTracks.
 
-## Persistence and recovery
+## Backup/restore boundary
 
-- The Room database is encrypted with SQLCipher.
-- The database passphrase is stored through Android Keystore protection.
-- Identity and ratchet-related records are part of the encrypted app database.
-- Backup export uses a user-chosen passphrase and authenticated encrypted segments.
-- Restore is staged and applied after an app restart; it is not a live merge with the current database.
-- The local Vault stores encrypted files separately and is currently excluded from backup.
+BackupManager exports the SQLCipher database, Vault, inbox/outbox, MLS directory and portable network/server preferences. It validates referenced attachment files and Vault content, then packages an authenticated archive protected by the user's passphrase. Restore authenticates and stages the archive before applying a guarded database/directory/key/preferences swap. Restored Ratchet sessions and one-time prekeys are deliberately invalidated to prevent cryptographic rollback.
 
-## Transport contract
-
-The transport extension point is the messaging Transport interface. A Connector adds a readiness check. AdaptiveRouter iterates ready connectors in the supplied order and records the successful path.
-
-At present, NostrConnector is the registered transport. The abstraction does not itself implement libp2p, direct sockets, Tor, Bluetooth or Wi-Fi Direct. A new connector must have its own connection lifecycle, identity binding, replay handling, bounded resource use and tests before it is registered.
+The implementation exists; full SQLCipher restore, crash-recovery and Room/MLS consistency integration tests are the remaining verification work.
 
 ## Security boundaries
 
-- **Local device:** Android Keystore protects the database secret; device compromise or malware with access to an unlocked app remains a risk.
-- **Relay:** sees network metadata and encrypted event envelopes; it is not trusted with message plaintext.
-- **File server:** sees upload/download metadata and ciphertext; attachment keys are carried inside the encrypted message descriptor.
-- **Peer:** must be a known contact with usable key material; malformed, unauthenticated or untrusted messages are dropped.
-- **Backup file:** confidentiality depends on the user's passphrase. The passphrase is not stored in the app.
+- Relays and discovery services may observe IP addresses, timing, routing metadata and ciphertext sizes.
+- Community post bodies are currently plaintext at the discovery service; do not treat signatures as end-to-end encryption.
+- Blossom stores encrypted blobs but can observe transfer metadata.
+- Local database secrets are wrapped by Android Keystore. Device compromise while unlocked remains a risk.
+- Backup confidentiality depends on the user's passphrase; the app does not store that passphrase.
 
-## Repository source map
+## Source map
 
-- `core/crypto`: identity, contact cards, payload crypto and ratchet.
+- `core/crypto`: identity, contact cards and cryptographic primitives.
 - `core/database`: Room entities, DAOs, migrations and SQLCipher initialization.
-- `core/messaging`: message contracts, delivery engine, envelope codec and groups.
-- `core/network`: relay URL manager, relay WebSocket client, Nostr protocol, optional NSD/mDNS local connector and adaptive router.
-- `core/transfer`: file encryption and Blossom transfer.
+- `core/messaging`: delivery engine, envelope codec, groups and MLS orchestration.
+- `core/network`: Nostr, WebRTC and nearby transports.
+- `core/transfer`: file encryption and Blossom.
 - `core/backup` and `core/vault`: backup/restore and encrypted local files.
-- `ui`: Compose screens and user workflows.
+- `services/discovery`: Go/libp2p DHT gateway, presence and community service.
+- `native/mls`: OpenMLS Rust/JNI engine.
+- `ui`: Compose workflows.
