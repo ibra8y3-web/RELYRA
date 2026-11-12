@@ -112,7 +112,6 @@ class CallEngine(
             val answer = createDescription(session.connection, false)
             setDescription(session.connection, true, answer)
             withTimeout(25_000) { session.gathering.await() }
-            withTimeout(25_000) { session.gathering.await() }
             val sdp = session.connection.localDescription?.description ?: error("Missing answer SDP")
             val signal = signed(peer, "call_answer", sdp, decoded.sessionId) ?: error("Could not sign call answer")
             requireDelivered(sendSignal(peer, P2pSignalKind.CALL_ANSWER, signal))
