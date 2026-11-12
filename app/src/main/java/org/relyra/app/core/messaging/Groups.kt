@@ -56,6 +56,7 @@ interface GroupStore {
     suspend fun enqueue(rows: List<OutboxRow>)
     suspend fun dueOutbox(now: Long, limit: Int): List<OutboxRow>
     suspend fun updateOutbox(row: OutboxRow)
+    suspend fun outbox(id: String): OutboxRow?
     /** True when [id] is one of our packets addressed to [memberId]. */
     suspend fun markAcked(id: String, memberId: String): Boolean
     suspend fun deleteGroup(groupId: String)
@@ -372,13 +373,23 @@ class GroupEngine(
     override suspend fun processOutbox(): Int = lock.withLock {
         val now = clock()
         var sent = 0
-        for (row in store.dueOutbox(now, 100)) {
+        for (candidate in store.dueOutbox(now, 100)) {
+            var row = store.outbox(candidate.id) ?: continue
+            if (row.acked || row.failed) continue
             if (now - row.createdAt > DeliveryEngine.TTL_MS) {
                 store.updateOutbox(row.copy(failed = true, nextAttemptAt = Long.MAX_VALUE))
                 continue
             }
+            val outcome = transmit(row.memberId, row.payload)
+            // A synchronous or very fast remote ACK may update this row while send() is running.
+            // Re-read before writing retry metadata so an old snapshot cannot erase that ACK.
+            row = store.outbox(row.id) ?: continue
+            if (row.acked || row.failed) {
+                if (row.acked && (outcome == SendOutcome.Accepted || outcome == SendOutcome.Relayed)) sent++
+                continue
+            }
             val attempts = row.attempts + 1
-            when (transmit(row.memberId, row.payload)) {
+            when (outcome) {
                 SendOutcome.Accepted, SendOutcome.Relayed -> {
                     store.updateOutbox(row.copy(attempts = attempts, nextAttemptAt = now + DeliveryEngine.ackWait(attempts)))
                     sent++
