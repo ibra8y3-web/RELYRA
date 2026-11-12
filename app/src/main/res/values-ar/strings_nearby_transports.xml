@@ -80,4 +80,8 @@
     <string name="net_dht_turn_fetch">الحصول على بيانات TURN مؤقتة من خدمة الاكتشاف</string>
     <string name="net_dht_turn_ready">تم قبول بيانات TURN المؤقتة للجلسات الجديدة.</string>
     <string name="net_dht_turn_unavailable">تعذر الحصول على بيانات TURN صالحة. تحقق من البوابة وهوية الخادم ونشر خدمة TURN.</string>
+
+    <string name="net_dht_gateway_untested">لم يتم الاختبار بعد</string>
+    <string name="net_dht_gateway_invalid">أدخل عنوان بوابة اكتشاف HTTPS صالحًا.</string>
+    <string name="net_dht_gateway_duplicate">بوابة الاكتشاف هذه مضافة بالفعل.</string>
 </resources>
