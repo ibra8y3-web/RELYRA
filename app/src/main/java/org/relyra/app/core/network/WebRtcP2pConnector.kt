@@ -480,7 +480,35 @@ class WebRtcP2pConnector(
 
     fun close(peerId: String) {
         val key = peerId.trim().lowercase()
-        peers.remove(key)?.let(::closePeer)
+        approvedPeers.remove(key)
+        reconnectJobs.remove(key)?.cancel()
+        reconnecting.remove(key)
+        retirePeer(key)
+        dismissIncomingOffer(key)
+    }
+
+    fun closeAll() {
+        reconnectJobs.values.forEach { it.cancel() }
+        reconnectJobs.clear()
+        reconnecting.clear()
+        approvedPeers.clear()
+        peers.keys.toList().forEach(::retirePeer)
+        peers.clear()
+        pendingAcks.values.forEach { it.complete(false) }
+        pendingAcks.clear()
+        _incomingOffers.value = emptyMap()
+        states.value = emptyMap()
+        if (networkCallbackRegistered) {
+            runCatching { connectivityManager.unregisterNetworkCallback(networkCallback) }
+            networkCallbackRegistered = false
+        }
+    }
+
+    private fun retirePeer(peerId: String, expected: Peer? = null) {
+        val key = peerId.trim().lowercase()
+        val current = peers[key] ?: return
+        if (expected != null && current !== expected) return
+        if (peers.remove(key, current)) closePeer(current)
         dismissIncomingOffer(key)
         pendingAcks.entries.filter { it.key.startsWith("$key:") }.forEach { entry ->
             entry.value.complete(false)
@@ -489,14 +517,81 @@ class WebRtcP2pConnector(
         states.value = states.value - key
     }
 
-    fun closeAll() {
-        peers.keys.toList().forEach(::close)
-        peers.values.toList().forEach(::closePeer)
-        peers.clear()
-        pendingAcks.values.forEach { it.complete(false) }
-        pendingAcks.clear()
-        _incomingOffers.value = emptyMap()
-        states.value = emptyMap()
+    private fun scheduleRecovery(peerId: String, failedPeer: Peer) {
+        val key = peerId.trim().lowercase()
+        if (!approvedPeers.contains(key) || peers[key] !== failedPeer) return
+        if (!reconnecting.add(key)) return
+        val job = scope.launch(Dispatchers.IO, start = CoroutineStart.LAZY) {
+            var expected: Peer? = failedPeer
+            try {
+                repeat(WebRtcReconnectPolicy.MAX_ATTEMPTS) { attempt ->
+                    if (!approvedPeers.contains(key)) return@launch
+                    if (expected == null) {
+                        if (peers.containsKey(key)) return@launch
+                    } else if (peers[key] !== expected) {
+                        return@launch
+                    }
+
+                    if (!awaitInternet()) {
+                        delay(WebRtcReconnectPolicy.delayMillis(attempt))
+                        return@repeat
+                    }
+
+                    expected?.let { retirePeer(key, it) }
+                    expected = null
+                    val offer = try {
+                        createOffer(key)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        null
+                    }
+                    val createdPeer = peers[key]
+                    expected = createdPeer
+                    if (offer == null || createdPeer == null) {
+                        if (createdPeer != null) retirePeer(key, createdPeer)
+                        expected = null
+                        delay(WebRtcReconnectPolicy.delayMillis(attempt))
+                        return@repeat
+                    }
+
+                    val sent = try {
+                        sendSignal(key, P2pSignalKind.OFFER, offer)
+                    } catch (cancelled: CancellationException) {
+                        throw cancelled
+                    } catch (_: Exception) {
+                        SendOutcome.Unavailable
+                    }
+                    if (sent == SendOutcome.Accepted || sent == SendOutcome.Relayed) {
+                        states.value = states.value + (key to InternetPeerState.CONNECTING)
+                        return@launch
+                    }
+                    retirePeer(key, createdPeer)
+                    expected = null
+                    delay(WebRtcReconnectPolicy.delayMillis(attempt))
+                }
+                if (peers[key] == null) states.value = states.value + (key to InternetPeerState.FAILED)
+            } finally {
+                reconnectJobs.remove(key)
+                reconnecting.remove(key)
+            }
+        }
+        if (reconnectJobs.putIfAbsent(key, job) == null) {
+            job.start()
+        } else {
+            reconnecting.remove(key)
+            job.cancel()
+        }
+    }
+
+    private suspend fun awaitInternet(): Boolean {
+        repeat(WebRtcReconnectPolicy.NETWORK_WAIT_ATTEMPTS) {
+            val active = connectivityManager.activeNetwork
+            val capabilities = active?.let(connectivityManager::getNetworkCapabilities)
+            if (capabilities?.hasCapability(NetworkCapabilities.NET_CAPABILITY_INTERNET) == true) return true
+            delay(1_000)
+        }
+        return false
     }
 
     private fun attachChannel(peerId: String, peer: Peer, channel: DataChannel) {
