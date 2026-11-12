@@ -36,6 +36,9 @@ interface MessageDao {
     suspend fun insert(e: MessageEntity)
 
     @Insert(onConflict = OnConflictStrategy.IGNORE)
+    suspend fun insertIfAbsent(e: MessageEntity): Long
+
+    @Insert(onConflict = OnConflictStrategy.IGNORE)
     suspend fun insertProcessed(e: ProcessedIdEntity): Long
 
     @Update
