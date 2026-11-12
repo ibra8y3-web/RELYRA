@@ -284,7 +284,11 @@ class WebRtcP2pConnector(
             throw cancelled
         } catch (_: Exception) {
             null
-        } ?: return
+        }
+        if (managed == null) {
+            iceServers = defaultIceServers
+            return
+        }
         if (managed.isNotEmpty() && managed.size <= 10 && managed.all(IceServerConfig::isValid)) {
             iceServers = defaultIceServers + managed
         }
