@@ -72,8 +72,8 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
         val groupMembers=groupDao.allMembersForDeviceSync()
         val groupMessages=groupDao.allMessagesForDeviceSync()
         val groupAttachments=groupDao.allAttachmentsForDeviceSync()
-        require(contacts.size+messages.size+prefs.size+groups.size+groupMembers.size+
-            groupMessages.size+groupAttachments.size<=LIMIT)
+        require(contacts.size+messages.size+attachments.size+prefs.size+trustedDevices.size+
+            groups.size+groupMembers.size+groupMessages.size+groupAttachments.size<=LIMIT)
         root.put("groups",JSONArray().also { a -> groups.forEach { g ->
             a.put(JSONObject().put("id",g.groupId).put("name",g.name).put("kind",g.kind)
                 .put("owner",g.ownerId).put("epoch",g.epoch).put("state",g.state)
