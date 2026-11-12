@@ -125,6 +125,8 @@ class DhtDiscoveryClient(
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
         .writeTimeout(8, TimeUnit.SECONDS)
+        .followRedirects(false)
+        .followSslRedirects(false)
         .build()
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
@@ -215,8 +217,20 @@ class DhtDiscoveryManager(
                     gateways.isEmpty() -> _status.value = DhtDiscoveryStatus.NoGateway
                     else -> {
                         while (currentCoroutineContext().isActive) {
-                            val id = ownId()
-                            val signedRecord = id?.let { PeerPresenceCodec.encode(it, sign = sign) }
+                            val id = try {
+                                ownId()
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                null
+                            }
+                            val signedRecord = try {
+                                id?.let { PeerPresenceCodec.encode(it, sign = sign) }
+                            } catch (cancelled: CancellationException) {
+                                throw cancelled
+                            } catch (_: Exception) {
+                                null
+                            }
                             if (signedRecord == null) {
                                 _status.value = DhtDiscoveryStatus.Unavailable
                             } else {
@@ -261,7 +275,13 @@ class DhtDiscoveryManager(
     }
 
     suspend fun fetchTurnCredentials(): List<IceServerConfig>? {
-        val id = ownId() ?: return null
+        val id = try {
+            ownId()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        } ?: return null
         if (IdentityCrypto.parsePublicId(id) == null) return null
         for (gateway in network.discoveryGateways.value.filter { it.enabled }) {
             try {
