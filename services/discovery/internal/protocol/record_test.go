@@ -9,6 +9,8 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	datastore "github.com/ipfs/go-datastore"
 )
 
 func testIdentity(t *testing.T) (ed25519.PublicKey, ed25519.PrivateKey, string) {
@@ -148,5 +150,35 @@ func TestTurnCredentialsAreTimeLimitedAndIdentityBound(t *testing.T) {
 	}
 	if err := VerifyTurnChallenge(challenge, now.Add(2*time.Minute)); err == nil {
 		t.Fatal("stale challenge accepted")
+	}
+}
+
+
+func TestPersistentValidatorRejectsOlderPresenceAfterRestart(t *testing.T) {
+	now := time.Now().UTC().Truncate(time.Second)
+	publicKey, privateKey, id := testIdentity(t)
+	newer := signedRecordForIdentity(t, now, -5*time.Second, publicKey, privateKey, id)
+	older := signedRecordForIdentity(t, now, -time.Minute, publicKey, privateKey, id)
+	newerBytes, err := EncodePeerRecord(newer)
+	if err != nil { t.Fatal(err) }
+	olderBytes, err := EncodePeerRecord(older)
+	if err != nil { t.Fatal(err) }
+	key, err := KeyForPublicID(id)
+	if err != nil { t.Fatal(err) }
+
+	store := datastore.NewMapDatastore()
+	firstProcess := NewValidator(store)
+	if err := firstProcess.Validate(key, newerBytes); err != nil {
+		t.Fatalf("newer record should be accepted: %v", err)
+	}
+
+	// Simulate a process restart by constructing a new validator over the same
+	// persistent datastore. The older still-valid lease must remain rejected.
+	afterRestart := NewValidator(store)
+	if err := afterRestart.Validate(key, olderBytes); err == nil {
+		t.Fatal("older signed record was accepted after restart")
+	}
+	if err := afterRestart.Validate(key, newerBytes); err != nil {
+		t.Fatalf("redelivery of the exact current record should be idempotent: %v", err)
 	}
 }

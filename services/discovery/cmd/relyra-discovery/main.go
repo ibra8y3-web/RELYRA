@@ -89,6 +89,7 @@ type server struct {
 	nonceMu      sync.Mutex
 	usedNonces   map[string]time.Time
 	semaphore    chan struct{}
+	bootstrapPeersConfigured bool
 }
 
 func main() {
@@ -177,7 +178,7 @@ func newServer(ctx context.Context) (*server, error) {
 		p2pHost,
 		dht.Mode(dht.ModeServer),
 		dht.ProtocolPrefix(libp2pprotocol.ID("/relyra")),
-		dht.NamespacedValidator("rlyra", presence.Validator{}),
+		dht.NamespacedValidator("rlyra", presence.NewValidator(datastore)),
 		dht.Datastore(datastore),
 		dht.MaxRecordAge(5*time.Minute),
 		dht.ValueGCInterval(time.Minute),
@@ -235,6 +236,7 @@ func newServer(ctx context.Context) (*server, error) {
 		turnURLs: turnURLs, turnTTL: turnTTL,
 		limiter: newLimiter(), usedNonces: make(map[string]time.Time),
 		semaphore: make(chan struct{}, maxConcurrent),
+		bootstrapPeersConfigured: len(bootstrap) > 0,
 	}, nil
 }
 
@@ -310,12 +312,17 @@ func (s *server) guard(next http.Handler) http.Handler {
 }
 
 func (s *server) health(w http.ResponseWriter, r *http.Request) {
+	routingTableSize := s.dht.RoutingTable().Size()
+	connectedPeers := len(s.host.Network().Peers())
 	writeJSON(w, http.StatusOK, map[string]any{
 		"service": "relyra-discovery",
 		"status": "ok",
 		"peerId": s.host.ID().String(),
 		"protocol": "/relyra/kad/1.0.0",
-		"bootstrapPeersConfigured": s.dht.RoutingTable().Size() > 0,
+		"bootstrapPeersConfigured": s.bootstrapPeersConfigured,
+		"routingTableSize": routingTableSize,
+		"connectedPeers": connectedPeers,
+		"dhtReady": routingTableSize > 0 && connectedPeers > 0,
 	})
 }
 

@@ -123,9 +123,22 @@ object PeerPresenceCodec {
     ).joinToString("\n").toByteArray(Charsets.UTF_8)
 }
 
+/** Contract separating discovery/presence policy from its network implementation.
+ * The current provider is HTTPS; a native libp2p provider can be added independently. */
+interface DiscoveryTransport {
+    suspend fun publish(baseUrl: String, signedRecordJson: String): Boolean
+    suspend fun lookup(baseUrl: String, publicId: String): String?
+    override suspend fun turnCredentials(
+        baseUrl: String,
+        publicId: String,
+        sign: (ByteArray) -> ByteArray?,
+    ): ManagedTurnCredentials?
+    suspend fun test(baseUrl: String): Boolean
+}
+
 class DhtDiscoveryClient(
     baseClient: OkHttpClient = Http.client,
-) {
+) : DiscoveryTransport {
     private val http = baseClient.newBuilder()
         .connectTimeout(8, TimeUnit.SECONDS)
         .readTimeout(12, TimeUnit.SECONDS)
@@ -135,13 +148,13 @@ class DhtDiscoveryClient(
         .build()
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
-    suspend fun publish(baseUrl: String, signedRecordJson: String): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun publish(baseUrl: String, signedRecordJson: String): Boolean = withContext(Dispatchers.IO) {
         val body = signedRecordJson.toRequestBody(jsonType)
         val request = Request.Builder().url("${baseUrl.trimEnd('/')}/v1/records").post(body).build()
         http.newCall(request).execute().use { it.code == 202 }
     }
 
-    suspend fun lookup(baseUrl: String, publicId: String): String? = withContext(Dispatchers.IO) {
+    override suspend fun lookup(baseUrl: String, publicId: String): String? = withContext(Dispatchers.IO) {
         val request = Request.Builder()
             .url("${baseUrl.trimEnd('/')}/v1/records/${publicId.trim().lowercase()}")
             .get()
@@ -201,7 +214,7 @@ class DhtDiscoveryClient(
         }
     }
 
-    suspend fun test(baseUrl: String): Boolean = withContext(Dispatchers.IO) {
+    override suspend fun test(baseUrl: String): Boolean = withContext(Dispatchers.IO) {
         val request = Request.Builder().url("${baseUrl.trimEnd('/')}/healthz").get().build()
         http.newCall(request).execute().use { it.isSuccessful }
     }
@@ -212,7 +225,7 @@ class DhtDiscoveryManager(
     private val ownId: suspend () -> String?,
     private val sign: (ByteArray) -> ByteArray?,
     private val scope: CoroutineScope,
-    private val client: DhtDiscoveryClient = DhtDiscoveryClient(),
+    private val client: DiscoveryTransport = DhtDiscoveryClient(),
 ) {
     private val _status = MutableStateFlow(DhtDiscoveryStatus.Disabled)
     val status: StateFlow<DhtDiscoveryStatus> = _status
