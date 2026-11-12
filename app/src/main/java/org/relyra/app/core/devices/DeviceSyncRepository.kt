@@ -5,6 +5,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 import org.relyra.app.core.database.*
 import org.relyra.app.core.crypto.IdentityCrypto
+import org.relyra.app.core.messaging.MessageState
 import java.util.Base64
 
 data class DeviceSyncReport(val contactsAdded:Int,val messagesAdded:Int,val preferencesUpdated:Int,val conflictsKept:Int)
@@ -85,8 +86,12 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
                 for(i in 0 until ma.length()) {
                     val j=ma.getJSONObject(i); val id=j.getString("id")
                     require(id.isNotBlank()&&id.length<=128)
-                    val incoming=MessageEntity(id,j.getString("chat"),j.getBoolean("out"),j.getString("body"),
-                        j.getLong("created"),j.getString("state"),j.optInt("attempts"),j.optLong("next"),
+                    val stateName=j.getString("state")
+                    MessageState.valueOf(stateName)
+                    val chatId=j.getString("chat")
+                    require(chatId.isNotBlank() && chatId.length<=128)
+                    val incoming=MessageEntity(id,chatId,j.getBoolean("out"),j.getString("body"),
+                        j.getLong("created"),stateName,j.optInt("attempts"),j.optLong("next"),
                         j.optBoolean("read"),null)
                     require(incoming.body.length<=1_000_000)
                     val current=db.messageDao().get(id)
