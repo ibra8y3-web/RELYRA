@@ -32,6 +32,9 @@ interface MessageDao {
     @Query("SELECT * FROM messages WHERE messageId = :id")
     suspend fun get(id: String): MessageEntity?
 
+    @Query("SELECT * FROM messages ORDER BY createdAt ASC LIMIT 100000")
+    suspend fun allForDeviceSync(): List<MessageEntity>
+
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insert(e: MessageEntity)
 
@@ -74,6 +77,9 @@ interface MessageDao {
 interface ChatPrefDao {
     @Query("SELECT * FROM chat_prefs")
     fun observeAll(): Flow<List<ChatPrefEntity>>
+
+    @Query("SELECT * FROM chat_prefs LIMIT 100000")
+    suspend fun allForDeviceSync(): List<ChatPrefEntity>
 
     @Query("SELECT * FROM chat_prefs WHERE chatId = :id")
     suspend fun get(id: String): ChatPrefEntity?
