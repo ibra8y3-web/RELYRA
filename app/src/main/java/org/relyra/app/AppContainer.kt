@@ -215,6 +215,12 @@ class AppContainer(context: Context) {
                     P2pSignalKind.CALL_END -> { calls.receiveEnd(peerId, signal.signedSignal); notifier.cancelCall(peerId) }
                 }
             },
+            localDeviceAuthorized = {
+                val accountId = database.identityDao().get()?.publicId
+                val local = database.trustedDeviceDao().get(secure.deviceId())
+                accountId != null && local?.accountId == accountId &&
+                    local.status == org.relyra.app.core.database.TrustedDeviceStatus.APPROVED
+            },
         )
     }
 
