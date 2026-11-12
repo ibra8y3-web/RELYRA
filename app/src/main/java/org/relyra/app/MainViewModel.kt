@@ -1133,6 +1133,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         }
     }
     fun clearDeviceCodes() { deviceCode.value = null; deviceSyncCode.value = null }
+    fun localDeviceId(): String = ctr().secure.deviceId()
     fun relock() {
         vaultUnlocked.value = false
         if (lockEnabled.value) unlocked.value = false
