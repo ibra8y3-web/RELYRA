@@ -248,6 +248,24 @@ object RestoreApplier {
     private val ROLLBACK_KEYS_AAD = "relyra-restore-rollback-v1".toByteArray(Charsets.UTF_8)
     private val ROLLBACK_PREFS_AAD = "relyra-restore-prefs-v1".toByteArray(Charsets.UTF_8)
 
+    /** Named durable boundaries used by the crash-recovery instrumentation suite. */
+    internal enum class RestoreCheckpoint {
+        ROLLBACK_STATE_SAVED,
+        DATABASE_PRESERVED,
+        JOURNALS_PRESERVED,
+        CANDIDATE_SANITIZED,
+        DATABASE_INSTALLED,
+        KEYS_INSTALLED,
+        FILES_INSTALLED,
+        PREFERENCES_INSTALLED,
+        COMMIT_MARKER_REMOVED,
+    }
+
+    /** Test-only process-death signal: intentionally bypasses in-process rollback. */
+    internal class RestoreProcessInterrupted(val checkpoint: RestoreCheckpoint) : Error(
+        "simulated process interruption at $checkpoint"
+    )
+
     fun clear(stageDir: File) {
         listOf(DB_PART, DB_READY, KEYS, MARKER, ROLLBACK_KEYS, ROLLBACK_PREFS, ROLLBACK_KEYS + ".tmp", ROLLBACK_PREFS + ".tmp", "export.tmp", "export.bundle", "restore.bundle").forEach { File(stageDir, it).delete() }
         File(stageDir, "restored-files").deleteRecursively()
@@ -414,7 +432,18 @@ object RestoreApplier {
      * Replaces the database using same-filesystem renames and keeps rollback copies until key restoration
      * succeeds. Sidecar WAL/journal files are moved aside as part of the same guarded operation.
      */
-    fun applyIfPending(context: Context, stageDir: File, dbFile: File, secure: SecureStore, filesDir: File, preferenceStores: Map<String, SharedPreferences>): Boolean {
+    fun applyIfPending(context: Context, stageDir: File, dbFile: File, secure: SecureStore, filesDir: File, preferenceStores: Map<String, SharedPreferences>): Boolean =
+        applyIfPendingInternal(context, stageDir, dbFile, secure, filesDir, preferenceStores) { }
+
+    internal fun applyIfPendingInternal(
+        context: Context,
+        stageDir: File,
+        dbFile: File,
+        secure: SecureStore,
+        filesDir: File,
+        preferenceStores: Map<String, SharedPreferences>,
+        afterCheckpoint: (RestoreCheckpoint) -> Unit,
+    ): Boolean {
         if (!File(stageDir, MARKER).isFile) {
             // No restore is pending: remove abandoned plaintext staging and old rollback artifacts.
             clear(stageDir)
@@ -465,6 +494,7 @@ object RestoreApplier {
         // Persist rollback material before touching the live DB, keys, files, or preferences.
         // A process restart must not mistake already-restored keys for the original rollback state.
         persistRollbackState(stageDir, secure, preferenceStores)
+        afterCheckpoint(RestoreCheckpoint.ROLLBACK_STATE_SAVED)
         val (previousSeed, previousKey, previousPrekeys) = readRollbackKeys(File(stageDir, ROLLBACK_KEYS))
         val previousPreferences = readRollbackPreferences(File(stageDir, ROLLBACK_PREFS), preferenceStores.keys)
         try {
@@ -482,6 +512,7 @@ object RestoreApplier {
                     if (!dbFile.delete()) throw java.io.IOException("could not replace partially restored database")
                 }
             }
+            afterCheckpoint(RestoreCheckpoint.DATABASE_PRESERVED)
             for ((suffix, backup) in sidecarBackups) {
                 val sidecar = File(parent, dbFile.name + suffix)
                 if (sidecar.exists()) {
@@ -492,25 +523,33 @@ object RestoreApplier {
                     }
                 }
             }
+            afterCheckpoint(RestoreCheckpoint.JOURNALS_PRESERVED)
             sanitizeRestoredDatabase(context, candidate, key)
+            afterCheckpoint(RestoreCheckpoint.CANDIDATE_SANITIZED)
             if (!candidate.renameTo(dbFile)) throw java.io.IOException("could not install restored database")
             installed = true
+            afterCheckpoint(RestoreCheckpoint.DATABASE_INSTALLED)
 
             // One-time prekeys from an older snapshot may already have been consumed after that snapshot.
             // Never roll them back: a fresh signed/one-time prekey bundle is generated after restore.
             prekeys.values.forEach { it.fill(0) }
             keysUpdated = true
             secure.restoreKeys(if (seed.isEmpty()) null else seed, key, emptyMap())
+            afterCheckpoint(RestoreCheckpoint.KEYS_INSTALLED)
             restoredDirs = applyRestoredFiles(stageDir, filesDir)
+            afterCheckpoint(RestoreCheckpoint.FILES_INSTALLED)
             applyRestoredPreferences(stageDir, preferenceStores)
+            afterCheckpoint(RestoreCheckpoint.PREFERENCES_INSTALLED)
             // Removing the pending marker is the commit point. If the process dies afterwards,
             // startup cleanup removes rollback copies without trying to replay the restore.
             clear(stageDir)
+            afterCheckpoint(RestoreCheckpoint.COMMIT_MARKER_REMOVED)
             restoredDirs.values.filterNotNull().forEach { it.deleteRecursively() }
             previous.delete()
             sidecarBackups.values.forEach { it.delete() }
             return true
         } catch (t: Throwable) {
+            if (t is RestoreProcessInterrupted) throw t
             if (restoredDirs != null) rollbackRestoredFiles(stageDir, filesDir, restoredDirs!!)
             if (keysUpdated) runCatching { secure.restoreKeys(previousSeed, previousKey, previousPrekeys) }
             runCatching { restorePreferenceSnapshot(preferenceStores, previousPreferences) }
