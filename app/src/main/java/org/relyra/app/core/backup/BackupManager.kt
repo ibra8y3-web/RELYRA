@@ -253,7 +253,7 @@ object RestoreApplier {
     private val ROLLBACK_PREFS_AAD = "relyra-restore-prefs-v1".toByteArray(Charsets.UTF_8)
 
     fun clear(stageDir: File) {
-        listOf(DB_PART, DB_READY, KEYS, MARKER, ROLLBACK_KEYS, ROLLBACK_PREFS, "export.tmp", "export.bundle", "restore.bundle").forEach { File(stageDir, it).delete() }
+        listOf(DB_PART, DB_READY, KEYS, MARKER, ROLLBACK_KEYS, ROLLBACK_PREFS, ROLLBACK_KEYS + ".tmp", ROLLBACK_PREFS + ".tmp", "export.tmp", "export.bundle", "restore.bundle").forEach { File(stageDir, it).delete() }
         File(stageDir, "restored-files").deleteRecursively()
         File(stageDir, "pending-prefs").deleteRecursively()
         File(stageDir, "export-prekeys").deleteRecursively()
@@ -457,8 +457,8 @@ object RestoreApplier {
             if (!candidate.renameTo(dbFile)) throw java.io.IOException("could not install restored database")
             installed = true
 
-            secure.restoreKeys(if (seed.isEmpty()) null else seed, key, prekeys)
             keysUpdated = true
+            secure.restoreKeys(if (seed.isEmpty()) null else seed, key, prekeys)
             restoredDirs = applyRestoredFiles(stageDir, filesDir)
             applyRestoredPreferences(stageDir, preferenceStores)
             // Removing the pending marker is the commit point. If the process dies afterwards,
