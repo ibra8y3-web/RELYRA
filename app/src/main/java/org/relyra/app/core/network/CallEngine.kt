@@ -7,6 +7,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.suspendCancellableCoroutine
@@ -54,7 +55,7 @@ class CallEngine(
 
     private data class Session(
         val id: String, val connection: PeerConnection, val video: Boolean, var gathering: CompletableDeferred<Unit> = CompletableDeferred(),
-        var recoveryAttempts: Int = 0, val gathering: CompletableDeferred<Unit> = CompletableDeferred(),
+        var recoveryAttempts: Int = 0, var recoveryJob: Job? = null, val gathering: CompletableDeferred<Unit> = CompletableDeferred(),
         var audioSource: AudioSource? = null, var audioTrack: AudioTrack? = null,
         var videoSource: VideoSource? = null, var videoTrack: VideoTrack? = null,
         var capturer: CameraVideoCapturer? = null, var texture: SurfaceTextureHelper? = null,
@@ -215,9 +216,9 @@ class CallEngine(
 
     /** One deterministic peer initiates ICE restarts, preventing simultaneous-offer glare. */
     private fun scheduleCallRecovery(peer: String, session: Session) {
-        if (session.recoveryAttempts >= 3) return
+        if (session.recoveryAttempts >= 3 || session.recoveryJob?.isActive == true) return
         if (sessions[peer] !== session) return
-        scope.launch(Dispatchers.IO) {
+        session.recoveryJob = scope.launch(Dispatchers.IO) {
             val localId = ownId() ?: return@launch
             if (localId >= peer) return@launch
             while (sessions[peer] === session && session.recoveryAttempts < 3) {
@@ -282,6 +283,7 @@ class CallEngine(
                 when (s) {
                     PeerConnection.IceConnectionState.CONNECTED, PeerConnection.IceConnectionState.COMPLETED -> {
                         session.recoveryAttempts = 0
+                        session.recoveryJob?.cancel(); session.recoveryJob = null
                         mutableState.value = mutableState.value.copy(phase = CallPhase.ACTIVE, detail = null)
                     }
                     PeerConnection.IceConnectionState.DISCONNECTED, PeerConnection.IceConnectionState.FAILED -> {
@@ -368,6 +370,7 @@ class CallEngine(
     }
     private fun close(peer: String) {
         sessions.remove(peer)?.let { s ->
+            s.recoveryJob?.cancel()
             runCatching { s.capturer?.stopCapture() }; runCatching { s.capturer?.dispose() }
             runCatching { s.videoTrack?.dispose() }; runCatching { s.videoSource?.dispose() }
             runCatching { s.texture?.dispose() }; runCatching { s.audioTrack?.dispose() }
