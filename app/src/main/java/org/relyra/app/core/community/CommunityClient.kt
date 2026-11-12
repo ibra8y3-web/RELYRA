@@ -263,7 +263,7 @@ class CommunityClient(
     ): CommunityEvent = withContext(Dispatchers.IO) {
         val actor = ownPublicId() ?: error("RELYRA identity is unavailable")
         check(isModerator(manifest, actor)) { "This identity is not a community moderator" }
-        if (action == "remove_member" || action == "allow_post") {
+        if (action == "remove_member" || action == "allow_post" || action == "unban") {
             check(actor.equals(manifest.ownerPublicId, true)) { "Only the owner may perform this action" }
         }
         val sequencePath = "/v1/communities/" + manifest.communityId + "/sequence/" + actor
@@ -342,10 +342,11 @@ class CommunityClient(
     fun verifyEvent(event: CommunityEvent, manifest: CommunityManifest): Boolean {
         if (!event.communityId.equals(manifest.communityId, true) ||
             event.policyVersion != manifest.policyVersion || event.sequence < 1 ||
-            event.reasonCode.isBlank() || event.createdAt <= 0
+            event.reasonCode.isBlank() || event.createdAt <= 0 ||
+            event.action !in setOf("ban", "unban", "mute", "slow_mode", "remove_member", "allow_post")
         ) return false
         if (!isModerator(manifest, event.actorPublicId)) return false
-        if ((event.action == "remove_member" || event.action == "allow_post") &&
+        if ((event.action == "remove_member" || event.action == "allow_post" || event.action == "unban") &&
             !event.actorPublicId.equals(manifest.ownerPublicId, true)
         ) return false
         val publicKey = IdentityCrypto.parsePublicId(event.actorPublicId) ?: return false
