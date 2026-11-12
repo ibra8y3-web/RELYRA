@@ -55,7 +55,7 @@ The current `main` branch contains the following implemented code. A green CI ru
 - Community post content is not end-to-end encrypted from the discovery service.
 - Blossom downloads support HTTP Range resume; uploads are not byte-resumable.
 - Backup archive/crypto tests exist, but full SQLCipher RestoreApplier end-to-end, crash-at-each-restore-stage, Room/MLS cross-database consistency and real migration-fixture integration tests remain to be closed.
-- No multi-device enrollment/sync, Bluetooth LE multi-hop mesh, Matrix/XMPP bridges, Plugin SDK/runtime, Local API, Server Studio, desktop/developer tools, independent security audit or final physical-device test matrix yet.
+- Phase 5 multi-device enrollment/sync remains incomplete. Phase 6 BLE Mesh source is present (GATT discovery, signed transit hops, encrypted bounded queue, TTL/quota/consent controls), but has not been built or verified across physical devices. Matrix/XMPP bridges, Plugin SDK/runtime, Local API, Server Studio, desktop/developer tools, independent security audit and final physical-device test matrix remain outstanding.
 
 The current source intentionally does not label these remaining items as complete.
 
