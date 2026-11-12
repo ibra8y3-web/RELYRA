@@ -20,6 +20,11 @@ internal object MlsNative {
     @JvmStatic external fun nativeEncrypt(groupId: ByteArray, plaintext: ByteArray): ByteArray
     @JvmStatic external fun nativeProcessMessage(message: ByteArray): String
     @JvmStatic external fun nativeRemoveMember(groupId: ByteArray, credentialIdentity: ByteArray): String
+    @JvmStatic external fun nativeProposeAddMember(groupId: ByteArray, keyPackage: ByteArray): ByteArray
+    @JvmStatic external fun nativeProposeRemoveMember(groupId: ByteArray, credentialIdentity: ByteArray): ByteArray
+    @JvmStatic external fun nativeProcessProposal(message: ByteArray, expectedPublicId: String): Long
+    @JvmStatic external fun nativeCommitPendingProposals(groupId: ByteArray): String
+    @JvmStatic external fun nativePendingProposalCount(groupId: ByteArray): Long
     @JvmStatic external fun nativeEpoch(groupId: ByteArray): Long
     @JvmStatic external fun nativeMembers(groupId: ByteArray): String
     @JvmStatic external fun nativeClose()
