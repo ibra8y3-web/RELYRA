@@ -368,7 +368,7 @@
     <string name="devices_approval_code">رمز الموافقة من الجهاز الموثوق</string>
     <string name="devices_accept_approval">قبول الموافقة الموقّعة</string>
     <string name="devices_output_code">رمز الموافقة أو التصدير المشفر</string>
-    <string name="devices_sync_title">مزامنة مشفرة يدوية</string>
+    <string name="devices_sync_title">مزامنة الأجهزة المشفرة</string>
     <string name="devices_sync_warning">تحتوي رموز المزامنة على بيانات محادثات خاصة. شاركها مع جهازك المعتمد فقط. لا تُنقل أسرار Ratchet أو MLS.</string>
     <string name="devices_export">تصدير</string>
     <string name="devices_sync_code">رمز المزامنة المشفر</string>
