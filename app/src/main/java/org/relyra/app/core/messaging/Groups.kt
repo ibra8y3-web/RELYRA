@@ -547,7 +547,7 @@ class GroupEngine(
                 }.map { it.id }.toSet()
                 if (allowedTargets.isEmpty()) return
                 val acceptedEpoch = runCatching {
-                    engine.processProposal(env.payload, env.from, allowedTargets)
+                    engine.processProposal(env.payload, env.from, allowedTargets, allowAdd = false, allowRemove = true)
                 }.getOrNull() ?: return
                 if (acceptedEpoch != group.mlsEpoch) return
                 if (!store.recordControlMessage(env.messageId, clock())) { ack(me, env.from, env.messageId); return }
@@ -640,7 +640,7 @@ class GroupEngine(
                 // Convert the accepted KeyPackage into a standards-based Add Proposal,
                 // store it through OpenMLS, then commit all currently accepted proposals.
                 val addProposal = engine.proposeAddMember(env.groupId, env.payload)
-                engine.processProposal(addProposal, me, setOf(env.from))
+                engine.processProposal(addProposal, me, setOf(env.from), allowAdd = true, allowRemove = false)
                 val bundle = engine.commitPendingProposals(env.groupId)
                 val welcome = bundle.welcome ?: return
                 val activeCredentials = mlsCredentialIds(env.groupId) ?: return
