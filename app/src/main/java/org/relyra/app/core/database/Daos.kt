@@ -121,6 +121,6 @@ interface TrustedDeviceDao {
     @Query("UPDATE trusted_devices SET syncCursor = :cursor WHERE deviceId = :deviceId AND accountId = :accountId AND status = 'APPROVED' AND :cursor > syncCursor")
     suspend fun advanceSyncCursor(deviceId: String, accountId: String, cursor: Long): Int
 
-    @Query("UPDATE trusted_devices SET keyVersion = :newVersion WHERE deviceId = :deviceId AND accountId = :accountId AND status = 'APPROVED' AND keyVersion = :expectedVersion")
-    suspend fun rotateKeyVersion(deviceId: String, accountId: String, expectedVersion: Long, newVersion: Long): Int
+    @Query("UPDATE trusted_devices SET signingPublicKey = :signingKey, encryptionPublicKey = :encryptionKey, keyVersion = :newVersion WHERE deviceId = :deviceId AND accountId = :accountId AND status = 'APPROVED' AND keyVersion = :expectedVersion")
+    suspend fun rotateDeviceKeys(deviceId: String, accountId: String, expectedVersion: Long, newVersion: Long, signingKey: ByteArray, encryptionKey: ByteArray): Int
 }
