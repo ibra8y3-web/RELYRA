@@ -1012,7 +1012,7 @@ mod tests {
         process_proposal(
             &mut owner, &proposal, "staged-remove-1", "alice", &["bob".to_owned()], false, true,
         ).unwrap();
-        let prepared = prepare_pending_proposals_commit(&mut owner, gid).unwrap();
+        let prepared = prepare_pending_proposals_commit(&mut owner, gid, None).unwrap();
         assert_eq!(prepared.epoch, 2);
         assert_eq!(prepared.removed_ids, vec!["bob".to_owned()]);
         assert_eq!(epoch(&mut owner, gid).unwrap(), 1);
