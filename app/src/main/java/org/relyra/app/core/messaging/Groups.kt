@@ -466,8 +466,8 @@ class GroupEngine(
             GroupMlsKind.KEY_PACKAGE -> {
                 if (!isStaff(localRole) || sender.mlsJoined || env.from == group.owner) return
                 val engine = mls ?: return
-                val expectedCredential = "RELYRA-MLS-V1:${env.from}:primary"
-                if (engine.keyPackageIdentity(env.payload) != expectedCredential) return
+                val credential = engine.keyPackageIdentity(env.payload)
+                if (!MlsCredentialCodec.verify(credential, env.from)) return
                 if (store.hasControlMessage(env.messageId)) { ack(me, env.from, env.messageId); return }
                 val bundle = engine.addMembers(env.groupId, listOf(env.payload))
                 val now = clock().coerceAtLeast(1L)
