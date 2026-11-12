@@ -383,12 +383,39 @@ func (s *Store) AppendModerationEvent(ctx context.Context, raw []byte) (Moderati
 	if err := s.ds.Put(ctx, seqKey, []byte(strconv.FormatUint(e.Sequence, 10))); err != nil {
 		return e, err
 	}
+	if e.Action == "remove_member" {
+		if err := s.ds.Delete(ctx, datastore.NewKey(memberStorageKey(e.CommunityID, e.SubjectPublicID))); err != nil && !errors.Is(err, datastore.ErrNotFound) {
+			return e, err
+		}
+	}
 	return e, nil
 }
 
 func (s *Store) Events(ctx context.Context, communityID string, limit int) ([]ModerationEvent, error) {
 	if !validCommunityID(communityID) || limit < 1 || limit > MaxEventsPage { return nil, errors.New("invalid events query") }
 	if _, err := s.GetManifest(ctx, communityID, false); err != nil { return nil, err }
+	results, err := s.ds.Query(ctx, query.Query{Prefix: eventPrefix + strings.ToLower(communityID) + "/"})
+	if err != nil { return nil, err }
+	defer results.Close()
+	out := make([]ModerationEvent, 0, limit)
+	for entry := range results.Next() {
+		if entry.Error != nil { return nil, entry.Error }
+		var event ModerationEvent
+		if json.Unmarshal(entry.Value, &event) != nil { continue }
+		out = append(out, event)
+		if len(out) >= limit { break }
+	}
+	sort.Slice(out, func(i, j int) bool {
+		if out[i].CreatedAt == out[j].CreatedAt { return out[i].Sequence < out[j].Sequence }
+		return out[i].CreatedAt < out[j].CreatedAt
+	})
+	return out, nil
+}
+
+func (s *Store) eventsUnchecked(ctx context.Context, communityID string, limit int) ([]ModerationEvent, error) {
+	if !validCommunityID(communityID) || limit < 1 || limit > MaxEventsPage {
+		return nil, errors.New("invalid events query")
+	}
 	results, err := s.ds.Query(ctx, query.Query{Prefix: eventPrefix + strings.ToLower(communityID) + "/"})
 	if err != nil { return nil, err }
 	defer results.Close()
