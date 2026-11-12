@@ -191,6 +191,7 @@ class WebRtcP2pConnector(
     private val onWire: suspend (ByteArray) -> Boolean,
     private val scope: CoroutineScope,
     private val sendSignal: suspend (String, P2pSignalKind, String) -> SendOutcome = { _, _, _ -> SendOutcome.Unavailable },
+    private val refreshIceServers: suspend () -> List<IceServerConfig>? = { null },
 ) : Connector {
     override val name: String = "Internet P2P (WebRTC)"
 
@@ -207,10 +208,12 @@ class WebRtcP2pConnector(
     val peerStates: StateFlow<Map<String, InternetPeerState>> = states
     val incomingOffers: StateFlow<Map<String, IncomingP2pOffer>> = _incomingOffers
     private val initialized = AtomicBoolean(false)
-    @Volatile private var iceServers: List<IceServerConfig> = listOf(
+    private val defaultIceServers = listOf(
         IceServerConfig("stun:stun.l.google.com:19302"),
         IceServerConfig("stun:stun.cloudflare.com:3478"),
     )
+    @Volatile private var iceServers: List<IceServerConfig> = defaultIceServers
+    @Volatile private var manualIceServersConfigured = false
     @Volatile private var networkCallbackRegistered = false
 
     private val networkCallback = object : ConnectivityManager.NetworkCallback() {
@@ -255,7 +258,34 @@ class WebRtcP2pConnector(
     fun setIceServers(servers: List<IceServerConfig>): Boolean {
         if (servers.size > 12 || servers.any { !it.isValid() }) return false
         iceServers = servers.toList()
+        manualIceServersConfigured = true
         return true
+    }
+
+    fun setManagedIceServers(servers: List<IceServerConfig>): Boolean {
+        if (servers.size > 12 || servers.any { !it.isValid() }) return false
+        iceServers = servers.toList()
+        manualIceServersConfigured = false
+        return true
+    }
+
+    fun resetIceServers() {
+        manualIceServersConfigured = false
+        iceServers = defaultIceServers
+    }
+
+    private suspend fun refreshManagedIceServers() {
+        if (manualIceServersConfigured) return
+        val managed = try {
+            refreshIceServers()
+        } catch (cancelled: CancellationException) {
+            throw cancelled
+        } catch (_: Exception) {
+            null
+        } ?: return
+        if (managed.isNotEmpty() && managed.size <= 10 && managed.all(IceServerConfig::isValid)) {
+            iceServers = defaultIceServers + managed
+        }
     }
 
     private fun factory(): PeerConnectionFactory {
@@ -334,6 +364,7 @@ class WebRtcP2pConnector(
         val me = ownId() ?: return null
         val targetId = peerId.trim().lowercase()
         if (IdentityCrypto.parsePublicId(targetId) == null || !knownPeer(targetId)) return null
+        refreshManagedIceServers()
         val sessionId = UUID.randomUUID().toString()
         return try {
             val result = safely {
@@ -364,6 +395,7 @@ class WebRtcP2pConnector(
         if (signal.type != "offer") return null
         val pending = _incomingOffers.value[targetId]
         if (pending != null && pending.sessionId != signal.sessionId) return null
+        refreshManagedIceServers()
         return try {
             val answer = safely {
                 withContext(Dispatchers.IO) {
