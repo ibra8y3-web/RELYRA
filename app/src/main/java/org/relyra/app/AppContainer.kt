@@ -48,6 +48,7 @@ class AppContainer(context: Context) {
     val contacts: ContactRepository by lazy { ContactRepository(database, events) { ids, paths -> transfers.clean(ids, paths) } }
     val messages by lazy { RoomMessageStore(database) }
     val groupStore by lazy { RoomGroupStore(database) }
+    val mls by lazy { org.relyra.app.core.messaging.MlsEngine(appContext, secure) }
     val data: DataManager by lazy {
         DataManager(
             db = database,
@@ -186,6 +187,7 @@ class AppContainer(context: Context) {
             ownId = { database.identityDao().get()?.publicId },
             transmit = { peer, plaintext -> delivery.transmit(peer, plaintext) },
             incoming = incomingListener,
+            mls = mls,
         )
     }
 
