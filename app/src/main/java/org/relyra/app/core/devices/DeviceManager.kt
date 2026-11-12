@@ -96,11 +96,18 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         require(account==identity.publicId && id!=secure.deviceId() && name.isNotBlank())
         require(System.currentTimeMillis()-created in 0..TTL && signPub.size==32 && encPub.size==32 && challenge.size==32)
         require(IdentityCrypto.verify(signPub,sig,body)) { "Invalid enrollment signature" }
-        require(db.trustedDeviceDao().get(id)==null) { "Device already exists" }
         val now=System.currentTimeMillis()
-        db.trustedDeviceDao().insertPending(TrustedDeviceEntity(id,account,name,platform,signPub,encPub,
-            TrustedDeviceStatus.PENDING,created,now,null,null,1,0))
-        check(db.trustedDeviceDao().approvePending(id,account,now)==1)
+        val existing = db.trustedDeviceDao().get(id)
+        if(existing==null) {
+            db.trustedDeviceDao().insertPending(TrustedDeviceEntity(id,account,name,platform,signPub,encPub,
+                TrustedDeviceStatus.PENDING,created,now,null,null,1,0))
+            check(db.trustedDeviceDao().approvePending(id,account,now)==1)
+        } else {
+            require(existing.accountId==account && existing.signingPublicKey.contentEquals(signPub) &&
+                existing.encryptionPublicKey.contentEquals(encPub) && existing.status==TrustedDeviceStatus.APPROVED) {
+                "Device ID is already registered with different keys or a revoked state"
+            }
+        }
         val approval=transcript(APPROVAL,account,id,b64(challenge),now.toString(),b64(identity.publicKey),
             local.deviceId,local.displayName,local.platform,b64(local.signingPublicKey),b64(local.encryptionPublicKey))
         log(EventType.DEVICE_APPROVED,id)
