@@ -477,7 +477,9 @@ fun GroupInfoScreen(vm: MainViewModel, groupId: String, onGone: () -> Unit) {
     val active = state == GroupState.ACTIVE
     val staff = active && (myRole == GroupRole.OWNER || myRole == GroupRole.ADMIN)
     val pendingProposals by vm.pendingMlsProposals.collectAsStateWithLifecycle()
+    val pendingProposalDeliveries by vm.pendingMlsProposalDeliveries.collectAsStateWithLifecycle()
     val pendingProposalCount = pendingProposals[groupId] ?: 0
+    val pendingDeliveryCount = pendingProposalDeliveries[groupId] ?: 0
     LaunchedEffect(groupId, g.mlsEnabled) {
         if (g.mlsEnabled) vm.refreshPendingMlsProposals(groupId)
     }
@@ -516,7 +518,17 @@ fun GroupInfoScreen(vm: MainViewModel, groupId: String, onGone: () -> Unit) {
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
-                        Button(onClick = { vm.commitPendingMlsProposals(groupId) }) {
+                        if (pendingDeliveryCount > 0) {
+                            Text(
+                                stringResource(R.string.groups_mls_pending_delivery_hint, pendingDeliveryCount),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.tertiary,
+                            )
+                        }
+                        Button(
+                            enabled = pendingDeliveryCount == 0,
+                            onClick = { vm.commitPendingMlsProposals(groupId) },
+                        ) {
                             Text(stringResource(R.string.groups_mls_commit_pending))
                         }
                     }
