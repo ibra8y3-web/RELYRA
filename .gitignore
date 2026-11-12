@@ -8,3 +8,7 @@ captures/
 .cxx/
 *.jks
 *.keystore
+
+# Local service secrets and operator configuration
+.env
+services/discovery/.env
