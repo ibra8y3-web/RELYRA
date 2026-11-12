@@ -13,7 +13,6 @@ import java.io.FileInputStream
 import java.io.FileOutputStream
 import java.io.InputStream
 import java.io.OutputStream
-import android.content.Context
 import android.content.SharedPreferences
 import java.util.Properties
 
@@ -31,7 +30,6 @@ class BackupManager(
     private val stageDir: File,
     private val filesDir: File,
     private val preferenceStores: Map<String, SharedPreferences>,
-    private val context: Context,
 ) {
     private val backupRoots = mapOf(
         "vault" to File(filesDir, "vault"),

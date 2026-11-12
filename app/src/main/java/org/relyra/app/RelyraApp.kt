@@ -21,6 +21,7 @@ class RelyraApp : Application() {
         // A backup staged by the previous run is swapped in before anything opens the database.
         restoreApplied = try {
             org.relyra.app.core.backup.RestoreApplier.applyIfPending(
+                this,
                 java.io.File(filesDir, "restore"), getDatabasePath("relyra.db"), container.secure, filesDir,
                 mapOf(
                     "relyra_settings" to getSharedPreferences("relyra_settings", MODE_PRIVATE),
