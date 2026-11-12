@@ -84,4 +84,7 @@
     <string name="net_dht_gateway_untested">Not tested yet</string>
     <string name="net_dht_gateway_invalid">Enter a valid HTTPS discovery gateway URL.</string>
     <string name="net_dht_gateway_duplicate">This discovery gateway is already configured.</string>
+
+    <string name="net_transport_last_path">Last successful delivery path: %1$s</string>
+    <string name="net_transport_no_path">No transport has successfully delivered a message yet.</string>
 </resources>
