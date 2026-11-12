@@ -179,6 +179,29 @@ class NetworkManager(context: Context, private val client: RelayClient = RelayCl
         prefs.edit { putBoolean("wifi_direct_enabled", enabled) }
         _wifiDirectEnabled.value = enabled
     }
+    private val _meshEnabled = MutableStateFlow(prefs.getBoolean("ble_mesh_enabled", false))
+    val meshEnabled: StateFlow<Boolean> = _meshEnabled
+    private val _meshRelayEnabled = MutableStateFlow(prefs.getBoolean("ble_mesh_relay_enabled", false))
+    val meshRelayEnabled: StateFlow<Boolean> = _meshRelayEnabled
+    private val _meshQuotaMb = MutableStateFlow(prefs.getInt("ble_mesh_quota_mb", 20).coerceIn(5, 100))
+    val meshQuotaMb: StateFlow<Int> = _meshQuotaMb
+
+    fun setMeshEnabled(enabled: Boolean) {
+        prefs.edit { putBoolean("ble_mesh_enabled", enabled) }
+        _meshEnabled.value = enabled
+    }
+
+    fun setMeshRelayEnabled(enabled: Boolean) {
+        prefs.edit { putBoolean("ble_mesh_relay_enabled", enabled) }
+        _meshRelayEnabled.value = enabled
+    }
+
+    fun setMeshQuotaMb(value: Int) {
+        val bounded = value.coerceIn(5, 100)
+        prefs.edit { putInt("ble_mesh_quota_mb", bounded) }
+        _meshQuotaMb.value = bounded
+    }
+
 
     /** Newest relay event (seconds) already processed; used to resume the inbox subscription. */
     var inboxSince: Long
