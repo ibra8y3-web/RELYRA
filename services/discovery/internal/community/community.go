@@ -454,6 +454,69 @@ func (s *Store) SubmitReport(ctx context.Context, raw []byte) (Report, error) {
 	return report, nil
 }
 
+// Reports returns only recent, valid, signed reports to the community owner or a moderator.
+func (s *Store) Reports(ctx context.Context, communityID, requesterPublicID string, limit int) ([]Report, error) {
+    if !validCommunityID(communityID) || limit < 1 || limit > MaxEventsPage {
+        return nil, errors.New("invalid reports query")
+    }
+    manifest, err := s.GetManifest(ctx, communityID, true)
+    if err != nil {
+        return nil, err
+    }
+    if manifest.Visibility == "private" && !s.CanReadPrivate(ctx, communityID, requesterPublicID) {
+        return nil, errors.New("private community report access denied")
+    }
+    if _, err := identityKey(requesterPublicID); err != nil {
+        return nil, err
+    }
+    authorized := strings.EqualFold(manifest.OwnerPublicID, requesterPublicID)
+    if !authorized {
+        for _, moderator := range manifest.ModeratorPublicIDs {
+            if strings.EqualFold(moderator, requesterPublicID) {
+                authorized = true
+                break
+            }
+        }
+    }
+    if !authorized {
+        return nil, errors.New("only the owner or a moderator may read community reports")
+    }
+
+    // Reports older than the verification window are no longer surfaced. Bound the
+    // datastore scan so a hostile report flood cannot force an unbounded response.
+    results, err := s.ds.Query(ctx, query.Query{
+        Prefix: reportPrefix + strings.ToLower(communityID) + "/",
+        Limit: 1000,
+    })
+    if err != nil {
+        return nil, err
+    }
+    defer results.Close()
+    reports := make([]Report, 0, limit)
+    for entry := range results.Next() {
+        if entry.Error != nil {
+            return nil, entry.Error
+        }
+        var report Report
+        if json.Unmarshal(entry.Value, &report) != nil ||
+            !strings.EqualFold(report.CommunityID, communityID) ||
+            VerifyReport(report, s.clock()) != nil {
+            continue
+        }
+        reports = append(reports, report)
+    }
+    sort.Slice(reports, func(i, j int) bool {
+        if reports[i].CreatedAt == reports[j].CreatedAt {
+            return reports[i].ReportID > reports[j].ReportID
+        }
+        return reports[i].CreatedAt > reports[j].CreatedAt
+    })
+    if len(reports) > limit {
+        reports = reports[:limit]
+    }
+    return reports, nil
+}
+
 func decodeStrict(raw []byte, target any) error {
 	decoder := json.NewDecoder(bytes.NewReader(raw))
 	decoder.DisallowUnknownFields()
