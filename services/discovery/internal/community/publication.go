@@ -210,8 +210,8 @@ func (s *Store) PublishPost(ctx context.Context, raw []byte) (Post, error) {
 		} else if p.Sequence > last {
 			return p, errors.New("post sequence has a gap")
 		}
-		if p.CreatedAt > policy.LastPostAt {
-			policy.LastPostAt = p.CreatedAt
+		if now > policy.LastPostAt {
+			policy.LastPostAt = now
 			encoded, _ := json.Marshal(policy)
 			if err := s.ds.Put(ctx, policyKey, encoded); err != nil { return p, err }
 		}
@@ -228,7 +228,7 @@ func (s *Store) PublishPost(ctx context.Context, raw []byte) (Post, error) {
 	if err := s.ds.Put(ctx, postSequenceKey(p.CommunityID, p.AuthorPublicID), []byte(strconv.FormatUint(p.Sequence, 10))); err != nil {
 		return p, err
 	}
-	policy.LastPostAt = maxInt64(policy.LastPostAt, p.CreatedAt)
+	policy.LastPostAt = maxInt64(policy.LastPostAt, now)
 	policyBytes, err := json.Marshal(policy)
 	if err != nil { return p, err }
 	if err := s.ds.Put(ctx, policyKey, policyBytes); err != nil { return p, err }
@@ -317,8 +317,8 @@ func VerifyReportReview(r ReportReview, now time.Time) error {
 	payload, err := CanonicalReportReview(r)
 	if err != nil { return err }
 	created := time.UnixMilli(r.CreatedAt)
-	if created.After(now.Add(5*time.Minute)) || now.Sub(created) > 30*24*time.Hour {
-		return errors.New("report review timestamp is outside the accepted window")
+	if created.After(now.Add(5*time.Minute)) {
+		return errors.New("report review timestamp is in the future")
 	}
 	publicKey, err := identity.DecodePublicID(r.ReviewerPublicID)
 	if err != nil { return err }
