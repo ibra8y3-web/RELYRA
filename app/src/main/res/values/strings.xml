@@ -391,7 +391,7 @@
     <string name="devices_import_code">Import pasted sync code</string>
     <string name="devices_auto_sync">Automatic encrypted sync runs every 15 minutes while the app is active and configured relays are available. Large transfers are split into encrypted chunks.</string>
     <string name="devices_sync_now">Sync approved devices now</string>
-    <string name="devices_rotate_keys">Rotate this device's keys</string>
+    <string name="devices_rotate_keys">Rotate this device's signing key</string>
     <string name="devices_rotation_code">Signed device key-rotation code</string>
     <string name="devices_apply_rotation">Apply signed key rotation</string>
 </resources>
