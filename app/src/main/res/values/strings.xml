@@ -378,4 +378,6 @@
     <string name="devices_last_seen">Last seen (local timestamp)</string>
     <string name="devices_revoke">Revoke trust</string>
 
+    <string name="devices_revocation_code">Signed device revocation code</string>
+    <string name="devices_apply_revocation">Apply signed revocation</string>
 </resources>
