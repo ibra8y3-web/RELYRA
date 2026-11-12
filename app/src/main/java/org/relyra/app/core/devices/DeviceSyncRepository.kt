@@ -95,19 +95,25 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
                         j.optBoolean("read"),null)
                     require(incoming.body.length<=1_000_000)
                     val current=db.messageDao().get(id)
-                    if(current==null) { if(db.messageDao().insertIfAbsent(incoming)!=-1L) mAdded++ }
-                    if(!incoming.outgoing) db.messageDao().insertProcessed(ProcessedIdEntity(id,System.currentTimeMillis()))
-                    else {
+                    if(current==null) {
+                        if(db.messageDao().insertIfAbsent(incoming)!=-1L) mAdded++
+                    } else {
                         require(current.chatId==incoming.chatId&&current.outgoing==incoming.outgoing&&
                             current.createdAt==incoming.createdAt&&current.body==incoming.body) {
                             "Message ID collision; refusing to replace a different message"
                         }
-                        val state=mergeState(current.state,incoming.state)
-                        val merged=current.copy(state=state,readLocally=current.readLocally||incoming.readLocally,
-                            attempts=maxOf(current.attempts,incoming.attempts),
-                            nextAttemptAt=minOf(current.nextAttemptAt,incoming.nextAttemptAt))
-                        if(merged!=current) db.messageDao().update(merged) else conflicts++
+                        if(incoming.outgoing) {
+                            val state=mergeState(current.state,incoming.state)
+                            val merged=current.copy(state=state,readLocally=current.readLocally||incoming.readLocally,
+                                attempts=maxOf(current.attempts,incoming.attempts),
+                                nextAttemptAt=minOf(current.nextAttemptAt,incoming.nextAttemptAt))
+                            if(merged!=current) db.messageDao().update(merged) else conflicts++
+                        } else {
+                            val merged=current.copy(readLocally=current.readLocally||incoming.readLocally)
+                            if(merged!=current) db.messageDao().update(merged) else conflicts++
+                        }
                     }
+                    if(!incoming.outgoing) db.messageDao().insertProcessed(ProcessedIdEntity(id,System.currentTimeMillis()))
                 }
                 for(i in 0 until pa.length()) {
                     val j=pa.getJSONObject(i); val chat=j.getString("chat")
