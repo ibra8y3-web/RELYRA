@@ -32,12 +32,15 @@ fi
 rustup target add aarch64-linux-android x86_64-linux-android
 mkdir -p "$OUT_DIR"
 
-cargo ndk \
-  -t arm64-v8a \
-  -t x86_64 \
-  -p 29 \
-  -o "$OUT_DIR" \
-  build --release --manifest-path "$ROOT/native/mls/Cargo.toml"
+(
+  cd "$ROOT/native/mls"
+  cargo ndk \
+    -t arm64-v8a \
+    -t x86_64 \
+    -p 29 \
+    -o "$OUT_DIR" \
+    build --release
+)
 
 test -s "$OUT_DIR/arm64-v8a/librelyra_mls.so"
 test -s "$OUT_DIR/x86_64/librelyra_mls.so"
