@@ -20,11 +20,11 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
     suspend fun exportEncrypted(targetDeviceId:String):ByteArray {
         val identity=checkNotNull(db.identityDao().get())
         val contacts=db.contactDao().allForDeviceSync()
-        val attachmentIds=db.attachmentDao().allMessageIdsForDeviceSync().toSet()
-        val messages=db.messageDao().allForDeviceSync().filter { it.messageId !in attachmentIds && (!it.outgoing || it.state !in setOf("QUEUED", "SENT", "RELAYED")) }
+        val messages=db.messageDao().allForDeviceSync().filter { !it.outgoing || it.state !in setOf("QUEUED", "SENT", "RELAYED") }
+        val attachments=db.attachmentDao().allForDeviceSync()
         val prefs=db.chatPrefDao().allForDeviceSync()
         val trustedDevices=db.trustedDeviceDao().observeForAccount(identity.publicId).first()
-        require(contacts.size+messages.size+prefs.size+trustedDevices.size<=LIMIT)
+        require(contacts.size+messages.size+attachments.size+prefs.size+trustedDevices.size<=LIMIT)
         val root=JSONObject().put("format",FORMAT).put("version",VERSION).put("account",identity.publicId)
             .put("createdAt",System.currentTimeMillis())
         val ca=JSONArray()
@@ -41,6 +41,12 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
             .put("out",m.outgoing).put("body",m.body).put("created",m.createdAt).put("state",m.state)
             .put("attempts",m.attempts).put("next",m.nextAttemptAt).put("read",m.readLocally)) }
         root.put("messages",ma)
+        root.put("attachments",JSONArray().also { a -> attachments.forEach { f ->
+            a.put(JSONObject().put("id",f.messageId).put("name",f.name).put("mime",f.mime)
+                .put("size",f.size).put("blobSize",f.blobSize).put("plainHash",enc(f.plainSha256))
+                .put("blobHash",enc(f.blobSha256)).put("fileKey",enc(f.fileKey))
+                .put("url",f.serverUrl).put("phase",f.phase))
+        } })
         val pa=JSONArray()
         prefs.forEach { p -> pa.put(JSONObject().put("chat",p.chatId).put("pinned",p.pinned)
             .put("archived",p.archived).put("muted",p.muted).put("updated",p.updatedAt)) }
@@ -104,11 +110,12 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
             val ca=root.getJSONArray("contacts"); val ma=root.getJSONArray("messages"); val pa=root.getJSONArray("preferences")
             val global = root.optJSONObject("globalPreferences")
             val da=root.optJSONArray("trustedDevices") ?: JSONArray()
+            val attachments=root.optJSONArray("attachments") ?: JSONArray()
             val ga=root.optJSONArray("groups") ?: JSONArray()
             val gma=root.optJSONArray("groupMembers") ?: JSONArray()
             val gmessages=root.optJSONArray("groupMessages") ?: JSONArray()
             val gattachments=root.optJSONArray("groupAttachments") ?: JSONArray()
-            require(ca.length()+ma.length()+pa.length()+da.length()+ga.length()+gma.length()+
+            require(ca.length()+ma.length()+pa.length()+da.length()+attachments.length()+ga.length()+gma.length()+
                 gmessages.length()+gattachments.length()<=LIMIT)
             var cAdded=0; var mAdded=0; var pUpdated=0; var conflicts=0
             db.withTransaction {
@@ -161,6 +168,28 @@ class DeviceSyncRepository(private val db:AppDatabase,private val devices:Device
                         }
                     }
                     if(!incoming.outgoing) db.messageDao().insertProcessed(ProcessedIdEntity(id,System.currentTimeMillis()))
+                }
+                for(i in 0 until attachments.length()) {
+                    val j=attachments.getJSONObject(i)
+                    val id=j.getString("id")
+                    val key=dec(j.getString("fileKey"),32)
+                    val plainHash=dec(j.getString("plainHash"),32)
+                    val blobHash=dec(j.getString("blobHash"),32)
+                    require(key.size==32 && plainHash.size==32 && blobHash.size==32)
+                    require(db.messageDao().get(id)!=null) { "Attachment has no corresponding message" }
+                    val attachment=AttachmentEntity(id,j.getString("name").take(255),j.getString("mime").take(255),
+                        j.getLong("size"),j.getLong("blobSize"),plainHash,blobHash,key,
+                        j.getString("url").take(4096),null,j.getString("phase"))
+                    require(attachment.size>=0 && attachment.blobSize>=0 &&
+                        runCatching { org.relyra.app.core.messaging.AttachmentPhase.valueOf(attachment.phase) }.isSuccess)
+                    val inserted=db.attachmentDao().insertIfAbsent(attachment)
+                    if(inserted==-1L) {
+                        val current=db.attachmentDao().get(id)
+                        if(current!=null && (!current.blobSha256.contentEquals(blobHash) ||
+                            !current.plainSha256.contentEquals(plainHash))) {
+                            error("Attachment ID collision; refusing to replace different file metadata")
+                        }
+                    }
                 }
                 for(i in 0 until pa.length()) {
                     val j=pa.getJSONObject(i); val chat=j.getString("chat")
