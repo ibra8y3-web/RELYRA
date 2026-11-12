@@ -460,6 +460,35 @@ class GroupEngineTest {
         assertNull(GroupChangeProposalCodec.decode(byteArrayOf(1, 2, 3)))
     }
 
+    @Test fun removedMlsMemberAcceptsOwnerSnapshotWithoutTheNewEpochCommit() = runBlocking {
+        val gid = UUID.randomUUID().toString()
+        val store = FakeGroupStore()
+        store.putGroup(
+            GroupRecord(gid, "MLS team", GroupKind.GROUP, "alice", 3, GroupState.ACTIVE,
+                now, "alice", mlsEnabled = true, mlsEpoch = 9),
+            listOf(
+                GroupMemberRef("alice", GroupRole.OWNER, mlsJoined = true),
+                GroupMemberRef("bob", GroupRole.ADMIN, mlsJoined = true),
+                GroupMemberRef("carol", GroupRole.MEMBER, mlsJoined = true),
+            ),
+        )
+        val removed = GroupEngine(
+            store = store,
+            peers = Peers(mapOf("alice" to PeerStatus.Known, "bob" to PeerStatus.Known, "carol" to PeerStatus.Known)),
+            ownId = { "carol" },
+            transmit = { _, _ -> SendOutcome.Unavailable },
+        )
+        removed.onEnvelope(Envelope.GroupSync(
+            UUID.randomUUID().toString(), "alice", "carol", gid, "MLS team", GroupKind.GROUP,
+            4, "alice", listOf(
+                GroupMemberRef("alice", GroupRole.OWNER, mlsJoined = true),
+                GroupMemberRef("bob", GroupRole.ADMIN, mlsJoined = true),
+            ), mlsEnabled = true, mlsEpoch = 10,
+        ))
+        assertEquals(GroupState.REMOVED, store.group(gid)!!.state)
+        assertFalse(store.members(gid).any { it.id == "carol" })
+    }
+
     @Test fun mlsCommitFromAdminIsIgnoredAtReceiver() = runBlocking {
         val gid = UUID.randomUUID().toString()
         val store = FakeGroupStore()
