@@ -2,6 +2,8 @@ package org.relyra.app.core.network
 
 import android.content.Context
 import android.media.AudioManager
+import org.relyra.app.background.CallForegroundService
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -51,7 +53,7 @@ class CallEngine(
     }
 
     private data class Session(
-        val id: String, val connection: PeerConnection, val video: Boolean, val gathering: CompletableDeferred<Unit> = CompletableDeferred(),
+        val id: String, val connection: PeerConnection, val video: Boolean, val gathering: CompletableDeferred<Unit> = CompletableDeferred(), val gathering: CompletableDeferred<Unit> = CompletableDeferred(),
         var audioSource: AudioSource? = null, var audioTrack: AudioTrack? = null,
         var videoSource: VideoSource? = null, var videoTrack: VideoTrack? = null,
         var capturer: CameraVideoCapturer? = null, var texture: SurfaceTextureHelper? = null,
@@ -67,11 +69,13 @@ class CallEngine(
         return try {
             val id = UUID.randomUUID().toString()
             val session = createSession(peer, id, withVideo) ?: error("WebRTC initialization failed")
+            sessions[peer] = session
+            CallForegroundService.start(app, withVideo)
             val offer = createDescription(session.connection, true)
             setDescription(session.connection, true, offer)
             withTimeout(25_000) { session.gathering.await() }
+            withTimeout(25_000) { session.gathering.await() }
             val sdp = session.connection.localDescription?.description ?: error("Missing local SDP")
-            sessions[peer] = session
             val signal = signed(peer, "call_offer", sdp, id) ?: error("Could not sign call offer")
             requireDelivered(sendSignal(peer, P2pSignalKind.CALL_OFFER, signal))
             mutableState.value = mutableState.value.copy(phase = CallPhase.CONNECTING, startedAtMillis = System.currentTimeMillis())
@@ -100,12 +104,14 @@ class CallEngine(
         if (decoded.type != "call_offer") return
         try {
             val session = createSession(peer, decoded.sessionId, current.video) ?: error("WebRTC initialization failed")
+            sessions[peer] = session
+            CallForegroundService.start(app, current.video)
             setDescription(session.connection, false, SessionDescription(SessionDescription.Type.OFFER, decoded.sdp))
             val answer = createDescription(session.connection, false)
             setDescription(session.connection, true, answer)
             withTimeout(25_000) { session.gathering.await() }
+            withTimeout(25_000) { session.gathering.await() }
             val sdp = session.connection.localDescription?.description ?: error("Missing answer SDP")
-            sessions[peer] = session
             val signal = signed(peer, "call_answer", sdp, decoded.sessionId) ?: error("Could not sign call answer")
             requireDelivered(sendSignal(peer, P2pSignalKind.CALL_ANSWER, signal))
             mutableState.value = current.copy(phase = CallPhase.CONNECTING, incomingSignal = null,
@@ -285,6 +291,7 @@ class CallEngine(
         (app.getSystemService(Context.AUDIO_SERVICE) as AudioManager).apply {
             isSpeakerphoneOn = false; mode = AudioManager.MODE_NORMAL
         }
+        CallForegroundService.stop(app)
     }
     fun dispose() {
         sessions.keys.toList().forEach(::close)
