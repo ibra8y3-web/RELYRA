@@ -1141,6 +1141,31 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
         }
     }
+    fun exportDeviceSyncToUri(deviceId: String, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val bytes = ctr().deviceSync.exportEncrypted(deviceId)
+                try {
+                    val out = getApplication<Application>().contentResolver.openOutputStream(uri, "w")
+                        ?: throw java.io.IOException("Cannot open destination")
+                    out.use { it.write(bytes) }
+                } finally { bytes.fill(0) }
+            }.onSuccess { deviceMessage.value = "Encrypted device snapshot saved." }
+             .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
+        }
+    }
+    fun importDeviceSyncFromUri(uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching {
+                val input = getApplication<Application>().contentResolver.openInputStream(uri)
+                    ?: throw java.io.IOException("Cannot open selected file")
+                val bytes = input.use { it.readBytes() }
+                require(bytes.size <= 8 * 1024 * 1024 + 2048)
+                ctr().deviceSync.importEncrypted(bytes).also { bytes.fill(0) }
+            }.onSuccess { report -> deviceMessage.value = "Imported " + report.contactsAdded + " contacts, " + report.messagesAdded + " messages; " + report.preferencesUpdated + " preferences updated; " + report.conflictsKept + " conflicts kept." }
+             .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
+        }
+    }
     fun importDeviceSync(code: String) {
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { ctr().deviceSync.importEncrypted(java.util.Base64.getUrlDecoder().decode(code.trim())) }
