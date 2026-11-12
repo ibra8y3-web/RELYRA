@@ -1,6 +1,8 @@
 package org.relyra.app
 
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.async
+import kotlinx.coroutines.yield
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -542,7 +544,7 @@ class GroupEngineTest {
         val gid = groupWith(GroupKind.GROUP, bob)
         val entered = kotlinx.coroutines.CompletableDeferred<Unit>()
         val release = kotlinx.coroutines.CompletableDeferred<Unit>()
-        val snapshot = kotlinx.coroutines.async {
+        val snapshot = async {
             alice.engine.withBackupBarrier {
                 entered.complete(Unit)
                 release.await()
@@ -551,7 +553,7 @@ class GroupEngineTest {
         entered.await()
 
         val mutation = kotlinx.coroutines.async { alice.engine.rename(gid, "after snapshot") }
-        kotlinx.coroutines.yield()
+        yield()
         assertFalse("group mutation must wait for the cross-store snapshot", mutation.isCompleted)
 
         release.complete(Unit)
