@@ -16,7 +16,7 @@ This roadmap separates source code that is already present from features that st
 | Bluetooth Classic RFCOMM for already-bonded contacts | Added in current implementation batch; mutual Ed25519 identity check; device tests required |
 | Wi-Fi Direct discovery, group connection and authenticated TCP transport | Added in current implementation batch; Android permission/vendor and two-device tests required |
 | Durable local outbox and relay backlog | Implemented for sender retries and Nostr relay retrieval; no third-party peer Store & Forward |
-| Groups/channels using per-member one-to-one sessions | Implemented in source; not MLS |
+| Legacy groups use per-member one-to-one sessions; new MLS-enabled groups use OpenMLS | Implemented in source; device interoperability and multi-admin epoch coordination remain open |
 | Blossom encrypted attachment transfer | Implemented in source |
 | Background notifications and optional foreground connection service | Implemented in source; Android restrictions apply |
 | Local file tools, diagnostics and redacted report | Implemented in source |
@@ -75,9 +75,9 @@ See INTERNET_P2P_WEBRTC.md and services/discovery/README.md for protocol workflo
 
 ## Priority 3 — group protocol and community layer
 
-**Current status: implementation is present on branch `phase-3-group-protocol`; this branch is not merged and its clean CI/release gates remain open.**
+**Current status: Phase 3 is merged into `main` by PR #27. PR-head CI run #418 passed all three jobs (Android build/unit tests, discovery Go service, OpenMLS/Rust). Post-merge `main` run #419 was still in progress at the last status check. Source implementation is integrated; device interoperability and the explicit limitations below remain open.**
 
-Implemented in the current phase branch:
+Implemented in `main`: 
 - Optional group read receipts, bound to the exact per-recipient message-copy ID and authenticated through the sender's existing one-to-one end-to-end session. Local read state is retained when receipt sending is disabled.
 - Delivered/read member counts in the group UI and a non-destructive Room migration for the `readAt` field.
 - OpenMLS 0.9.2 behind a Rust/JNI bridge. OpenMLS state is stored in a separate SQLCipher database using the app's Keystore-derived database key.
@@ -95,7 +95,7 @@ Remaining release gates and limitations:
 - Community discovery currently uses the discovery service's local Pebble index. Community manifests are not yet replicated through a distributed community DHT.
 - `mute`, `slow_mode`, and `allow_post` are protocol event vocabulary only. There is no community post/feed pipeline on which to enforce them, so those actions are not exposed in the current UI.
 - Report storage/listing is bounded and signature-verified, but long-term retention, moderation workflow states and pagination need a separate design.
-- CI must pass from a clean checkout on the exact final PR head before merge. Device/network verification remains with the project owner.
+- Post-merge CI on `main` must also complete successfully. Device/network verification remains with the project owner.
 
 Acceptance criteria still required:
 - The removed MLS member cannot decrypt application data created after the committed removal epoch, including after reopening SQLCipher storage.
