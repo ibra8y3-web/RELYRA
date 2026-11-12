@@ -254,8 +254,12 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /v1/communities", s.discoverCommunities)
 	mux.HandleFunc("POST /v1/communities", s.publishCommunity)
 	mux.HandleFunc("GET /v1/communities/{communityID}", s.getCommunity)
+	mux.HandleFunc("GET /v1/communities/{communityID}/private", s.getPrivateCommunity)
+	mux.HandleFunc("POST /v1/communities/{communityID}/invitations", s.createCommunityInvitation)
+	mux.HandleFunc("POST /v1/communities/{communityID}/invitations/accept", s.acceptCommunityInvitation)
 	mux.HandleFunc("POST /v1/communities/{communityID}/events", s.publishCommunityEvent)
 	mux.HandleFunc("GET /v1/communities/{communityID}/events", s.listCommunityEvents)
+	mux.HandleFunc("GET /v1/communities/{communityID}/private/events", s.listPrivateCommunityEvents)
 	mux.HandleFunc("POST /v1/communities/{communityID}/reports", s.submitCommunityReport)
 	return s.guard(mux)
 }
@@ -414,6 +418,104 @@ func (s *server) publishCommunity(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "community": manifest})
 }
 
+func (s *server) privateMemberFromRequest(r *http.Request, communityID string) (string, error) {
+	memberID := r.Header.Get("X-RELYRA-Public-ID")
+	timestampText := r.Header.Get("X-RELYRA-Timestamp")
+	signature := r.Header.Get("X-RELYRA-Signature")
+	timestamp, err := strconv.ParseInt(timestampText, 10, 64)
+	if err != nil {
+		return "", errors.New("missing or invalid private community access timestamp")
+	}
+	if err := communities.VerifyAccessProof(r.Method, r.URL.RequestURI(), memberID, timestamp, signature, time.Now()); err != nil {
+		return "", err
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	if !s.communities.CanReadPrivate(ctx, communityID, memberID) {
+		return "", errors.New("identity is not a member of this private community")
+	}
+	return memberID, nil
+}
+
+func (s *server) getPrivateCommunity(w http.ResponseWriter, r *http.Request) {
+	communityID := r.PathValue("communityID")
+	memberID, err := s.privateMemberFromRequest(r, communityID)
+	if err != nil {
+		writeError(w, http.StatusForbidden, "private community access denied")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	manifest, err := s.communities.GetManifestForMember(ctx, communityID, memberID)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "private community not found")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, manifest)
+}
+
+func (s *server) createCommunityInvitation(w http.ResponseWriter, r *http.Request) {
+	type invitationRequest struct {
+		Invitation json.RawMessage `json:"invitation"`
+		Token string `json:"token"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, communities.MaxInvitationBytes+2048)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	var input invitationRequest
+	if err := decoder.Decode(&input); err != nil || len(input.Invitation) == 0 {
+		writeError(w, http.StatusBadRequest, "invalid community invitation request")
+		return
+	}
+	var invitation communities.Invitation
+	if err := json.Unmarshal(input.Invitation, &invitation); err != nil ||
+		!strings.EqualFold(invitation.CommunityID, r.PathValue("communityID")) {
+		writeError(w, http.StatusBadRequest, "community ID does not match invitation")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	accepted, err := s.communities.CreateInvitation(ctx, input.Invitation, input.Token)
+	if err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "invitation": accepted})
+}
+
+func (s *server) acceptCommunityInvitation(w http.ResponseWriter, r *http.Request) {
+	type acceptanceRequest struct {
+		Invitation json.RawMessage `json:"invitation"`
+		Token string `json:"token"`
+		Acceptance communities.InvitationAcceptance `json:"acceptance"`
+	}
+	r.Body = http.MaxBytesReader(w, r.Body, communities.MaxInvitationBytes+2048)
+	decoder := json.NewDecoder(r.Body)
+	decoder.DisallowUnknownFields()
+	var input acceptanceRequest
+	if err := decoder.Decode(&input); err != nil || len(input.Invitation) == 0 {
+		writeError(w, http.StatusBadRequest, "invalid community invitation acceptance")
+		return
+	}
+	var invitation communities.Invitation
+	if err := json.Unmarshal(input.Invitation, &invitation); err != nil ||
+		!strings.EqualFold(invitation.CommunityID, r.PathValue("communityID")) {
+		writeError(w, http.StatusBadRequest, "community ID does not match invitation")
+		return
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	membership, err := s.communities.AcceptInvitation(ctx, input.Invitation, input.Token, input.Acceptance)
+	if err != nil {
+		writeError(w, http.StatusForbidden, err.Error())
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "membership": membership})
+}
+
 func (s *server) getCommunity(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
@@ -464,6 +566,33 @@ func (s *server) listCommunityEvents(w http.ResponseWriter, r *http.Request) {
 	result, err := s.communities.Events(ctx, r.PathValue("communityID"), limit)
 	if err != nil {
 		writeError(w, http.StatusNotFound, "public community events not found")
+		return
+	}
+	w.Header().Set("Cache-Control", "no-store")
+	writeJSON(w, http.StatusOK, map[string]any{"events": result})
+}
+
+func (s *server) listPrivateCommunityEvents(w http.ResponseWriter, r *http.Request) {
+	communityID := r.PathValue("communityID")
+	memberID, err := s.privateMemberFromRequest(r, communityID)
+	if err != nil {
+		writeError(w, http.StatusForbidden, "private community access denied")
+		return
+	}
+	limit := 50
+	if raw := r.URL.Query().Get("limit"); raw != "" {
+		value, err := strconv.Atoi(raw)
+		if err != nil || value < 1 || value > communities.MaxEventsPage {
+			writeError(w, http.StatusBadRequest, "invalid event page size")
+			return
+		}
+		limit = value
+	}
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	result, err := s.communities.EventsForMember(ctx, communityID, memberID, limit)
+	if err != nil {
+		writeError(w, http.StatusNotFound, "private community events not found")
 		return
 	}
 	w.Header().Set("Cache-Control", "no-store")
