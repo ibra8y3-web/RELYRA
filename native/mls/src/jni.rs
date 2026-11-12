@@ -194,6 +194,7 @@ pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeJoinGr
     _class: JClass,
     group_id: JByteArray,
     welcome: JByteArray,
+    credential_identity: JByteArray,
 ) -> jlong {
     let group_id = match input_bytes(&mut env, group_id) {
         Ok(value) => value,
@@ -203,7 +204,11 @@ pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeJoinGr
         Ok(value) => value,
         Err(error) => { throw(&mut env, error); return -1; }
     };
-    catch_result(&mut env, || with_database(|db| join_group(db, &group_id, &welcome)))
+    let credential_identity = match input_bytes(&mut env, credential_identity) {
+        Ok(value) => value,
+        Err(error) => { throw(&mut env, error); return -1; }
+    };
+    catch_result(&mut env, || with_database(|db| join_group(db, &group_id, &welcome, &credential_identity)))
         .map(|epoch| epoch as jlong)
         .unwrap_or(-1)
 }
