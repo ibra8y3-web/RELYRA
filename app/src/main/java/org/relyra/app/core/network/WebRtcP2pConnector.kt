@@ -347,10 +347,10 @@ class WebRtcP2pConnector(
                     InternetSignalCodec.encode(me, targetId, "offer", local, System.currentTimeMillis() / 1000, sessionId, sign)
                 }
             }
-            if (result == null) close(targetId)
+            if (result == null) retirePeer(targetId)
             result
         } catch (cancelled: CancellationException) {
-            close(targetId)
+            retirePeer(targetId)
             throw cancelled
         }
     }
@@ -376,10 +376,15 @@ class WebRtcP2pConnector(
                     InternetSignalCodec.encode(me, targetId, "answer", local, System.currentTimeMillis() / 1000, signal.sessionId, sign)
                 }
             }
-            if (answer != null) dismissIncomingOffer(targetId) else close(targetId)
+            if (answer != null) {
+                approvedPeers.add(targetId)
+                dismissIncomingOffer(targetId)
+            } else {
+                retirePeer(targetId)
+            }
             answer
         } catch (cancelled: CancellationException) {
-            close(targetId)
+            retirePeer(targetId)
             throw cancelled
         }
     }
@@ -394,6 +399,7 @@ class WebRtcP2pConnector(
         if (signal.sessionId != peer.sessionId) return false
         return try {
             setDescription(peer.connection, false, SessionDescription(SessionDescription.Type.ANSWER, signal.sdp))
+            approvedPeers.add(targetId)
             true
         } catch (cancelled: CancellationException) {
             throw cancelled
@@ -410,6 +416,21 @@ class WebRtcP2pConnector(
         if (signal.type != "offer") return false
         val current = peers[targetId]
         if (current?.sessionId == signal.sessionId) return false
+        if (approvedPeers.contains(targetId)) {
+            // This identity has already been approved for a direct session. Rebuilding a lost
+            // transport does not ask the user to approve the same trusted contact again.
+            scope.launch(Dispatchers.IO) {
+                val answer = try {
+                    acceptOffer(targetId, signedOffer)
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    null
+                } ?: return@launch
+                runCatching { sendSignal(targetId, P2pSignalKind.ANSWER, answer) }
+            }
+            return true
+        }
         val existing = _incomingOffers.value[targetId]
         if (existing?.sessionId == signal.sessionId) return true
         if (existing == null && _incomingOffers.value.size >= MAX_PENDING_OFFERS) return false
