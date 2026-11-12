@@ -688,7 +688,23 @@ pub fn pending_commit_info(
         [group_id],
         |row| row.get(0),
     ).optional().map_err(MlsError::Sql)?;
-    json.map(|value| serde_json::from_str(&value).map_err(|_| MlsError::InvalidMessage)).transpose()
+    if let Some(value) = json {
+        return serde_json::from_str(&value).map(Some).map_err(|_| MlsError::InvalidMessage);
+    }
+    // Recover the narrow crash window where OpenMLS persisted a staged Commit
+    // but the companion serialized delivery journal had not yet been written.
+    let id = GroupId::from_slice(group_id);
+    let (provider, _signer) = provider_with_signer(database)?;
+    let group = MlsGroup::load(provider.storage(), &id)
+        .map_err(|e| MlsError::Storage(e.to_string()))?
+        .ok_or(MlsError::GroupNotFound)?;
+    let has_orphaned_pending_commit = group.pending_commit().is_some();
+    drop(group);
+    drop(provider);
+    if has_orphaned_pending_commit {
+        return prepare_pending_proposals_commit(database, group_id, None).map(Some);
+    }
+    Ok(None)
 }
 
 pub fn merge_pending_commit(database: &mut OpenDatabase, group_id: &[u8]) -> Result<u64, MlsError> {
