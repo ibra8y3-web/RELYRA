@@ -30,7 +30,7 @@ interface GroupMlsProvider {
     suspend fun generateKeyPackage(relyraPublicId: String): ByteArray
     suspend fun keyPackageIdentity(keyPackage: ByteArray): String
     suspend fun addMembers(groupId: String, keyPackages: List<ByteArray>): MlsCommitBundle
-    suspend fun joinGroup(groupId: String, welcome: ByteArray): Long
+    suspend fun joinGroup(groupId: String, welcome: ByteArray, relyraPublicId: String): Long
     suspend fun encrypt(groupId: String, plaintext: ByteArray): ByteArray
     suspend fun processMessage(message: ByteArray): MlsProcessedMessage
     suspend fun removeMember(groupId: String, relyraPublicId: String): MlsCommitBundle
@@ -105,9 +105,9 @@ class MlsEngine(
             )
         }
 
-    override suspend fun joinGroup(groupId: String, welcome: ByteArray): Long = withContext(Dispatchers.IO) {
+    override suspend fun joinGroup(groupId: String, welcome: ByteArray, relyraPublicId: String): Long = withContext(Dispatchers.IO) {
         ensureInitialized()
-        MlsNative.nativeJoinGroup(groupIdBytes(groupId), welcome)
+        MlsNative.nativeJoinGroup(groupIdBytes(groupId), welcome, credentialIdentity(relyraPublicId))
             .also { check(it >= 0) { "OpenMLS could not process the Welcome" } }
     }
 
