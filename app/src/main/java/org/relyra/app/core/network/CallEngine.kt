@@ -193,7 +193,7 @@ class CallEngine(
             ) {
                 close(peer)
                 mutableState.value = CallUiState(peerId = peer, phase = CallPhase.FAILED,
-                    detail = "No answer or media connection timeout")
+                    detail = "no_answer")
             }
         }
     }
@@ -217,9 +217,9 @@ class CallEngine(
                     PeerConnection.IceConnectionState.CONNECTED, PeerConnection.IceConnectionState.COMPLETED ->
                         mutableState.value = mutableState.value.copy(phase = CallPhase.ACTIVE, detail = null)
                     PeerConnection.IceConnectionState.DISCONNECTED ->
-                        mutableState.value = mutableState.value.copy(phase = CallPhase.CONNECTING, detail = "Connection interrupted")
+                        mutableState.value = mutableState.value.copy(phase = CallPhase.CONNECTING, detail = "connection_interrupted")
                     PeerConnection.IceConnectionState.FAILED, PeerConnection.IceConnectionState.CLOSED -> {
-                        mutableState.value = mutableState.value.copy(phase = CallPhase.FAILED, detail = "Connection failed")
+                        mutableState.value = mutableState.value.copy(phase = CallPhase.FAILED, detail = "connection_failed")
                         close(peer)
                     }
                     else -> Unit
