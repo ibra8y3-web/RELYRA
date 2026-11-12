@@ -316,7 +316,7 @@ fun NetworkScreen(vm: MainViewModel) {
                 enabled = p2pPeerId.isNotBlank() && discoveryGateways.any { it.enabled },
                 modifier = Modifier.fillMaxWidth(),
             ) { Text(stringResource(R.string.net_dht_lookup)) }
-            discoveredPeer?.let { presence ->
+            discoveredPeer?.takeIf { it.publicId == p2pPeerId.trim().lowercase() }?.let { presence ->
                 Text(
                     stringResource(R.string.net_dht_peer_found, presence.expiresAt),
                     style = MaterialTheme.typography.bodySmall,
