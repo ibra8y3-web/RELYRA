@@ -28,6 +28,9 @@
     <string name="communities_moderators_updated">تم تحديث سياسة المشرفين وتوقيعها.</string>
     <string name="communities_moderate">إجراء إشراف</string>
     <string name="communities_view_reports">عرض البلاغات</string>
+    <string name="communities_action_ban">حظر</string>
+    <string name="communities_action_unban">إلغاء الحظر</string>
+    <string name="communities_action_remove_member">إزالة العضو</string>
     <string name="communities_recent_reports">أحدث البلاغات</string>
     <string name="communities_no_reports">لا توجد بلاغات موثقة لهذا المجتمع.</string>
     <string name="communities_subject_id">معرّف RELYRA العام للشخص المستهدف</string>
