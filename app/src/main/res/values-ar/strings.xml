@@ -389,4 +389,9 @@
     <string name="devices_register_primary_hint">استخدم هذا الخيار على أول جهاز للحساب فقط. على الجهاز الجديد أنشئ طلب اقتران بدلًا منه.</string>
     <string name="devices_import_file">استيراد ملف النسخة المشفرة</string>
     <string name="devices_import_code">استيراد رمز المزامنة الملصوق</string>
+    <string name="devices_auto_sync">تعمل المزامنة المشفرة تلقائيًا كل 15 دقيقة أثناء تشغيل التطبيق وتوفر مرحّلات اتصال مفعّلة. تُقسّم عمليات النقل الكبيرة إلى أجزاء مشفرة.</string>
+    <string name="devices_sync_now">مزامنة الأجهزة المعتمدة الآن</string>
+    <string name="devices_rotate_keys">تدوير مفاتيح هذا الجهاز</string>
+    <string name="devices_rotation_code">رمز تدوير مفاتيح الجهاز الموقّع</string>
+    <string name="devices_apply_rotation">تطبيق تدوير المفاتيح الموقّع</string>
 </resources>
