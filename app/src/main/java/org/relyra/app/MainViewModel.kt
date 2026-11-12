@@ -1085,9 +1085,15 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
         viewModelScope.launch(Dispatchers.IO) {
             runCatching {
                 val account = checkNotNull(ctr().database.identityDao().get()).publicId
-                ctr().devices.ensureLocalDevice()
                 ctr().devices.observeTrustedDevices(account).collect { trustedDevices.value = it }
             }.onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
+        }
+    }
+    fun registerCurrentDevice() {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { ctr().devices.ensureLocalDevice() }
+                .onSuccess { deviceMessage.value = "This installation is registered as a trusted primary device."; refreshTrustedDevices() }
+                .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
         }
     }
     fun createDevicePairingRequest(displayName: String) {
