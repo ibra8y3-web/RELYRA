@@ -61,11 +61,11 @@ func ValidateTurnURL(raw string) error {
 }
 
 type TurnCredentials struct {
-	URLs       []string `json:"urls"`
-	Username   string   `json:"username"`
-	Credential string   `json:"credential"`
-	ExpiresAt  int64    `json:"expiresAt"`
-	TTLSeconds int64    `json:"ttlSeconds"`
+	Username   string   "json:\"username\""
+	Credential string   "json:\"credential\""
+	ExpiresAt  int64    "json:\"expiresAt\""
+	TTLSeconds int64    "json:\"ttlSeconds\""
+	URLs       []string "json:\"urls\""
 }
 
 func TurnChallengeBytes(publicID string, timestamp int64, nonce string) []byte {
