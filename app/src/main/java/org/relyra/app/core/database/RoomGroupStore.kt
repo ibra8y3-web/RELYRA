@@ -18,7 +18,7 @@ class RoomGroupStore(private val db: AppDatabase) : GroupStore {
         db.withTransaction {
             dao.put(g.toEntity())
             dao.clearMembers(g.groupId)
-            dao.putMembers(members.map { GroupMemberEntity(g.groupId, it.id, it.role.name) })
+            dao.putMembers(members.map { GroupMemberEntity(g.groupId, it.id, it.role.name, it.mlsJoined) })
         }
     }
 
@@ -53,6 +53,9 @@ class RoomGroupStore(private val db: AppDatabase) : GroupStore {
 
     override suspend fun markReadReceipt(copyId: String, groupId: String, memberId: String, readAt: Long): Boolean =
         dao.markReadReceipt(copyId, groupId, memberId, readAt) > 0
+
+    override suspend fun recordControlMessage(id: String, receivedAt: Long): Boolean =
+        db.messageDao().insertProcessed(ProcessedIdEntity(id, receivedAt)) != -1L
 
     override suspend fun deleteGroup(groupId: String) {
         db.withTransaction {
