@@ -1,0 +1,454 @@
+//! RELYRA's native MLS engine.
+//!
+//! OpenMLS 0.9.2 is pinned deliberately. All OpenMLS storage is backed by a
+//! SQLCipher database keyed with the same Keystore-derived database key used
+//! by the Android app. The key is supplied for each process initialization and
+//! is never written to disk by this crate.
+
+use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+use openmls::{
+    framing::ProcessedMessageContent,
+    prelude::*,
+};
+use openmls_basic_credential::SignatureKeyPair;
+use openmls_rust_crypto::OpenMlsRustCrypto;
+use openmls_sqlite_storage::{Codec, Connection, SqliteStorageProvider};
+use openmls_traits::OpenMlsProvider;
+use rusqlite::OptionalExtension;
+use serde::{Deserialize, Serialize};
+use std::{
+    error::Error,
+    fmt,
+    path::Path,
+};
+use zeroize::Zeroizing;
+
+pub const MLS_CIPHERSUITE: Ciphersuite =
+    Ciphersuite::MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519;
+
+#[derive(Default)]
+pub struct JsonCodec;
+
+impl Codec for JsonCodec {
+    type Error = serde_json::Error;
+
+    fn to_vec<T: Serialize>(value: &T) -> Result<Vec<u8>, Self::Error> {
+        serde_json::to_vec(value)
+    }
+
+    fn from_slice<T: for<'de> Deserialize<'de>>(slice: &[u8]) -> Result<T, Self::Error> {
+        serde_json::from_slice(slice)
+    }
+}
+
+/// OpenMLS provider using the reviewed RustCrypto primitives and a SQLCipher
+/// storage provider. OpenMLS state and long-lived signature keys are persisted
+/// in the encrypted database, not in process memory.
+pub struct SqlCipherMlsProvider<'a> {
+    crypto: OpenMlsRustCrypto,
+    storage: SqliteStorageProvider<'a, JsonCodec>,
+}
+
+impl<'a> SqlCipherMlsProvider<'a> {
+    pub fn new(connection: &'a Connection) -> Result<Self, MlsError> {
+        let mut storage = SqliteStorageProvider::<JsonCodec>::new(connection);
+        storage.run_migrations().map_err(MlsError::Storage)?;
+        Ok(Self {
+            crypto: OpenMlsRustCrypto::default(),
+            storage,
+        })
+    }
+
+    pub fn signer(&self) -> Result<SignatureKeyPair, MlsError> {
+        let public_key: Option<Vec<u8>> = self.storage.connection().query_row(
+            "SELECT public_key FROM relyra_mls_meta WHERE slot = 1",
+            [],
+            |row| row.get(0),
+        ).optional().map_err(MlsError::Sql)?;
+        if let Some(public_key) = public_key {
+            return SignatureKeyPair::read(
+                &self.storage,
+                &public_key,
+                SignatureScheme::ED25519,
+            ).ok_or(MlsError::MissingSigningKey);
+        }
+
+        let signer = SignatureKeyPair::new(SignatureScheme::ED25519)
+            .map_err(|_| MlsError::Crypto)?;
+        signer.store(&self.storage).map_err(MlsError::Storage)?;
+        self.storage.connection().execute(
+            "INSERT OR REPLACE INTO relyra_mls_meta(slot, public_key) VALUES(1, ?1)",
+            rusqlite::params![signer.public()],
+        ).map_err(MlsError::Sql)?;
+        Ok(signer)
+    }
+}
+
+impl OpenMlsProvider for SqlCipherMlsProvider<'_> {
+    type CryptoProvider = <OpenMlsRustCrypto as OpenMlsProvider>::CryptoProvider;
+    type RandProvider = <OpenMlsRustCrypto as OpenMlsProvider>::RandProvider;
+    type StorageProvider = SqliteStorageProvider<'static, JsonCodec>;
+
+    fn storage(&self) -> &Self::StorageProvider {
+        // SqliteStorageProvider borrows the connection. The lifetime is erased
+        // only in this trait implementation; the provider and connection are
+        // owned by the same stack frame and are never returned from an operation.
+        unsafe {
+            &*(&self.storage as *const SqliteStorageProvider<'_, JsonCodec>
+                as *const SqliteStorageProvider<'static, JsonCodec>)
+        }
+    }
+
+    fn crypto(&self) -> &Self::CryptoProvider {
+        self.crypto.crypto()
+    }
+
+    fn rand(&self) -> &Self::RandProvider {
+        self.crypto.rand()
+    }
+}
+
+#[derive(Debug, thiserror::Error)]
+pub enum MlsError {
+    #[error("invalid SQLCipher database key")]
+    InvalidDatabaseKey,
+    #[error("could not access MLS storage: {0}")]
+    Storage(openmls_sqlite_storage::rusqlite::Error),
+    #[error("SQLite failure: {0}")]
+    Sql(rusqlite::Error),
+    #[error("MLS cryptographic operation failed")]
+    Crypto,
+    #[error("the local MLS signing key is missing")]
+    MissingSigningKey,
+    #[error("group does not exist")]
+    GroupNotFound,
+    #[error("group is not active")]
+    Inactive,
+    #[error("invalid MLS message")]
+    InvalidMessage,
+    #[error("MLS operation rejected")]
+    Rejected,
+    #[error("invalid key package")]
+    InvalidKeyPackage,
+    #[error("credential identity does not match the requested RELYRA identity")]
+    IdentityMismatch,
+    #[error("invalid group identity")]
+    InvalidGroupId,
+    #[error("I/O error: {0}")]
+    Io(#[from] std::io::Error),
+    #[error("serialization error: {0}")]
+    Json(#[from] serde_json::Error),
+}
+
+pub struct OpenDatabase {
+    pub connection: Connection,
+    _key: Zeroizing<Vec<u8>>,
+}
+
+pub fn open_database(path: &str, key: &[u8]) -> Result<OpenDatabase, MlsError> {
+    if key.len() < 32 || key.len() > 64 || path.is_empty() || path.len() > 4096 {
+        return Err(MlsError::InvalidDatabaseKey);
+    }
+    if let Some(parent) = Path::new(path).parent() {
+        std::fs::create_dir_all(parent)?;
+    }
+    let key = Zeroizing::new(key.to_vec());
+    let connection = Connection::open(path).map_err(MlsError::Sql)?;
+    let hex_key = key.iter().map(|b| format!("{b:02x}")).collect::<String>();
+    connection.execute_batch(&format!("PRAGMA key = \"x'{hex_key}'\";")).map_err(MlsError::Sql)?;
+    connection.query_row("SELECT count(*) FROM sqlite_master", [], |row| row.get::<_, i64>(0))
+        .map_err(MlsError::Sql)?;
+    connection.execute_batch(
+        "PRAGMA foreign_keys = ON;
+         PRAGMA journal_mode = WAL;
+         PRAGMA secure_delete = ON;
+         CREATE TABLE IF NOT EXISTS relyra_mls_meta (
+             slot INTEGER PRIMARY KEY CHECK(slot = 1),
+             public_key BLOB NOT NULL
+         );"
+    ).map_err(MlsError::Sql)?;
+    Ok(OpenDatabase { connection, _key: key })
+}
+
+pub fn create_group(
+    database: &mut OpenDatabase,
+    group_id: &[u8],
+    credential_identity: &[u8],
+) -> Result<u64, MlsError> {
+    if group_id.is_empty() || group_id.len() > 128 || credential_identity.is_empty() || credential_identity.len() > 2048 {
+        return Err(MlsError::InvalidGroupId);
+    }
+    let provider = SqlCipherMlsProvider::new(&database.connection)?;
+    let signer = provider.signer()?;
+    let id = GroupId::from_slice(group_id);
+    if let Some(existing) = MlsGroup::load(provider.storage(), &id).map_err(MlsError::Storage)? {
+        return Ok(existing.epoch().as_u64());
+    }
+    let config = MlsGroupCreateConfig::builder()
+        .ciphersuite(MLS_CIPHERSUITE)
+        .use_ratchet_tree_extension(true)
+        .build();
+    let credential = BasicCredential::new(credential_identity.to_vec());
+    let _group = MlsGroup::new_with_group_id(
+        &provider,
+        &signer,
+        &config,
+        id,
+        credential.into(),
+    ).map_err(|_| MlsError::Rejected)?;
+    Ok(0)
+}
+
+pub fn generate_key_package(
+    database: &mut OpenDatabase,
+    credential_identity: &[u8],
+) -> Result<Vec<u8>, MlsError> {
+    if credential_identity.is_empty() || credential_identity.len() > 2048 {
+        return Err(MlsError::IdentityMismatch);
+    }
+    let provider = SqlCipherMlsProvider::new(&database.connection)?;
+    let signer = provider.signer()?;
+    let credential = BasicCredential::new(credential_identity.to_vec());
+    let bundle = KeyPackage::builder()
+        .build(
+            MLS_CIPHERSUITE,
+            &provider,
+            &signer,
+            CredentialWithKey {
+                credential: credential.into(),
+                signature_key: signer.public().into(),
+            },
+        )
+        .map_err(|_| MlsError::InvalidKeyPackage)?;
+    bundle.key_package().tls_serialize_detached().map_err(|_| MlsError::InvalidKeyPackage)
+}
+
+#[derive(Serialize)]
+pub struct CommitBundle {
+    pub commit: String,
+    pub welcome: Option<String>,
+    pub epoch: u64,
+}
+
+pub fn add_members(
+    database: &mut OpenDatabase,
+    group_id: &[u8],
+    key_packages: &[Vec<u8>],
+) -> Result<CommitBundle, MlsError> {
+    if key_packages.is_empty() || key_packages.len() > 200 {
+        return Err(MlsError::InvalidKeyPackage);
+    }
+    let provider = SqlCipherMlsProvider::new(&database.connection)?;
+    let signer = provider.signer()?;
+    let id = GroupId::from_slice(group_id);
+    let mut group = MlsGroup::load(provider.storage(), &id)
+        .map_err(MlsError::Storage)?
+        .ok_or(MlsError::GroupNotFound)?;
+    let packages = key_packages.iter().map(|bytes| {
+        let input = KeyPackageIn::tls_deserialize_exact_bytes(bytes.as_slice())
+            .map_err(|_| MlsError::InvalidKeyPackage)?;
+        input.validate(provider.crypto()).map_err(|_| MlsError::InvalidKeyPackage)
+    }).collect::<Result<Vec<_>, _>>()?;
+    let (commit, welcome, _group_info) = group.add_members(&provider, &signer, &packages)
+        .map_err(|_| MlsError::Rejected)?;
+    group.merge_pending_commit(&provider).map_err(|_| MlsError::Rejected)?;
+    let commit = commit.tls_serialize_detached().map_err(|_| MlsError::InvalidMessage)?;
+    let welcome = welcome.tls_serialize_detached().map_err(|_| MlsError::InvalidMessage)?;
+    Ok(CommitBundle {
+        commit: BASE64.encode(commit),
+        welcome: Some(BASE64.encode(welcome)),
+        epoch: group.epoch().as_u64(),
+    })
+}
+
+pub fn join_group(
+    database: &mut OpenDatabase,
+    group_id: &[u8],
+    welcome_bytes: &[u8],
+) -> Result<u64, MlsError> {
+    let provider = SqlCipherMlsProvider::new(&database.connection)?;
+    let welcome = MlsMessageIn::tls_deserialize_exact_bytes(welcome_bytes)
+        .map_err(|_| MlsError::InvalidMessage)?
+        .into_welcome()
+        .map_err(|_| MlsError::InvalidMessage)?;
+    let staged = StagedWelcome::new_from_welcome(
+        &provider,
+        &MlsGroupJoinConfig::default(),
+        welcome,
+        None,
+    ).map_err(|_| MlsError::InvalidMessage)?;
+    let group = staged.into_group(&provider).map_err(|_| MlsError::Rejected)?;
+    if group.group_id().as_slice() != group_id {
+        return Err(MlsError::IdentityMismatch);
+    }
+    Ok(group.epoch().as_u64())
+}
+
+pub fn encrypt(
+    database: &mut OpenDatabase,
+    group_id: &[u8],
+    plaintext: &[u8],
+) -> Result<Vec<u8>, MlsError> {
+    if plaintext.is_empty() || plaintext.len() > 1024 * 1024 {
+        return Err(MlsError::Rejected);
+    }
+    let provider = SqlCipherMlsProvider::new(&database.connection)?;
+    let signer = provider.signer()?;
+    let id = GroupId::from_slice(group_id);
+    let mut group = MlsGroup::load(provider.storage(), &id)
+        .map_err(MlsError::Storage)?
+        .ok_or(MlsError::GroupNotFound)?;
+    if !group.is_active() {
+        return Err(MlsError::Inactive);
+    }
+    let message = group.create_message(&provider, &signer, plaintext)
+        .map_err(|_| MlsError::Rejected)?;
+    message.tls_serialize_detached().map_err(|_| MlsError::InvalidMessage)
+}
+
+#[derive(Serialize)]
+pub struct ProcessResult {
+    pub kind: String,
+    pub group_id: String,
+    pub epoch: u64,
+    pub application: Option<String>,
+}
+
+pub fn process_message(
+    database: &mut OpenDatabase,
+    message: &[u8],
+) -> Result<ProcessResult, MlsError> {
+    if message.is_empty() || message.len() > 1024 * 1024 {
+        return Err(MlsError::InvalidMessage);
+    }
+    let provider = SqlCipherMlsProvider::new(&database.connection)?;
+    let incoming = MlsMessageIn::tls_deserialize_exact_bytes(message)
+        .map_err(|_| MlsError::InvalidMessage)?;
+    let protocol: ProtocolMessage = incoming.try_into_protocol_message()
+        .map_err(|_| MlsError::InvalidMessage)?;
+    let id_bytes = protocol.group_id().as_slice().to_vec();
+    let id = GroupId::from_slice(&id_bytes);
+    let mut group = MlsGroup::load(provider.storage(), &id)
+        .map_err(MlsError::Storage)?
+        .ok_or(MlsError::GroupNotFound)?;
+    if !group.is_active() {
+        return Err(MlsError::Inactive);
+    }
+    let processed = group.process_message(&provider, protocol)
+        .map_err(|_| MlsError::InvalidMessage)?;
+    let (kind, application) = match processed.into_content() {
+        ProcessedMessageContent::ApplicationMessage(application) => {
+            ("application".to_owned(), Some(BASE64.encode(application.into_bytes())))
+        }
+        ProcessedMessageContent::ProposalMessage(proposal) => {
+            group.store_pending_proposal(provider.storage(), *proposal).map_err(MlsError::Storage)?;
+            ("proposal".to_owned(), None)
+        }
+        ProcessedMessageContent::ExternalJoinProposalMessage(proposal) => {
+            group.store_pending_proposal(provider.storage(), *proposal).map_err(MlsError::Storage)?;
+            ("external_join_proposal".to_owned(), None)
+        }
+        ProcessedMessageContent::StagedCommitMessage(commit) => {
+            group.merge_staged_commit(&provider, *commit).map_err(|_| MlsError::Rejected)?;
+            ("commit".to_owned(), None)
+        }
+        ProcessedMessageContent::OwnPendingCommit => {
+            group.merge_pending_commit(&provider).map_err(|_| MlsError::Rejected)?;
+            ("own_commit".to_owned(), None)
+        }
+        ProcessedMessageContent::OwnPrivateMessage => ("own_message".to_owned(), None),
+        ProcessedMessageContent::UnresolvedAppDataCommit(_) => return Err(MlsError::Rejected),
+    };
+    Ok(ProcessResult {
+        kind,
+        group_id: BASE64.encode(id_bytes),
+        epoch: group.epoch().as_u64(),
+        application,
+    })
+}
+
+pub fn remove_member(
+    database: &mut OpenDatabase,
+    group_id: &[u8],
+    member_identity: &[u8],
+) -> Result<CommitBundle, MlsError> {
+    let provider = SqlCipherMlsProvider::new(&database.connection)?;
+    let signer = provider.signer()?;
+    let id = GroupId::from_slice(group_id);
+    let mut group = MlsGroup::load(provider.storage(), &id)
+        .map_err(MlsError::Storage)?
+        .ok_or(MlsError::GroupNotFound)?;
+    let indexes = group.members().filter_map(|member| {
+        if member.credential.serialized_content() == member_identity {
+            Some(member.index)
+        } else {
+            None
+        }
+    }).collect::<Vec<_>>();
+    if indexes.len() != 1 {
+        return Err(MlsError::IdentityMismatch);
+    }
+    let (commit, welcome, _group_info) = group.remove_members(&provider, &signer, &indexes)
+        .map_err(|_| MlsError::Rejected)?;
+    group.merge_pending_commit(&provider).map_err(|_| MlsError::Rejected)?;
+    let commit = commit.tls_serialize_detached().map_err(|_| MlsError::InvalidMessage)?;
+    let welcome = welcome.map(|m| m.tls_serialize_detached().map(|b| BASE64.encode(b)))
+        .transpose().map_err(|_| MlsError::InvalidMessage)?;
+    Ok(CommitBundle { commit: BASE64.encode(commit), welcome, epoch: group.epoch().as_u64() })
+}
+
+pub fn epoch(database: &mut OpenDatabase, group_id: &[u8]) -> Result<u64, MlsError> {
+    let provider = SqlCipherMlsProvider::new(&database.connection)?;
+    let id = GroupId::from_slice(group_id);
+    let group = MlsGroup::load(provider.storage(), &id)
+        .map_err(MlsError::Storage)?
+        .ok_or(MlsError::GroupNotFound)?;
+    Ok(group.epoch().as_u64())
+}
+
+pub fn members(database: &mut OpenDatabase, group_id: &[u8]) -> Result<Vec<Vec<u8>>, MlsError> {
+    let provider = SqlCipherMlsProvider::new(&database.connection)?;
+    let id = GroupId::from_slice(group_id);
+    let group = MlsGroup::load(provider.storage(), &id)
+        .map_err(MlsError::Storage)?
+        .ok_or(MlsError::GroupNotFound)?;
+    Ok(group.members().map(|m| m.credential.serialized_content().to_vec()).collect())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tempfile::tempdir;
+
+    fn database(path: &str, key: &[u8]) -> OpenDatabase {
+        open_database(path, key).unwrap()
+    }
+
+    #[test]
+    fn two_clients_create_join_encrypt_remove_and_advance_epoch() {
+        let temp = tempdir().unwrap();
+        let key_a = [0x11u8; 32];
+        let key_b = [0x22u8; 32];
+        let mut a = database(temp.path().join("a.db").to_str().unwrap(), &key_a);
+        let mut b = database(temp.path().join("b.db").to_str().unwrap(), &key_b);
+        let gid = b"rly-test-group-1";
+        let a_credential = b"RELYRA-MLS-V1:alice:device-a";
+        let b_credential = b"RELYRA-MLS-V1:bob:device-b";
+
+        create_group(&mut a, gid, a_credential).unwrap();
+        let key_package = generate_key_package(&mut b, b_credential).unwrap();
+        let bundle = add_members(&mut a, gid, &[key_package]).unwrap();
+        join_group(&mut b, gid, &BASE64.decode(bundle.welcome.unwrap()).unwrap()).unwrap();
+
+        let app = encrypt(&mut a, gid, b"mls secret").unwrap();
+        let result = process_message(&mut b, &app).unwrap();
+        assert_eq!(result.kind, "application");
+        assert_eq!(BASE64.decode(result.application.unwrap()).unwrap(), b"mls secret");
+
+        let _removed = remove_member(&mut a, gid, b_credential).unwrap();
+        let epoch = epoch(&mut a, gid).unwrap();
+        assert_eq!(epoch, 2);
+        assert!(encrypt(&mut a, gid, b"post-removal").is_ok());
+        assert!(process_message(&mut b, &encrypt(&mut a, gid, b"denied").unwrap()).is_err());
+    }
+}
