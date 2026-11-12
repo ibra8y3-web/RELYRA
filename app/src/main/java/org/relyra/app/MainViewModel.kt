@@ -1114,7 +1114,14 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun revokeDevice(deviceId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             runCatching { ctr().devices.revoke(deviceId) }
-                .onSuccess { deviceMessage.value = "Device revoked." }
+                .onSuccess { code -> deviceSyncCode.value = code; deviceMessage.value = "Device revoked. Share the signed revocation code with every remaining device."; ctr().notifier.postSecurity("RELYRA device revoked", "A trusted device was revoked. Apply the signed revocation code on the other devices.") }
+                .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
+        }
+    }
+    fun applyDeviceRevocation(code: String) {
+        viewModelScope.launch(Dispatchers.IO) {
+            runCatching { ctr().devices.acceptRevocation(code.trim()) }
+                .onSuccess { deviceMessage.value = "Signed device revocation applied."; ctr().notifier.postSecurity("RELYRA device security", "A signed device revocation was applied.") }
                 .onFailure { deviceMessage.value = it.message ?: it.javaClass.simpleName }
         }
     }
