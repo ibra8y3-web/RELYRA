@@ -775,7 +775,7 @@ mod tests {
         create_group(&mut owner, gid, &owner_credential).unwrap();
         let key_package = generate_key_package(&mut invitee, &invitee_credential).unwrap();
         let proposal = propose_add_member(&mut owner, gid, &key_package).unwrap();
-        assert_eq!(process_proposal(&mut owner, &proposal, "alice", &["bob".to_owned()], true, false).unwrap(), 0);
+        assert_eq!(process_proposal(&mut owner, &proposal, "proposal-add-1", "alice", &["bob".to_owned()], true, false).unwrap(), 0);
         assert_eq!(pending_proposal_count(&mut owner, gid).unwrap(), 1);
 
         let committed = commit_pending_proposals(&mut owner, gid).unwrap();
@@ -819,8 +819,8 @@ mod tests {
 
         let remove_c = propose_remove_member(&mut admin_b, gid, &admin_c_credential).unwrap();
         let remove_b = propose_remove_member(&mut admin_c, gid, &admin_b_credential).unwrap();
-        assert_eq!(process_proposal(&mut owner, &remove_c, "bob", &["carol".to_owned()], false, true).unwrap(), 2);
-        assert_eq!(process_proposal(&mut owner, &remove_b, "carol", &["bob".to_owned()], false, true).unwrap(), 2);
+        assert_eq!(process_proposal(&mut owner, &remove_c, "proposal-remove-b", "bob", &["carol".to_owned()], false, true).unwrap(), 2);
+        assert_eq!(process_proposal(&mut owner, &remove_b, "proposal-remove-c", "carol", &["bob".to_owned()], false, true).unwrap(), 2);
         assert_eq!(pending_proposal_count(&mut owner, gid).unwrap(), 2);
 
         let committed = commit_pending_proposals(&mut owner, gid).unwrap();
@@ -859,8 +859,8 @@ mod tests {
 
         let admin_proposal = propose_remove_member(&mut admin, gid, &target_credential).unwrap();
         let owner_proposal = propose_remove_member(&mut owner, gid, &target_credential).unwrap();
-        process_proposal(&mut owner, &admin_proposal, "bob", &["carol".to_owned()], false, true).unwrap();
-        process_proposal(&mut owner, &owner_proposal, "alice", &["carol".to_owned()], false, true).unwrap();
+        process_proposal(&mut owner, &admin_proposal, "duplicate-from-admin", "bob", &["carol".to_owned()], false, true).unwrap();
+        process_proposal(&mut owner, &owner_proposal, "duplicate-from-owner", "alice", &["carol".to_owned()], false, true).unwrap();
         assert_eq!(pending_proposal_count(&mut owner, gid).unwrap(), 2);
 
         let committed = commit_pending_proposals(&mut owner, gid).unwrap();
