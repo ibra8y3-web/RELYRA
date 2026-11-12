@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeout
 import okhttp3.MediaType.Companion.toMediaType
@@ -30,6 +31,11 @@ data class PeerPresence(
     val issuedAt: Long,
     val expiresAt: Long,
     val capabilities: List<String>,
+)
+
+data class ManagedTurnCredentials(
+    val iceServers: List<IceServerConfig>,
+    val expiresAtSeconds: Long,
 )
 
 enum class DhtDiscoveryStatus { Disabled, NoGateway, Publishing, Published, Unavailable }
@@ -154,7 +160,7 @@ class DhtDiscoveryClient(
         baseUrl: String,
         publicId: String,
         sign: (ByteArray) -> ByteArray?,
-    ): List<IceServerConfig>? = withContext(Dispatchers.IO) {
+    ): ManagedTurnCredentials? = withContext(Dispatchers.IO) {
         val nonceBytes = ByteArray(24).also(SecureRandom()::nextBytes)
         val nonce = Base64.getUrlEncoder().withoutPadding().encodeToString(nonceBytes)
         val timestamp = System.currentTimeMillis() / 1000
@@ -181,11 +187,18 @@ class DhtDiscoveryClient(
             val json = JSONObject(response.body?.string().orEmpty())
             val username = json.getString("username")
             val credential = json.getString("credential")
+            val expiresAt = json.getLong("expiresAt")
+            val ttl = json.getLong("ttlSeconds")
+            val now = System.currentTimeMillis() / 1000
+            if (ttl !in 60..600 || expiresAt <= now || expiresAt - now > ttl + 60) {
+                return@withContext null
+            }
             val urls = json.getJSONArray("urls")
             val servers = (0 until urls.length()).map { index ->
                 IceServerConfig(urls.getString(index), username, credential)
             }
-            servers.takeIf { it.isNotEmpty() && it.all(IceServerConfig::isValid) }
+            if (servers.isEmpty() || !servers.all(IceServerConfig::isValid)) null
+            else ManagedTurnCredentials(servers, expiresAt)
         }
     }
 
@@ -206,6 +219,8 @@ class DhtDiscoveryManager(
     val status: StateFlow<DhtDiscoveryStatus> = _status
     private val _foundPresence = MutableStateFlow<PeerPresence?>(null)
     val foundPresence: StateFlow<PeerPresence?> = _foundPresence
+    private val turnRefreshMutex = kotlinx.coroutines.sync.Mutex()
+    @Volatile private var cachedTurnCredentials: ManagedTurnCredentials? = null
 
     init {
         scope.launch(Dispatchers.IO) {
@@ -274,27 +289,35 @@ class DhtDiscoveryManager(
         return null
     }
 
-    suspend fun fetchTurnCredentials(): List<IceServerConfig>? {
-        val id = try {
-            ownId()
-        } catch (cancelled: CancellationException) {
-            throw cancelled
-        } catch (_: Exception) {
-            null
-        } ?: return null
-        if (IdentityCrypto.parsePublicId(id) == null) return null
-        for (gateway in network.discoveryGateways.value.filter { it.enabled }) {
-            try {
-                val servers = withTimeout(12_000) { client.turnCredentials(gateway.url, id, sign) }
-                if (!servers.isNullOrEmpty()) return servers
+    suspend fun fetchTurnCredentials(forceRefresh: Boolean = false): ManagedTurnCredentials? =
+        turnRefreshMutex.withLock {
+            val now = System.currentTimeMillis() / 1000
+            cachedTurnCredentials?.let { cached ->
+                if (!forceRefresh && cached.expiresAtSeconds > now + 45) return@withLock cached
+            }
+            val id = try {
+                ownId()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
-                // Try the next gateway.
+                null
+            } ?: return@withLock cachedTurnCredentials?.takeIf { it.expiresAtSeconds > now + 10 }
+            if (IdentityCrypto.parsePublicId(id) == null) return@withLock null
+            for (gateway in network.discoveryGateways.value.filter { it.enabled }) {
+                try {
+                    val credentials = withTimeout(12_000) { client.turnCredentials(gateway.url, id, sign) }
+                    if (credentials != null) {
+                        cachedTurnCredentials = credentials
+                        return@withLock credentials
+                    }
+                } catch (cancelled: CancellationException) {
+                    throw cancelled
+                } catch (_: Exception) {
+                    // Try the next gateway.
+                }
             }
+            cachedTurnCredentials?.takeIf { it.expiresAtSeconds > now + 10 }
         }
-        return null
-    }
 
     suspend fun testGateway(url: String): Boolean = try {
         withTimeout(8_000) { client.test(url) }
