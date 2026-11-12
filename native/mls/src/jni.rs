@@ -1,6 +1,7 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use crate::{
-    add_members, commit_pending_proposals, create_group, encrypt, epoch, generate_key_package,
+    add_members, commit_pending_proposals, merge_pending_commit, pending_commit_info,
+    prepare_pending_proposals_commit, create_group, encrypt, epoch, generate_key_package,
     join_group, members, key_package_identity, open_database, process_message, process_proposal,
     propose_add_member, propose_remove_member, pending_proposal_count, provider_with_signer,
     remove_member, MlsError, OpenDatabase,
@@ -395,8 +396,38 @@ pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeCommit
         Ok(value) => value,
         Err(error) => { throw(&mut env, error); return ptr::null_mut(); }
     };
-    let result = catch_result(&mut env, || with_database(|db| commit_pending_proposals(db, &group_id)));
+    let result = catch_result(&mut env, || with_database(|db| prepare_pending_proposals_commit(db, &group_id)));
     result.map(|value| output_json(&mut env, &value)).unwrap_or(ptr::null_mut())
+}
+
+
+#[no_mangle]
+pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativePendingCommitInfo(
+    mut env: JNIEnv,
+    _class: JClass,
+    group_id: JByteArray,
+) -> jstring {
+    let group_id = match input_bytes(&mut env, group_id) {
+        Ok(value) => value,
+        Err(error) => { throw(&mut env, error); return ptr::null_mut(); }
+    };
+    let result = catch_result(&mut env, || with_database(|db| pending_commit_info(db, &group_id)));
+    result.map(|value| output_json(&mut env, &value)).unwrap_or(ptr::null_mut())
+}
+
+#[no_mangle]
+pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeMergePendingCommit(
+    mut env: JNIEnv,
+    _class: JClass,
+    group_id: JByteArray,
+) -> jlong {
+    let group_id = match input_bytes(&mut env, group_id) {
+        Ok(value) => value,
+        Err(error) => { throw(&mut env, error); return -1; }
+    };
+    catch_result(&mut env, || with_database(|db| merge_pending_commit(db, &group_id)))
+        .map(|epoch| epoch as jlong)
+        .unwrap_or(-1)
 }
 
 #[no_mangle]
