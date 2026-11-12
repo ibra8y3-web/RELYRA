@@ -553,28 +553,63 @@ class GroupEngine(
 
         when (env.kind) {
             GroupMlsKind.PROPOSAL -> {
-                if (group.state != GroupState.ACTIVE || localRole != GroupRole.OWNER ||
-                    sender.role != GroupRole.ADMIN || !sender.mlsJoined) return
-                if (store.hasControlMessage(env.messageId)) { ack(me, env.from, env.messageId); return }
+                if (group.state != GroupState.ACTIVE) return
                 val engine = mls ?: return
+                val isOwner = localRole == GroupRole.OWNER
+                val proposalAuthor: String
+                val proposalPayload: ByteArray
+                if (isOwner && sender.role == GroupRole.ADMIN && sender.mlsJoined) {
+                    proposalAuthor = env.from
+                    proposalPayload = env.payload
+                } else if (!isOwner && sender.role == GroupRole.OWNER && sender.mlsJoined) {
+                    val relay = MlsProposalRelayCodec.decode(env.payload) ?: return
+                    val author = members.firstOrNull { it.id.equals(relay.authorId, ignoreCase = true) } ?: return
+                    if (author.role != GroupRole.ADMIN || !author.mlsJoined) return
+                    proposalAuthor = author.id
+                    proposalPayload = relay.payload
+                } else return
+                if (store.hasControlMessage(env.messageId)) { ack(me, env.from, env.messageId); return }
                 if (engine.epoch(env.groupId) != group.mlsEpoch) return
                 val allowedTargets = members.filter {
                     it.mlsJoined && it.role == GroupRole.MEMBER
                 }.map { it.id }.toSet()
                 if (allowedTargets.isEmpty()) return
                 val acceptedEpoch = runCatching {
-                    engine.processProposal(env.payload, env.messageId, env.from, allowedTargets, allowAdd = false, allowRemove = true)
+                    engine.processProposal(
+                        proposalPayload, env.messageId, proposalAuthor, allowedTargets,
+                        allowAdd = false, allowRemove = true,
+                    )
                 }.getOrNull()
                 if (acceptedEpoch == null || acceptedEpoch != group.mlsEpoch) {
-                    // A malformed, unauthorized, replayed or stale proposal is terminally
-                    // rejected at this epoch; acknowledge it so the sender does not retry forever.
-                    store.recordControlMessage(env.messageId, clock())
-                    refreshPendingMlsProposalsLocked(env.groupId)
-                    ack(me, env.from, env.messageId)
+                    if (isOwner) {
+                        store.recordControlMessage(env.messageId, clock())
+                        refreshPendingMlsProposalsLocked(env.groupId)
+                        ack(me, env.from, env.messageId)
+                    }
+                    // A recipient that cannot process the proposal does not ACK it;
+                    // the owner therefore cannot commit a proposal missing on a member.
                     return
                 }
                 if (!store.recordControlMessage(env.messageId, clock())) { ack(me, env.from, env.messageId); return }
-                refreshPendingMlsProposalsLocked(env.groupId)
+                if (isOwner) {
+                    val relayPayload = MlsProposalRelayCodec.encode(proposalAuthor, proposalPayload)
+                    val now = clock().coerceAtLeast(1L)
+                    val recipients = members.filter {
+                        it.mlsJoined && it.id != me && it.id != proposalAuthor &&
+                            peers.status(it.id) == PeerStatus.Known
+                    }
+                    store.enqueue(recipients.map { recipient ->
+                        val id = newId()
+                        OutboxRow(
+                            id, env.groupId, recipient.id, env.messageId,
+                            EnvelopeCodec.encode(Envelope.GroupMls(
+                                id, me, recipient.id, env.groupId, GroupMlsKind.PROPOSAL, relayPayload,
+                            )),
+                            now, 0, now, acked = false, failed = false,
+                        )
+                    })
+                    refreshPendingMlsProposalsLocked(env.groupId)
+                }
                 ack(me, env.from, env.messageId)
             }
             GroupMlsKind.MEMBERSHIP_PROPOSAL -> {
