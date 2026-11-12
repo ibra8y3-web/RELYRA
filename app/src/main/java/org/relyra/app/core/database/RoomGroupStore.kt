@@ -7,6 +7,9 @@ import org.relyra.app.core.messaging.GroupAttachmentRecord
 import org.relyra.app.core.messaging.GroupRecord
 import org.relyra.app.core.messaging.GroupState
 import org.relyra.app.core.messaging.GroupStore
+import org.relyra.app.core.messaging.GroupMlsKind
+import org.relyra.app.core.messaging.Envelope
+import org.relyra.app.core.messaging.EnvelopeCodec
 import org.relyra.app.core.messaging.OutboxRow
 
 class RoomGroupStore(private val db: AppDatabase) : GroupStore {
@@ -94,6 +97,14 @@ class RoomGroupStore(private val db: AppDatabase) : GroupStore {
     override suspend fun dueOutbox(now: Long, limit: Int): List<OutboxRow> = dao.due(now, limit).map { it.toModel() }
     override suspend fun updateOutbox(row: OutboxRow) = dao.updateOutbox(row.toEntity())
     override suspend fun outbox(id: String): OutboxRow? = dao.outbox(id)?.toModel()
+
+    override suspend fun outboxGroup(id: String): String? = dao.outbox(id)?.groupId
+
+    override suspend fun pendingProposalDeliveries(groupId: String): Int =
+        dao.pendingPayloads(groupId).count { raw ->
+            runCatching { EnvelopeCodec.decode(raw) }.getOrNull()
+                .let { it is Envelope.GroupMls && it.kind == GroupMlsKind.PROPOSAL }
+        }
     override suspend fun markAcked(id: String, memberId: String): Boolean = dao.ack(id, memberId) > 0
 
     override suspend fun markMessagesRead(groupId: String): List<GroupMessage> = db.withTransaction {
