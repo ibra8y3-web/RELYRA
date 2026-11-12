@@ -66,7 +66,7 @@ fun CommunitiesScreen(vm: MainViewModel) {
     var description by rememberSaveable { mutableStateOf("") }
     var visibility by rememberSaveable { mutableStateOf("public") }
     var moderators by rememberSaveable { mutableStateOf("") }
-    var action by rememberSaveable { mutableStateOf("mute") }
+    var action by rememberSaveable { mutableStateOf("ban") }
     var subject by rememberSaveable { mutableStateOf("") }
     var reason by rememberSaveable { mutableStateOf("community_rules") }
     var reportCategory by rememberSaveable { mutableStateOf("spam") }
@@ -378,15 +378,27 @@ fun CommunitiesScreen(vm: MainViewModel) {
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     var expanded by remember { mutableStateOf(false) }
-                    OutlinedButton(onClick = { expanded = true }) { Text(action) }
+                    val actionLabel = when (action) {
+                        "ban" -> stringResource(R.string.communities_action_ban)
+                        "unban" -> stringResource(R.string.communities_action_unban)
+                        else -> stringResource(R.string.communities_action_remove_member)
+                    }
+                    OutlinedButton(onClick = { expanded = true }) { Text(actionLabel) }
                     DropdownMenu(expanded = expanded, onDismissRequest = { expanded = false }) {
                         val availableActions = if (isOwner) {
-                            listOf("ban", "unban", "remove_member")
+                            listOf(
+                                "ban" to R.string.communities_action_ban,
+                                "unban" to R.string.communities_action_unban,
+                                "remove_member" to R.string.communities_action_remove_member,
+                            )
                         } else {
-                            listOf("ban")
+                            listOf("ban" to R.string.communities_action_ban)
                         }
-                        availableActions.forEach { option ->
-                            DropdownMenuItem(text = { Text(option) }, onClick = { action = option; expanded = false })
+                        availableActions.forEach { (value, label) ->
+                            DropdownMenuItem(
+                                text = { Text(stringResource(label)) },
+                                onClick = { action = value; expanded = false },
+                            )
                         }
                     }
                     OutlinedTextField(subject, { subject = it.take(100) }, label = { Text(stringResource(R.string.communities_subject_id)) })
