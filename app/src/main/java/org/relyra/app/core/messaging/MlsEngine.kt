@@ -26,17 +26,17 @@ data class MlsProcessedMessage(
 )
 
 interface GroupMlsProvider {
-    override suspend fun createGroup(groupId: String, relyraPublicId: String): Long
-    override suspend fun generateKeyPackage(relyraPublicId: String): ByteArray
-    override suspend fun keyPackageIdentity(keyPackage: ByteArray): String
-    override suspend fun addMembers(groupId: String, keyPackages: List<ByteArray>): MlsCommitBundle
-    override suspend fun joinGroup(groupId: String, welcome: ByteArray): Long
-    override suspend fun encrypt(groupId: String, plaintext: ByteArray): ByteArray
-    override suspend fun processMessage(message: ByteArray): MlsProcessedMessage
-    override suspend fun removeMember(groupId: String, relyraPublicId: String): MlsCommitBundle
-    override suspend fun epoch(groupId: String): Long
-    override suspend fun members(groupId: String): List<String>
-    override suspend fun close()
+    suspend fun createGroup(groupId: String, relyraPublicId: String): Long
+    suspend fun generateKeyPackage(relyraPublicId: String): ByteArray
+    suspend fun keyPackageIdentity(keyPackage: ByteArray): String
+    suspend fun addMembers(groupId: String, keyPackages: List<ByteArray>): MlsCommitBundle
+    suspend fun joinGroup(groupId: String, welcome: ByteArray): Long
+    suspend fun encrypt(groupId: String, plaintext: ByteArray): ByteArray
+    suspend fun processMessage(message: ByteArray): MlsProcessedMessage
+    suspend fun removeMember(groupId: String, relyraPublicId: String): MlsCommitBundle
+    suspend fun epoch(groupId: String): Long
+    suspend fun members(groupId: String): List<String>
+    suspend fun close()
 }
 
 class MlsEngine(
