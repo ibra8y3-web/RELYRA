@@ -135,6 +135,7 @@ func newServer(ctx context.Context) (*server, error) {
 		libp2p.Identity(privateKey),
 		libp2p.ListenAddrStrings(listenAddrs...),
 		libp2p.NATPortMap(),
+		libp2p.NonPublicAddrPublishing(false),
 	}
 	if announced := splitList(os.Getenv("RELYRA_ANNOUNCE_MULTIADDRS")); len(announced) > 0 {
 		external := make([]ma.Multiaddr, 0, len(announced))
@@ -178,6 +179,9 @@ func newServer(ctx context.Context) (*server, error) {
 		dht.ValueGCInterval(time.Minute),
 		dht.RoutingTablePersistence(time.Hour),
 		dht.BootstrapPeers(bootstrap...),
+		dht.QueryFilter(dht.PublicQueryFilter),
+		dht.RoutingTableFilter(dht.PublicRoutingTableFilter),
+		dht.RoutingTablePeerDiversityFilter(dht.NewRTPeerDiversityFilter(p2pHost, 2, 10)),
 	)
 	if err != nil {
 		_ = datastore.Close()
