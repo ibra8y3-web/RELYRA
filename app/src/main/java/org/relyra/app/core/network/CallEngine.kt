@@ -55,7 +55,7 @@ class CallEngine(
 
     private data class Session(
         val id: String, val connection: PeerConnection, val video: Boolean, var gathering: CompletableDeferred<Unit> = CompletableDeferred(),
-        var recoveryAttempts: Int = 0, var recoveryJob: Job? = null, val gathering: CompletableDeferred<Unit> = CompletableDeferred(),
+        var recoveryAttempts: Int = 0, var recoveryJob: Job? = null,
         var audioSource: AudioSource? = null, var audioTrack: AudioTrack? = null,
         var videoSource: VideoSource? = null, var videoTrack: VideoTrack? = null,
         var capturer: CameraVideoCapturer? = null, var texture: SurfaceTextureHelper? = null,
