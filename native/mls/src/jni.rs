@@ -1,6 +1,6 @@
 use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
 use crate::{
-    add_members, commit_pending_proposals, merge_pending_commit, pending_commit_info,
+    add_members, merge_pending_commit, pending_commit_info,
     prepare_pending_proposals_commit, create_group, encrypt, epoch, generate_key_package,
     join_group, members, key_package_identity, open_database, process_message, process_proposal,
     propose_add_member, propose_remove_member, pending_proposal_count, provider_with_signer,
@@ -387,7 +387,7 @@ pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeProces
 }
 
 #[no_mangle]
-pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativeCommitPendingProposals(
+pub extern "system" fn Java_org_relyra_app_core_messaging_MlsNative_nativePreparePendingProposalsCommit(
     mut env: JNIEnv,
     _class: JClass,
     group_id: JByteArray,
