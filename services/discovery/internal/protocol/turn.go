@@ -7,6 +7,7 @@ import (
 	"encoding/base64"
 	"errors"
 	"fmt"
+	"net/url"
 	"strconv"
 	"strings"
 	"time"
@@ -19,6 +20,44 @@ type TurnChallenge struct {
 	Timestamp int64  `json:"timestamp"`
 	Nonce     string `json:"nonce"`
 	Signature string `json:"signature"`
+}
+
+
+func ValidateTurnURL(raw string) error {
+	if len(raw) == 0 || len(raw) > 512 || strings.ContainsAny(raw, " \t\r\n") {
+		return errors.New("invalid TURN URL length or whitespace")
+	}
+	separator := strings.IndexByte(raw, ':')
+	if separator <= 0 {
+		return errors.New("TURN URL must specify turn or turns scheme")
+	}
+	scheme := strings.ToLower(raw[:separator])
+	if scheme != "turn" && scheme != "turns" {
+		return errors.New("TURN URL scheme must be turn or turns")
+	}
+	parsed, err := url.Parse("//" + raw[separator+1:])
+	if err != nil || parsed.Hostname() == "" || parsed.User != nil ||
+		parsed.Path != "" || parsed.Fragment != "" {
+		return errors.New("invalid TURN server authority")
+	}
+	if parsed.Port() != "" {
+		port, err := strconv.Atoi(parsed.Port())
+		if err != nil || port < 1 || port > 65535 {
+			return errors.New("invalid TURN server port")
+		}
+	}
+	query, err := url.ParseQuery(parsed.RawQuery)
+	if err != nil {
+		return errors.New("invalid TURN transport query")
+	}
+	if len(query) > 0 {
+		values := query["transport"]
+		if len(query) != 1 || len(values) != 1 ||
+			(values[0] != "udp" && values[0] != "tcp") {
+			return errors.New("TURN transport must be udp or tcp")
+		}
+	}
+	return nil
 }
 
 type TurnCredentials struct {
@@ -68,8 +107,8 @@ func IssueTurnCredentials(sharedSecret, realm string, urls []string, publicID st
 		return TurnCredentials{}, err
 	}
 	for _, url := range urls {
-		if !(strings.HasPrefix(url, "turn:") || strings.HasPrefix(url, "turns:")) || len(url) > 512 {
-			return TurnCredentials{}, errors.New("invalid TURN URL configuration")
+		if err := ValidateTurnURL(url); err != nil {
+			return TurnCredentials{}, errors.New("invalid TURN URL configuration: " + err.Error())
 		}
 	}
 	expires := now.Add(ttl).Unix()
