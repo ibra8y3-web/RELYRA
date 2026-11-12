@@ -75,19 +75,32 @@ See INTERNET_P2P_WEBRTC.md and services/discovery/README.md for protocol workflo
 
 ## Priority 3 — group protocol and community layer
 
-**Goal:** move beyond per-member group fan-out only after a group-key protocol is reviewed.
+**Current status: incremental group read receipts are implemented on branch `phase-3-group-protocol`; MLS, group attachments and public community services remain unfinished.**
 
-Work items:
-- Evaluate MLS and the required credential, epoch, key-package and membership lifecycle.
-- Define group history, member removal and key rotation semantics.
-- Add group attachments and group read receipts with explicit privacy controls.
-- Design community discovery, moderation and abuse controls separately from private group messaging.
+Implemented in this phase branch:
+- Optional, per-recipient group read receipts. Each receipt refers to the exact message-copy ID delivered to one member; the sender records it only when group, copy ID and recipient all match its durable outbox row.
+- A SQLCipher Room migration adds the read timestamp without destructive migration or loss of existing group/outbox data.
+- Read-receipt sending follows the existing user privacy preference. Local read state is saved even when sending receipts is disabled.
+- Group UI reports delivered and read counts separately. Regression tests cover member-copy binding, preference-off behavior and receipt codec validation.
+- `docs/MLS_AND_COMMUNITY_DESIGN.md` records the MLS integration decision, identity binding, epoch/removal semantics, attachment model and separate community security model.
+
+Still required:
+- Integrate a pinned, reviewed OpenMLS implementation through a small Android native bridge; the current production group engine remains pairwise Double Ratchet fan-out and is **not MLS**.
+- Implement real MLS KeyPackage, Welcome, Proposal and Commit lifecycle, epoch persistence and restart recovery.
+- Implement group attachments through encrypted Blossom blobs; the current attachment engine is one-to-one only.
+- Implement community manifests, opt-in discovery, signed moderator events, reporting, replay protection and server-side abuse/rate controls. These are design-only, not runtime features.
+- Test membership changes, removals, restart recovery, concurrent commits, malicious proposals and member churn on independent clients.
 
 Acceptance criteria:
-- Removed members cannot decrypt messages sent after the committed removal epoch.
-- Membership changes converge safely under concurrent updates.
-- Group state can recover after device restart without silently accepting stale membership.
-- Protocol tests cover forged commits, replay, delayed messages and member churn.
+- Removed members cannot decrypt application messages created after the committed MLS removal epoch.
+- Membership changes converge under concurrent proposals and reject forged, stale or replayed commits.
+- Group state recovers after restart without accepting a stale transcript.
+- Group attachments are encrypted before Blossom upload and verified before opening.
+- Read receipts are optional, authenticated and bound to the correct recipient/message copy.
+- Community moderator actions are signed, authorized, replay-protected and rate limited at the service.
+- CI passes from a clean checkout and supported Android ABIs interoperate.
+
+See `docs/MLS_AND_COMMUNITY_DESIGN.md` for the protocol design and explicit implementation boundaries.
 
 ## Priority 4 — privacy network options
 
