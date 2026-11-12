@@ -53,6 +53,8 @@ internal object BackupArchive {
             val bytes = ByteArrayOutputStream().also { props.store(it, "RELYRA backup preferences") }.toByteArray()
             "prefs/$name.properties" to bytes
         }
+        val estimatedTotal = files.sumOf { it.second.length() } + prefBytes.sumOf { it.second.size.toLong() }
+        if (estimatedTotal > MAX_TOTAL_BYTES) throw BackupException("backup is too large")
         val digests = linkedMapOf<String, Digest>()
         ZipOutputStream(BufferedOutputStream(FileOutputStream(output))).use { zip ->
             files.forEach { (name, file) -> digests[name] = addFile(zip, name, file) }
@@ -96,7 +98,9 @@ internal object BackupArchive {
                 when {
                     name == MANIFEST -> {
                         if (expectedManifest != null) throw BackupException("backup contains duplicate manifests")
-                        expectedManifest = readManifest(zip.readBytes())
+                        val bytes = zip.readLimited(8 * 1024 * 1024)
+                        total += bytes.size
+                        expectedManifest = readManifest(bytes)
                     }
                     name == "database.db" -> {
                         val digest = copyEntry(zip, databaseOut)
@@ -121,6 +125,7 @@ internal object BackupArchive {
                         val prefName = name.removePrefix("prefs/").removeSuffix(".properties")
                         if (!prefName.matches(Regex("[a-z][a-z0-9_-]{0,63}"))) throw BackupException("invalid preferences entry")
                         val bytes = zip.readLimited(MAX_PREF_BYTES)
+                        total += bytes.size
                         actual[name] = Digest(bytes.size.toLong(), sha256(bytes))
                         val props = Properties()
                         props.load(ByteArrayInputStream(bytes))
