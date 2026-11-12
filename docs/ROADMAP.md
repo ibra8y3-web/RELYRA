@@ -38,7 +38,7 @@ Acceptance criteria:
 
 ## Priority 2 — direct connectivity
 
-**Current source status: experimental WebRTC direct transport added on branch phase-2-internet-p2p; release gate remains open.**
+**Current source status: implementation and deployable services are now present on branch phase-2-p2p-rendezvous; release gate remains open for CI and operator/device validation.**
 
 Implemented in source:
 - Android WebRTC DataChannel transport using ICE connectivity checks and default STUN servers.
@@ -50,14 +50,19 @@ Implemented in source:
 - Binary encrypted DeliveryEngine payloads pass through the DataChannel; AdaptiveRouter prefers a connected direct path and retains Nostr fallback.
 - DataChannel frame size is bounded and larger attachments remain on the Blossom path.
 
-Still missing before Priority 2 can be declared complete:
-- No automatic Internet DHT or unknown-peer discovery; signaling uses known contacts and the user's enabled Nostr relay route.
-- Project-operated TURN service, short-lived credentials and operational abuse controls.
-- Automatic ICE restart after network changes and full disconnect-mid-send delivery regression tests.
-- Real-device verification across independent Wi-Fi and mobile carrier NATs, including TURN-only and symmetric NAT cases.
-- Clean CI success on the exact phase-2 branch.
+Implemented in this branch at source level:
+- A RELYRA-specific Kademlia DHT service in services/discovery, using libp2p Go nodes, a persistent Pebble datastore, a namespaced record validator, and HTTPS publish/lookup API.
+- Android HTTPS gateway configuration, explicit opt-in public presence, signed three-minute Ed25519 presence leases, exact-public-ID lookup and local verification before displaying a result. Lookup does not create or trust a contact.
+- A coturn service definition, bounded relay-port configuration, Caddy HTTPS gateway and short-lived TURN REST credentials. TURN credentials are issued only after a signed identity challenge and are never persisted on the Android device.
+- Automatic bounded peer-session recreation and signed offer/answer renegotiation after ICE failure or network change. Only previously approved peers can be auto-answered; the first incoming offer still requires explicit approval.
+- JVM regression coverage for DHT record verification, URL validation, bounded reconnect backoff, direct-send acknowledgement loss, Nostr fallback and receiver duplicate suppression.
 
-WebRTC was selected for Android direct connectivity rather than adding the previously evaluated JVM libp2p candidate, whose Android production status, DHT and hole-punching gaps were documented in LIBP2P_EVALUATION.md. This does not claim libp2p, DHT or Circuit Relay v2 support.
+Remaining release gates:
+- The repository provides deployable service files, but no public RELYRA DHT/TURN infrastructure is hosted by this repository. Multiple independently reachable DHT nodes must be deployed and configured with bootstrap multiaddresses before public discovery works across operators.
+- Clean CI success on the exact final phase-2 head, including Go service tests/vet/container build and Android JVM tests.
+- Device and network verification is intentionally left to the project owner: Wi-Fi-to-mobile, carrier NAT/symmetric NAT, TURN-only, app backgrounding and network handover.
+
+The Android app uses WebRTC for its DataChannel. It does not embed a libp2p host. The distributed Kademlia overlay is provided by the separate Go service; Android clients use its HTTPS gateway.
 
 Acceptance criteria remain:
 - Two independently installed devices authenticate each other using signed signaling and the RELYRA identity, not an IP address or WebRTC transport identifier.
@@ -66,7 +71,7 @@ Acceptance criteria remain:
 - The UI reports the actual path, never a simulated connection status.
 - Tested devices, Android versions, ICE candidate pair types and exact workflow run are recorded.
 
-See INTERNET_P2P_WEBRTC.md for protocol workflow, consent model, privacy implications and validation steps.
+See INTERNET_P2P_WEBRTC.md and services/discovery/README.md for protocol workflow, consent model, service deployment, privacy implications and validation steps.
 
 ## Priority 3 — group protocol and community layer
 
