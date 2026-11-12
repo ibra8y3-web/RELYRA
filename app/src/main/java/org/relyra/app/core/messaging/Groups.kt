@@ -67,6 +67,7 @@ interface GroupStore {
     suspend fun markReadReceipt(copyId: String, groupId: String, memberId: String, readAt: Long): Boolean
     /** Atomically records a one-time group control packet (MLS handshake/commit). */
     suspend fun recordControlMessage(id: String, receivedAt: Long): Boolean
+    suspend fun hasControlMessage(id: String): Boolean
     suspend fun deleteGroup(groupId: String)
 }
 
@@ -414,7 +415,7 @@ class GroupEngine(
                 val engine = mls ?: return
                 val expectedCredential = "RELYRA-MLS-V1:${env.from}:primary"
                 if (engine.keyPackageIdentity(env.payload) != expectedCredential) return
-                if (!store.recordControlMessage(env.messageId, clock())) { ack(me, env.from, env.messageId); return }
+                if (store.hasControlMessage(env.messageId)) { ack(me, env.from, env.messageId); return }
                 val bundle = engine.addMembers(env.groupId, listOf(env.payload))
                 val now = clock().coerceAtLeast(1L)
                 val currentJoined = members.filter { it.mlsJoined && it.id != me && peers.status(it.id) == PeerStatus.Known }
@@ -427,6 +428,7 @@ class GroupEngine(
                 val welcome = bundle.welcome ?: return
                 enqueueMlsControl(env.groupId, me, env.from, GroupMlsKind.WELCOME, welcome)
                 store.putGroup(group.copy(mlsEpoch = bundle.epoch), members)
+                store.recordControlMessage(env.messageId, clock())
                 broadcastSnapshot(env.groupId, emptySet())
                 ack(me, env.from, env.messageId)
             }
@@ -459,7 +461,7 @@ class GroupEngine(
             GroupMlsKind.COMMIT -> {
                 if (!sender.mlsJoined || !isStaff(sender.role)) return
                 val engine = mls ?: return
-                if (store.recordControlMessage(env.messageId, clock())) { ack(me, env.from, env.messageId); return }
+                if (store.hasControlMessage(env.messageId)) { ack(me, env.from, env.messageId); return }
                 val result = engine.processMessage(env.payload)
                 if (result.groupId != env.groupId || result.kind !in setOf("commit", "own_commit")) return
                 store.putGroup(group.copy(mlsEpoch = result.epoch), members)
@@ -469,7 +471,7 @@ class GroupEngine(
             GroupMlsKind.APPLICATION -> {
                 if (group.state != GroupState.ACTIVE || !sender.mlsJoined) return
                 if (group.kind == GroupKind.CHANNEL && sender.role == GroupRole.MEMBER) return
-                if (store.recordControlMessage(env.messageId, clock())) { ack(me, env.from, env.messageId); return }
+                if (store.hasControlMessage(env.messageId)) { ack(me, env.from, env.messageId); return }
                 val engine = mls ?: return
                 val result = engine.processMessage(env.payload)
                 if (result.groupId != env.groupId || result.kind != "application") return
