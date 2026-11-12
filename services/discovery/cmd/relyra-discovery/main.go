@@ -262,6 +262,7 @@ func (s *server) routes() http.Handler {
 	mux.HandleFunc("GET /v1/communities/{communityID}/private/events", s.listPrivateCommunityEvents)
 	mux.HandleFunc("GET /v1/communities/{communityID}/sequence/{actorPublicID}", s.communitySequence)
 	mux.HandleFunc("POST /v1/communities/{communityID}/reports", s.submitCommunityReport)
+	mux.HandleFunc("GET /v1/communities/{communityID}/reports", s.listCommunityReports)
 	return s.guard(mux)
 }
 
@@ -622,6 +623,33 @@ func (s *server) communitySequence(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Cache-Control", "no-store")
 	writeJSON(w, http.StatusOK, map[string]any{"lastSequence": sequence})
+}
+
+func (s *server) listCommunityReports(w http.ResponseWriter, r *http.Request) {
+    communityID := r.PathValue("communityID")
+    requesterID, err := s.privateMemberFromRequest(r, communityID)
+    if err != nil {
+        writeError(w, http.StatusForbidden, "community report access denied")
+        return
+    }
+    limit := 50
+    if raw := r.URL.Query().Get("limit"); raw != "" {
+        value, parseErr := strconv.Atoi(raw)
+        if parseErr != nil || value < 1 || value > communities.MaxEventsPage {
+            writeError(w, http.StatusBadRequest, "invalid reports page size")
+            return
+        }
+        limit = value
+    }
+    ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+    defer cancel()
+    reports, err := s.communities.Reports(ctx, communityID, requesterID, limit)
+    if err != nil {
+        writeError(w, http.StatusForbidden, "community report access denied")
+        return
+    }
+    w.Header().Set("Cache-Control", "no-store")
+    writeJSON(w, http.StatusOK, map[string]any{"reports": reports})
 }
 
 func (s *server) submitCommunityReport(w http.ResponseWriter, r *http.Request) {
