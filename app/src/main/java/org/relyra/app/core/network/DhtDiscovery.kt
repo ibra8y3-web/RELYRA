@@ -190,7 +190,7 @@ class DhtDiscoveryClient(
             val expiresAt = json.getLong("expiresAt")
             val ttl = json.getLong("ttlSeconds")
             val now = System.currentTimeMillis() / 1000
-            if (ttl !in 60..600 || expiresAt <= now || expiresAt - now > ttl + 60) {
+            if (ttl !in 60L..600L || expiresAt <= now || expiresAt - now > ttl + 60) {
                 return@withContext null
             }
             val urls = json.getJSONArray("urls")
