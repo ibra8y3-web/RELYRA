@@ -246,14 +246,130 @@ object RestoreApplier {
     const val DB_READY = "pending.db"
     const val KEYS = "pending.keys"
     const val MARKER = "pending.ready"
+    private const val ROLLBACK_KEYS = "rollback.keys"
+    private const val ROLLBACK_PREFS = "rollback.prefs"
     val AAD = "relyra-restore-v1".toByteArray(Charsets.UTF_8)
+    private val ROLLBACK_KEYS_AAD = "relyra-restore-rollback-v1".toByteArray(Charsets.UTF_8)
+    private val ROLLBACK_PREFS_AAD = "relyra-restore-prefs-v1".toByteArray(Charsets.UTF_8)
 
     fun clear(stageDir: File) {
-        listOf(DB_PART, DB_READY, KEYS, MARKER, "export.tmp", "export.bundle", "restore.bundle").forEach { File(stageDir, it).delete() }
+        listOf(DB_PART, DB_READY, KEYS, MARKER, ROLLBACK_KEYS, ROLLBACK_PREFS, "export.tmp", "export.bundle", "restore.bundle").forEach { File(stageDir, it).delete() }
         File(stageDir, "restored-files").deleteRecursively()
         File(stageDir, "pending-prefs").deleteRecursively()
         File(stageDir, "export-prekeys").deleteRecursively()
         File(stageDir, "verify-vault").deleteRecursively()
+    }
+
+    private fun persistRollbackState(
+        stageDir: File,
+        secure: SecureStore,
+        stores: Map<String, SharedPreferences>,
+    ) {
+        val keysFile = File(stageDir, ROLLBACK_KEYS)
+        if (!keysFile.isFile) {
+            val seed = secure.loadSeed() ?: ByteArray(0)
+            val key = secure.databaseKey()
+            val prekeys = secure.exportPreKeys()
+            val raw = java.io.ByteArrayOutputStream()
+            DataOutputStream(raw).use { data ->
+                data.writeShort(seed.size); data.write(seed)
+                data.writeShort(key.size); data.write(key)
+                data.writeShort(prekeys.size)
+                prekeys.toSortedMap().forEach { (id, value) ->
+                    data.writeUTF(id); data.writeShort(value.size); data.write(value)
+                }
+            }
+            writeAtomically(keysFile, KeystoreVault.wrap(raw.toByteArray(), ROLLBACK_KEYS_AAD))
+        }
+        val prefsFile = File(stageDir, ROLLBACK_PREFS)
+        if (!prefsFile.isFile) {
+            val props = Properties()
+            stores.forEach { (storeName, prefs) ->
+                prefs.all.forEach { (key, value) ->
+                    val encoded = when (value) {
+                        is String -> "s:$value"
+                        is Boolean -> "b:$value"
+                        is Int -> "i:$value"
+                        is Long -> "l:$value"
+                        is Float -> "f:$value"
+                        is Set<*> -> "ss:" + value.filterIsInstance<String>()
+                            .map { java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(it.toByteArray(Charsets.UTF_8)) }
+                            .sorted().joinToString(",")
+                        else -> throw BackupException("unsupported preference value in rollback snapshot")
+                    }
+                    val encodedKey = java.util.Base64.getUrlEncoder().withoutPadding()
+                        .encodeToString(key.toByteArray(Charsets.UTF_8))
+                    props.setProperty("$storeName.$encodedKey", encoded)
+                }
+            }
+            val bytes = java.io.ByteArrayOutputStream().also { props.store(it, "RELYRA restore rollback") }.toByteArray()
+            writeAtomically(prefsFile, KeystoreVault.wrap(bytes, ROLLBACK_PREFS_AAD))
+        }
+    }
+
+    private fun writeAtomically(file: File, bytes: ByteArray) {
+        val temp = File(file.parentFile, file.name + ".tmp")
+        temp.delete()
+        FileOutputStream(temp).use { output -> output.write(bytes); output.fd.sync() }
+        if (!temp.renameTo(file)) {
+            temp.delete()
+            throw java.io.IOException("could not persist restore rollback state")
+        }
+    }
+
+    private fun readRollbackKeys(file: File): Triple<ByteArray?, ByteArray, Map<String, ByteArray>> {
+        val decoded = KeystoreVault.unwrap(file.readBytes(), ROLLBACK_KEYS_AAD)
+        val input = DataInputStream(decoded.inputStream())
+        val seedSize = input.readUnsignedShort()
+        if (seedSize > 128 || seedSize > input.available()) throw BackupException("invalid rollback identity key")
+        val seed = ByteArray(seedSize).also { input.readFully(it) }
+        val keySize = input.readUnsignedShort()
+        if (keySize != 32 || input.available() < keySize) throw BackupException("invalid rollback database key")
+        val key = ByteArray(keySize).also { input.readFully(it) }
+        val prekeys = linkedMapOf<String, ByteArray>()
+        val count = input.readUnsignedShort()
+        if (count > 10_000) throw BackupException("too many rollback private prekeys")
+        repeat(count) {
+            val id = input.readUTF()
+            val size = input.readUnsignedShort()
+            if (!id.matches(Regex("[a-z-]+:[0-9]+")) || size != 32 || id in prekeys || input.available() < size) {
+                throw BackupException("invalid rollback private prekey")
+            }
+            prekeys[id] = ByteArray(size).also { input.readFully(it) }
+        }
+        if (input.available() != 0) throw BackupException("invalid rollback key payload")
+        return Triple(seed.takeIf { it.isNotEmpty() }, key, prekeys)
+    }
+
+    private fun readRollbackPreferences(file: File, storeNames: Set<String>): Map<String, Map<String, Any>> {
+        val props = Properties()
+        KeystoreVault.unwrap(file.readBytes(), ROLLBACK_PREFS_AAD).inputStream().use(props::load)
+        return storeNames.associateWith { storeName ->
+            val prefix = "$storeName."
+            props.stringPropertyNames().filter { it.startsWith(prefix) }.associate { property ->
+                val encodedKey = property.removePrefix(prefix)
+                val key = try {
+                    String(java.util.Base64.getUrlDecoder().decode(encodedKey), Charsets.UTF_8)
+                } catch (_: IllegalArgumentException) {
+                    throw BackupException("invalid rollback preference key")
+                }
+                val value = props.getProperty(property)
+                val restored: Any = when {
+                    value.startsWith("s:") -> value.substring(2)
+                    value.startsWith("b:") -> value.substring(2).toBooleanStrict()
+                    value.startsWith("i:") -> value.substring(2).toInt()
+                    value.startsWith("l:") -> value.substring(2).toLong()
+                    value.startsWith("f:") -> value.substring(2).toFloat()
+                    value.startsWith("ss:") -> value.substring(3).split(',').filter { it.isNotEmpty() }
+                        .map { token ->
+                            try { String(java.util.Base64.getUrlDecoder().decode(token), Charsets.UTF_8) }
+                            catch (_: IllegalArgumentException) { throw BackupException("invalid rollback preference set") }
+                        }.toSet()
+                    else -> throw BackupException("invalid rollback preference value")
+                }
+                key to restored
+            }
+        }
     }
 
     /**
@@ -308,9 +424,11 @@ object RestoreApplier {
         var installed = false
         var keysUpdated = false
         var restoredDirs: Map<String, File?>? = null
-        val previousSeed = secure.loadSeed()
-        val previousKey = secure.databaseKey()
-        val previousPreferences = preferenceStores.mapValues { it.value.all }
+        // Persist rollback material before touching the live DB, keys, files, or preferences.
+        // A process restart must not mistake already-restored keys for the original rollback state.
+        persistRollbackState(stageDir, secure, preferenceStores)
+        val (previousSeed, previousKey, previousPrekeys) = readRollbackKeys(File(stageDir, ROLLBACK_KEYS))
+        val previousPreferences = readRollbackPreferences(File(stageDir, ROLLBACK_PREFS), preferenceStores.keys)
         try {
             FileInputStream(stagedDb).use { input ->
                 FileOutputStream(candidate).use { output ->
@@ -352,7 +470,7 @@ object RestoreApplier {
             return true
         } catch (t: Throwable) {
             if (restoredDirs != null) rollbackRestoredFiles(stageDir, filesDir, restoredDirs!!)
-            if (keysUpdated) runCatching { secure.restoreKeys(previousSeed, previousKey) }
+            if (keysUpdated) runCatching { secure.restoreKeys(previousSeed, previousKey, previousPrekeys) }
             runCatching { restorePreferenceSnapshot(preferenceStores, previousPreferences) }
             if (installed) dbFile.delete()
             if (previous.exists() && !previous.renameTo(dbFile)) {
