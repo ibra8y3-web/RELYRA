@@ -1,5 +1,5 @@
 <p align="center"><img src="docs/assets/relyra-cover.svg" alt="RELYRA — Private by design. Connected by choice." width="100%"></p>
-<p align="center"><a href="README_AR.md">العربية</a> · <a href="docs/ARCHITECTURE.md">Architecture</a> · <a href="docs/NETWORKING.md">Networking</a> · <a href="docs/ROADMAP.md">Roadmap</a> · <a href="docs/SPECIFICATION_CROSSWALK_AR.md">Specification status</a> · <a href="LICENSE">Apache 2.0</a></p>
+<p align="center"><a href="README_AR.md">العربية</a> · <a href="docs/ARCHITECTURE.md">Architecture</a> · <a href="docs/NETWORKING.md">Networking</a> · <a href="docs/ROADMAP.md">Roadmap</a> · <a href="docs/PHASE5_MULTI_DEVICE.md">Phase 5 — Multi-Device</a> · <a href="docs/SPECIFICATION_CROSSWALK_AR.md">Specification status</a> · <a href="LICENSE">Apache 2.0</a></p>
 <p align="center">
 <a href="https://github.com/ibra8y3-web/RELYRA/actions/workflows/build.yml"><img src="https://github.com/ibra8y3-web/RELYRA/actions/workflows/build.yml/badge.svg?branch=main" alt="Build status"></a>
 <img src="https://img.shields.io/badge/Android-10%2B-3DDC84?logo=android&logoColor=white" alt="Android 10+">
