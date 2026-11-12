@@ -34,10 +34,15 @@ class P2pSignalEnvelopeTest {
     }
 
     @Test fun decoderRejectsUnknownSignalKind() {
+        val messageId = UUID.randomUUID().toString()
+        val from = "a"
+        val to = "b"
         val bytes = EnvelopeCodec.encode(Envelope.P2pSignal(
-            UUID.randomUUID().toString(), "a", "b", P2pSignalKind.OFFER, "signed",
+            messageId, from, to, P2pSignalKind.OFFER, "signed",
         ))
-        bytes[48] = 0x7f
+        // DataOutputStream.writeUTF stores a two-byte length before each ASCII field.
+        val kindOffset = 1 + 2 + messageId.length + 2 + from.length + 2 + to.length
+        bytes[kindOffset] = 0x7f
         assertNull(EnvelopeCodec.decode(bytes))
     }
 }
