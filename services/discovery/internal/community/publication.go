@@ -310,11 +310,10 @@ func CanonicalReportReview(r ReportReview) ([]byte, error) {
 	}, "\n")), nil
 }
 
-func VerifyReportReview(r ReportReview, now time.Time) error {
+func verifyReportReviewSignature(r ReportReview, now time.Time) error {
 	payload, err := CanonicalReportReview(r)
 	if err != nil { return err }
-	created := time.UnixMilli(r.CreatedAt)
-	if created.After(now.Add(5*time.Minute)) {
+	if time.UnixMilli(r.CreatedAt).After(now.Add(5*time.Minute)) {
 		return errors.New("report review timestamp is in the future")
 	}
 	publicKey, err := identity.DecodePublicID(r.ReviewerPublicID)
@@ -327,6 +326,19 @@ func VerifyReportReview(r ReportReview, now time.Time) error {
 		return errors.New("a resolution decision requires an audit note")
 	}
 	return nil
+}
+
+// VerifyReportReview is for newly submitted review events. Historical audit records
+// use VerifyStoredReportReview so the original signature remains verifiable forever.
+func VerifyReportReview(r ReportReview, now time.Time) error {
+	if now.Sub(time.UnixMilli(r.CreatedAt)) > 30*24*time.Hour {
+		return errors.New("report review is too old to submit")
+	}
+	return verifyReportReviewSignature(r, now)
+}
+
+func VerifyStoredReportReview(r ReportReview, now time.Time) error {
+	return verifyReportReviewSignature(r, now)
 }
 
 type ReportReviewState struct {
@@ -474,7 +486,7 @@ func (s *Store) ReportAudit(ctx context.Context, communityID, reportID, requeste
 	for entry := range results.Next() {
 		if entry.Error != nil { return nil, entry.Error }
 		var stored storedReportAuditEntry
-		if json.Unmarshal(entry.Value, &stored) != nil || VerifyReportReview(stored.Review, s.clock()) != nil {
+		if json.Unmarshal(entry.Value, &stored) != nil || VerifyStoredReportReview(stored.Review, s.clock()) != nil {
 			return nil, errors.New("stored report audit record is corrupt")
 		}
 		out = append(out, ReportAuditEntry{Order: stored.Order, Review: stored.Review})
