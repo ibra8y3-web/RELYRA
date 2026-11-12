@@ -221,6 +221,7 @@ class DhtDiscoveryManager(
     val foundPresence: StateFlow<PeerPresence?> = _foundPresence
     private val turnRefreshMutex = kotlinx.coroutines.sync.Mutex()
     @Volatile private var cachedTurnCredentials: ManagedTurnCredentials? = null
+    @Volatile private var cachedTurnOwner: String? = null
 
     init {
         scope.launch(Dispatchers.IO) {
@@ -291,23 +292,32 @@ class DhtDiscoveryManager(
 
     suspend fun fetchTurnCredentials(forceRefresh: Boolean = false): ManagedTurnCredentials? =
         turnRefreshMutex.withLock {
-            val now = System.currentTimeMillis() / 1000
-            cachedTurnCredentials?.let { cached ->
-                if (!forceRefresh && cached.expiresAtSeconds > now + 45) return@withLock cached
-            }
             val id = try {
                 ownId()
             } catch (cancelled: CancellationException) {
                 throw cancelled
             } catch (_: Exception) {
                 null
-            } ?: return@withLock cachedTurnCredentials?.takeIf { it.expiresAtSeconds > now + 10 }
-            if (IdentityCrypto.parsePublicId(id) == null) return@withLock null
+            }
+            if (id == null || IdentityCrypto.parsePublicId(id) == null) {
+                cachedTurnCredentials = null
+                cachedTurnOwner = null
+                return@withLock null
+            }
+            if (cachedTurnOwner != id) {
+                cachedTurnCredentials = null
+                cachedTurnOwner = id
+            }
+            val now = System.currentTimeMillis() / 1000
+            cachedTurnCredentials?.let { cached ->
+                if (!forceRefresh && cached.expiresAtSeconds > now + 45) return@withLock cached
+            }
             for (gateway in network.discoveryGateways.value.filter { it.enabled }) {
                 try {
                     val credentials = withTimeout(12_000) { client.turnCredentials(gateway.url, id, sign) }
                     if (credentials != null) {
                         cachedTurnCredentials = credentials
+                        cachedTurnOwner = id
                         return@withLock credentials
                     }
                 } catch (cancelled: CancellationException) {
