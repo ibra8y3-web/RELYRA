@@ -394,4 +394,25 @@
     <string name="devices_rotate_keys">تدوير مفتاح توقيع هذا الجهاز</string>
     <string name="devices_rotation_code">رمز تدوير مفاتيح الجهاز الموقّع</string>
     <string name="devices_apply_rotation">تطبيق تدوير المفاتيح الموقّع</string>
+
+    <string name="mesh_title">شبكة Mesh دون إنترنت عبر Bluetooth LE</string>
+    <string name="mesh_enable">تفعيل شبكة BLE القريبة</string>
+    <string name="mesh_description">اكتشف عقد RELYRA القريبة عبر Bluetooth منخفض الطاقة. تظل الرسائل مشفرة من طرف إلى طرف. يعتمد التسليم على وجود أجهزة مشاركة تشغّل خدمة الشبكة.</string>
+    <string name="mesh_relay_consent">السماح لهذا الهاتف بتمرير حزم الآخرين المشفرة</string>
+    <string name="mesh_relay_explanation">عند التفعيل، قد يخزن الهاتف بيانات مشفرة لمستخدمين آخرين ويمررها. التمرير متوقف افتراضيًا. يمكن للعقد رؤية التوقيت وحجم الحزمة وبيانات الأجهزة القريبة، لكنها لا تستطيع قراءة محتوى الرسائل.</string>
+    <string name="mesh_neighbors">العقد القريبة المتصلة</string>
+    <string name="mesh_queue">الحزم المنتظرة للتمرير</string>
+    <string name="mesh_storage">مساحة التخزين المشفرة</string>
+    <string name="mesh_expired">الحزم المنتهية التي حُذفت</string>
+    <string name="mesh_quota_label">حد التخزين (5–100 ميجابايت)</string>
+    <string name="mesh_quota_save">حفظ حد التخزين</string>
+    <string name="mesh_status_disabled">شبكة BLE متوقفة.</string>
+    <string name="mesh_status_permission">يلزم منح أذونات البحث والاتصال والإعلان عبر Bluetooth.</string>
+    <string name="mesh_status_unsupported">هذا الجهاز لا يدعم الإعلان أو البحث المطلوبين لشبكة BLE.</string>
+    <string name="mesh_status_bluetooth_off">شغّل Bluetooth لاستخدام الشبكة دون إنترنت.</string>
+    <string name="mesh_status_starting">جارٍ تشغيل خدمة شبكة BLE…</string>
+    <string name="mesh_status_scanning">يعلن الهاتف عن الخدمة ويبحث عن عقد قريبة.</string>
+    <string name="mesh_status_active">شبكة BLE نشطة.</string>
+    <string name="mesh_status_failed">تعذر تشغيل شبكة BLE. تحقق من Bluetooth والأذونات.</string>
+
 </resources>
