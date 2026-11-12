@@ -47,7 +47,7 @@ object MeshEnvelopeCodec {
                sign: (ByteArray) -> ByteArray?, now: Long = System.currentTimeMillis()): MeshEnvelope? {
         if (id.isBlank() || id.length > 80 || IdentityCrypto.parsePublicId(origin) == null ||
             IdentityCrypto.parsePublicId(destination) == null || payload.isEmpty() || payload.size > MAX_PAYLOAD_BYTES) return null
-        val unsigned = MeshEnvelope(id, origin, destination, now, now + MAX_TTL_MS, MAX_HOPS,
+        val unsigned = MeshEnvelope(id, origin.lowercase(), destination.lowercase(), now, now + MAX_TTL_MS, MAX_HOPS,
             payload.copyOf(), ByteArray(0), emptyList())
         val signature = sign(originBytes(unsigned)) ?: return null
         if (signature.size != 64) return null
@@ -55,13 +55,14 @@ object MeshEnvelopeCodec {
     }
 
     fun appendHop(e: MeshEnvelope, relay: String, sign: (ByteArray) -> ByteArray?): MeshEnvelope? {
-        if (e.hops.size >= e.maxHops || e.hops.size >= MAX_HOPS || relay == e.originId ||
-            e.hops.any { it.relayId == relay } || IdentityCrypto.parsePublicId(relay) == null) return null
+        val normalizedRelay = relay.lowercase()
+        if (e.hops.size >= e.maxHops || e.hops.size >= MAX_HOPS || normalizedRelay == e.originId ||
+            e.hops.any { it.relayId == normalizedRelay } || IdentityCrypto.parsePublicId(normalizedRelay) == null) return null
         val previous = e.hops.lastOrNull()
-        val signature = sign(hopBytes(e, e.hops.size, relay, previous?.relayId ?: e.originId,
+        val signature = sign(hopBytes(e, e.hops.size, normalizedRelay, previous?.relayId ?: e.originId,
             previous?.signature ?: e.originSignature)) ?: return null
         if (signature.size != 64) return null
-        return e.copy(hops = e.hops + MeshHop(relay, signature))
+        return e.copy(hops = e.hops + MeshHop(normalizedRelay, signature))
     }
 
     fun verify(e: MeshEnvelope, now: Long = System.currentTimeMillis()): Boolean {
@@ -107,8 +108,9 @@ object MeshEnvelopeCodec {
                     add(MeshHop(item.getString("i"), unb64(item.getString("s"))))
                 }
             }
-            MeshEnvelope(j.getString("id"), j.getString("o"), j.getString("d"), j.getLong("c"),
-                j.getLong("e"), j.getInt("m"), unb64(j.getString("p")), unb64(j.getString("s")), hops)
+            MeshEnvelope(j.getString("id"), j.getString("o").lowercase(), j.getString("d").lowercase(), j.getLong("c"),
+                j.getLong("e"), j.getInt("m"), unb64(j.getString("p")), unb64(j.getString("s")),
+                hops.map { it.copy(relayId = it.relayId.lowercase()) })
         } catch (_: Exception) { null }
     }
 
@@ -169,6 +171,19 @@ private class MeshTransitStore(context: Context) {
     }
     @Synchronized fun markDelivered(id: String) { remember(id); fileFor(id).delete() }
     @Synchronized fun markSeen(id: String) { remember(id) }
+    @Synchronized fun clearAll() {
+        files().forEach { it.delete() }
+        prefs.edit().clear().apply()
+    }
+    @Synchronized fun removeThirdParty(ownId: String) {
+        pending().filter { it.originId != ownId }.forEach { fileFor(it.messageId).delete() }
+    }
+    @Synchronized fun enforceQuota(quotaBytes: Long) {
+        var used = files().sumOf { it.length() }
+        files().sortedBy { it.lastModified() }.forEach { file ->
+            if (used > quotaBytes) { used -= file.length(); file.delete() }
+        }
+    }
     @Synchronized fun stats(): Pair<Int, Long> {
         purge()
         val current = files()
@@ -235,9 +250,11 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
     private val connecting = ConcurrentHashMap.newKeySet<String>()
     private val frames = ConcurrentHashMap<String, IncomingFrame>()
     private val writes = ConcurrentHashMap<String, CompletableDeferred<Int>>()
-    private val sentTo = ConcurrentHashMap<String, MutableSet<String>>()
+    private val sentTo = ConcurrentHashMap<String, ConcurrentHashMap<String, Long>>()
+    private val negotiatedMtu = ConcurrentHashMap<String, Int>()
     private val flushLock = Mutex()
     @Volatile private var ownId: String? = null
+    @Volatile private var lastAccountId: String? = null
     @Volatile private var signer: ((ByteArray) -> ByteArray?)? = null
     @Volatile private var enabled = false
     @Volatile private var relayEnabled = false
@@ -257,6 +274,12 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
                                 allowRelay: Boolean, quotaMb: Int) {
         relayEnabled = allowRelay
         quotaBytes = quotaMb.coerceIn(5, 100) * 1024L * 1024L
+        if (publicId != null) {
+            if (lastAccountId != null && lastAccountId != publicId) store.clearAll()
+            lastAccountId = publicId
+            if (!allowRelay) store.removeThirdParty(publicId)
+            store.enforceQuota(quotaBytes)
+        }
         if (!shouldEnable || publicId.isNullOrBlank() || sign == null) { stopLocked(); return }
         if (IdentityCrypto.parsePublicId(publicId) == null) { stopLocked(); _status.value = BleMeshStatus.Failed; return }
         if (!hasPermissions()) { stopLocked(); _status.value = BleMeshStatus.PermissionRequired; return }
@@ -296,7 +319,11 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
                 }
             }
             override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
-                if (newState == BluetoothProfile.STATE_DISCONNECTED) { frames.remove(device.address); refreshStats() }
+                if (newState == BluetoothProfile.STATE_DISCONNECTED) {
+                    frames.remove(device.address)
+                    negotiatedMtu.remove(device.address)
+                    refreshStats()
+                }
             }
             override fun onCharacteristicReadRequest(device: BluetoothDevice, requestId: Int, offset: Int,
                                                      characteristic: BluetoothGattCharacteristic) {
@@ -386,7 +413,9 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
             gatt.readCharacteristic(identity)
         }
         override fun onMtuChanged(gatt: BluetoothGatt, mtu: Int, status: Int) {
-            peers.values.firstOrNull { it.gatt === gatt }?.mtu = if (status == BluetoothGatt.GATT_SUCCESS) mtu else 23
+            val negotiated = if (status == BluetoothGatt.GATT_SUCCESS) mtu else 23
+            negotiatedMtu[gatt.device.address] = negotiated
+            peers.values.firstOrNull { it.gatt === gatt }?.mtu = negotiated
         }
         @Suppress("DEPRECATION")
         override fun onCharacteristicRead(gatt: BluetoothGatt, characteristic: BluetoothGattCharacteristic, status: Int) {
@@ -396,7 +425,7 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
             if (IdentityCrypto.parsePublicId(id) == null || id == ownId || write == null) {
                 connecting.remove(gatt.device.address); gatt.disconnect(); return
             }
-            peers[id] = GattPeer(id, gatt, write)
+            peers[id] = GattPeer(id, gatt, write, negotiatedMtu[gatt.device.address] ?: 23)
             connecting.remove(gatt.device.address)
             _status.value = BleMeshStatus.Active
             refreshStats()
@@ -428,8 +457,9 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
     override suspend fun send(toPeer: String, payload: ByteArray): SendOutcome {
         if (!enabled) return SendOutcome.Unavailable
         val self = ownId ?: return SendOutcome.Unavailable
-        val stableId = MessageDigest.getInstance("SHA-256").digest(payload)
-            .joinToString("") { "%02x".format(it) }
+        val digest = MessageDigest.getInstance("SHA-256")
+        digest.update(toPeer.lowercase().toByteArray(Charsets.UTF_8))
+        val stableId = digest.digest(payload).joinToString("") { "%02x".format(it) }
         val envelope = MeshEnvelopeCodec.create(stableId, self, toPeer, payload, signer ?: return SendOutcome.Unavailable)
             ?: return SendOutcome.Rejected("invalid offline mesh envelope")
         if (!store.put(envelope, quotaBytes)) return SendOutcome.Rejected("offline mesh storage quota reached")
@@ -442,10 +472,12 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
         for (envelope in store.pending()) {
             if (!MeshEnvelopeCodec.verify(envelope)) { store.markDelivered(envelope.messageId); continue }
             if (!relayEnabled && envelope.originId != ownId) continue
-            val delivered = sentTo.getOrPut(envelope.messageId) { ConcurrentHashMap.newKeySet() }
+            val delivered = sentTo.getOrPut(envelope.messageId) { ConcurrentHashMap() }
             for (peer in peers.values) {
-                if (peer.id == envelope.originId || envelope.hops.any { it.relayId == peer.id } || peer.id in delivered) continue
-                if (writeFrame(peer, MeshEnvelopeCodec.encode(envelope))) delivered.add(peer.id)
+                if (peer.id == envelope.originId || envelope.hops.any { it.relayId == peer.id }) continue
+                val lastSent = delivered[peer.id] ?: 0L
+                if (System.currentTimeMillis() - lastSent < FORWARD_RETRY_MS) continue
+                if (writeFrame(peer, MeshEnvelopeCodec.encode(envelope))) delivered[peer.id] = System.currentTimeMillis()
             }
         }
         refreshStats()
@@ -503,6 +535,7 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
         private const val MAINTENANCE_MS = 30_000L
         private const val MAX_NEIGHBORS = 8
         private const val WRITE_TIMEOUT_MS = 12_000L
+        private const val FORWARD_RETRY_MS = 5 * 60 * 1000L
         private val SERVICE_UUID = UUID.fromString("f9a7d4e1-3b21-4c18-9f62-6b7d8a0c1e55")
         private val IDENTITY_UUID = UUID.fromString("f9a7d4e2-3b21-4c18-9f62-6b7d8a0c1e55")
         private val RX_UUID = UUID.fromString("f9a7d4e3-3b21-4c18-9f62-6b7d8a0c1e55")
