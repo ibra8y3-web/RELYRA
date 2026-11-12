@@ -46,6 +46,8 @@ class AppContainer(context: Context) {
     val database: AppDatabase by lazy { AppDatabase.build(appContext, secure.databaseKey()) }
     val events by lazy { SecurityLog(database) }
     val identities: IdentityRepository by lazy { IdentityRepository(database, secure, events) { transfers.wipeAll(); vault.wipeFiles() } }
+    val devices by lazy { org.relyra.app.core.devices.DeviceManager(database, secure, identities) }
+    val deviceSync by lazy { org.relyra.app.core.devices.DeviceSyncRepository(database, devices) }
     val contacts: ContactRepository by lazy { ContactRepository(database, events) { ids, paths -> transfers.clean(ids, paths) } }
     val messages by lazy { RoomMessageStore(database) }
     val groupStore by lazy { RoomGroupStore(database) }
