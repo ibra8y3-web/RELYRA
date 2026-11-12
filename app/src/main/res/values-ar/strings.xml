@@ -353,4 +353,7 @@
     <string name="call_notification_channel_desc">مكالمات RELYRA الواردة</string>
     <string name="call_incoming_notification">لديك مكالمة واردة عبر RELYRA</string>
     <string name="call_return">العودة إلى المكالمة</string>
+    <string name="call_connection_interrupted">انقطع الاتصال. جارٍ محاولة استعادة المكالمة.</string>
+    <string name="call_connection_failed">فشل اتصال المكالمة.</string>
+    <string name="call_no_answer">لا يوجد رد أو انتهت مهلة اتصال الوسائط.</string>
 </resources>
