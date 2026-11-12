@@ -14,6 +14,7 @@ internal class FakeGroupStore : GroupStore {
     val groups = HashMap<String, GroupRecord>()
     val memberMap = HashMap<String, List<GroupMemberRef>>()
     val messages = LinkedHashMap<String, GroupMessage>()
+    val attachments = LinkedHashMap<String, GroupAttachmentRecord>()
     val outbox = LinkedHashMap<String, OutboxRow>()
     private val processed = HashSet<String>()
 
@@ -25,6 +26,19 @@ internal class FakeGroupStore : GroupStore {
         messages[m.messageId] = m
         copies.forEach { outbox[it.id] = it }
     }
+    override suspend fun insertOutgoingGroupAttachment(m: GroupMessage, attachment: GroupAttachmentRecord, copies: List<OutboxRow>) {
+        messages[m.messageId] = m
+        attachments[attachment.messageId] = attachment
+        copies.forEach { outbox[it.id] = it }
+    }
+    override suspend fun recordIncomingGroupAttachment(m: GroupMessage, attachment: GroupAttachmentRecord): Boolean {
+        if (!processed.add(m.messageId)) return false
+        messages[m.messageId] = m
+        attachments[attachment.messageId] = attachment
+        return true
+    }
+    override suspend fun groupAttachment(messageId: String) = attachments[messageId]
+    override suspend fun updateGroupAttachment(attachment: GroupAttachmentRecord) { attachments[attachment.messageId] = attachment }
     override suspend fun recordIncomingMessage(m: GroupMessage): Boolean {
         if (!processed.add(m.messageId)) return false
         messages[m.messageId] = m
@@ -57,6 +71,7 @@ internal class FakeGroupStore : GroupStore {
     override suspend fun deleteGroup(groupId: String) {
         groups.remove(groupId); memberMap.remove(groupId)
         messages.values.removeAll { it.groupId == groupId }
+        attachments.values.removeAll { it.groupId == groupId }
         outbox.values.removeAll { it.groupId == groupId }
     }
 }
