@@ -83,7 +83,16 @@ class BackupManager(
             } finally {
                 sdb.endTransaction()
             }
-            BackupArchive.pack(snapshot, backupRoots, encodePreferences(), bundle)
+            val prekeyDir = File(stageDir, "export-prekeys")
+            prekeyDir.deleteRecursively()
+            check(prekeyDir.mkdirs() || prekeyDir.isDirectory)
+            secure.exportPreKeys().forEach { (id, value) ->
+                val fileName = id.replace(':', '_')
+                check(fileName.matches(Regex("[a-z-]+_[0-9]+")))
+                File(prekeyDir, fileName).writeBytes(value)
+            }
+            BackupArchive.pack(snapshot, backupRoots + ("secure-prekeys" to prekeyDir), encodePreferences(), bundle)
+            prekeyDir.deleteRecursively()
             val seed = secure.loadSeed()
             val key = secure.databaseKey()
             BackupCrypto.seal(out, passphrase).use { sealed -> BackupPayload.write(sealed, seed, key, version, bundle) }
@@ -91,6 +100,7 @@ class BackupManager(
         } finally {
             snapshot.delete()
             bundle.delete()
+            File(stageDir, "export-prekeys").deleteRecursively()
         }
     }
 
@@ -119,6 +129,15 @@ class BackupManager(
                 throw BackupException("this backup was made by a newer version of RELYRA")
             }
             if (!part.isFile || part.length() <= 0L) throw BackupException("backup database is empty")
+            val prekeyDir = File(restoredFiles, "secure-prekeys")
+            val prekeys = if (prekeyDir.isDirectory) prekeyDir.listFiles().orEmpty().associate { file ->
+                val keyId = file.name.replaceFirst("_", ":")
+                if (!keyId.matches(Regex("[a-z-]+:[0-9]+")) || !file.isFile || file.length() != 32L) {
+                    throw BackupException("backup contains an invalid private prekey")
+                }
+                keyId to file.readBytes()
+            } else emptyMap()
+            if (prekeys.size > 10_000) throw BackupException("backup contains too many private prekeys")
             val raw = java.io.ByteArrayOutputStream()
             DataOutputStream(raw).use { data ->
                 val seed = restored.seed ?: ByteArray(0)
@@ -126,6 +145,8 @@ class BackupManager(
                 data.write(seed)
                 data.writeShort(restored.dbKey.size)
                 data.write(restored.dbKey)
+                data.writeShort(prekeys.size)
+                prekeys.toSortedMap().forEach { (id, value) -> data.writeUTF(id); data.writeShort(value.size); data.write(value) }
             }
             File(stageDir, RestoreApplier.KEYS).writeBytes(
                 KeystoreVault.wrap(raw.toByteArray(), RestoreApplier.AAD)
@@ -184,6 +205,20 @@ object RestoreApplier {
         val keySize = d.readUnsignedShort()
         if (keySize != 32 || d.available() != keySize) throw BackupException("invalid staged database key")
         val key = ByteArray(keySize).also { d.readFully(it) }
+        val prekeys = linkedMapOf<String, ByteArray>()
+        if (d.available() > 0) {
+            val count = d.readUnsignedShort()
+            if (count > 10_000) throw BackupException("too many staged private prekeys")
+            repeat(count) {
+                val id = d.readUTF()
+                val size = d.readUnsignedShort()
+                if (!id.matches(Regex("[a-z-]+:[0-9]+")) || size != 32 || id in prekeys || d.available() < size) {
+                    throw BackupException("invalid staged private prekey")
+                }
+                prekeys[id] = ByteArray(size).also { d.readFully(it) }
+            }
+        }
+        if (d.available() != 0) throw BackupException("invalid staged key payload")
 
         val parent = dbFile.parentFile ?: throw java.io.IOException("database directory is unavailable")
         if (!parent.mkdirs() && !parent.isDirectory) throw java.io.IOException("database directory is unavailable")
@@ -220,7 +255,7 @@ object RestoreApplier {
             if (!candidate.renameTo(dbFile)) throw java.io.IOException("could not install restored database")
             installed = true
 
-            secure.restoreKeys(if (seed.isEmpty()) null else seed, key)
+            secure.restoreKeys(if (seed.isEmpty()) null else seed, key, prekeys)
             keysUpdated = true
             restoredDirs = applyRestoredFiles(stageDir, filesDir)
             applyRestoredPreferences(stageDir, preferenceStores)
