@@ -398,10 +398,18 @@ fun GroupChatScreen(vm: MainViewModel, groupId: String) {
         }
         if (canPost) {
             Row(Modifier.fillMaxWidth().padding(8.dp), verticalAlignment = Alignment.Bottom) {
-                TextButton(
-                    onClick = { filePicker.launch("*/*") },
-                    modifier = Modifier.padding(end = 4.dp),
-                ) { Text(stringResource(R.string.groups_attach_file)) }
+                if (g.mlsEnabled) {
+                    TextButton(
+                        onClick = { filePicker.launch("*/*") },
+                        modifier = Modifier.padding(end = 4.dp),
+                    ) { Text(stringResource(R.string.groups_attach_file)) }
+                } else {
+                    Text(
+                        stringResource(R.string.groups_files_require_mls),
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 OutlinedTextField(
                     value = text, onValueChange = { text = it.take(EnvelopeCodec.MAX_BODY) },
                     placeholder = { Text(stringResource(R.string.chat_input_hint)) },
