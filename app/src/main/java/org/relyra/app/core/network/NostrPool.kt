@@ -29,6 +29,7 @@ class NostrPool(
     private val scope: CoroutineScope,
     private val sinceProvider: () -> Long,
     private val onEvent: suspend (NostrEvent) -> Unit,
+    private val eventKind: Int = RELYRA_KIND,
 ) {
     private val conns = ConcurrentHashMap<String, Conn>()
     @Volatile private var secret: ByteArray? = null
@@ -98,7 +99,7 @@ class NostrPool(
                     attempt = 0
                     isConnected = true; publishStates()
                     val pub = pubHex ?: return
-                    webSocket.send(RelayProtocol.req(SUB, "{\"kinds\":[$RELYRA_KIND],\"#p\":[\"$pub\"],\"since\":${sinceProvider()}}"))
+                    webSocket.send(RelayProtocol.req(SUB, "{\"kinds\":[$eventKind],\"#p\":[\"$pub\"],\"since\":${sinceProvider()}}"))
                 }
 
                 override fun onMessage(webSocket: WebSocket, text: String) {
