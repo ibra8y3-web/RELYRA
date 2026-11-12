@@ -11,8 +11,17 @@ import (
 type Validator struct{}
 
 func (Validator) Validate(key string, value []byte) error {
-	expectedID := strings.TrimPrefix(key, peerKeyPrefix)
-	if expectedID == key || strings.Contains(expectedID, "/") {
+	expectedID := ""
+	switch {
+	case strings.HasPrefix(key, peerKeyPrefix):
+		expectedID = strings.TrimPrefix(key, peerKeyPrefix)
+	case strings.HasPrefix(key, "peer/v1/"):
+		// NamespacedValidator implementations may pass the namespace-stripped path.
+		expectedID = strings.TrimPrefix(key, "peer/v1/")
+	default:
+		return errors.New("invalid RELYRA DHT key")
+	}
+	if expectedID == "" || strings.Contains(expectedID, "/") {
 		return errors.New("invalid RELYRA DHT key")
 	}
 	record, err := ParsePeerRecord(value, time.Now())
