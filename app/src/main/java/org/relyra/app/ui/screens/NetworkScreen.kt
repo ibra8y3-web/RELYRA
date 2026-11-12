@@ -66,6 +66,11 @@ fun NetworkScreen(vm: MainViewModel) {
     val bluetoothEnabled by vm.bluetoothEnabled.collectAsStateWithLifecycle()
     val bluetoothPeers by vm.bluetoothPeers.collectAsStateWithLifecycle()
     val bluetoothStatus by vm.bluetoothStatus.collectAsStateWithLifecycle()
+    val meshEnabled by vm.meshEnabled.collectAsStateWithLifecycle()
+    val meshRelayEnabled by vm.meshRelayEnabled.collectAsStateWithLifecycle()
+    val meshQuotaMb by vm.meshQuotaMb.collectAsStateWithLifecycle()
+    val meshStatus by vm.meshStatus.collectAsStateWithLifecycle()
+    val meshStats by vm.meshStats.collectAsStateWithLifecycle()
     val wifiDirectEnabled by vm.wifiDirectEnabled.collectAsStateWithLifecycle()
     val wifiDirectPeers by vm.wifiDirectPeers.collectAsStateWithLifecycle()
     val wifiDirectVerifiedPeers by vm.wifiDirectVerifiedPeers.collectAsStateWithLifecycle()
@@ -97,6 +102,7 @@ fun NetworkScreen(vm: MainViewModel) {
     var turnError by rememberSaveable { mutableStateOf(false) }
     var discoveryGatewayInput by rememberSaveable { mutableStateOf("") }
     var discoveryGatewayError by rememberSaveable { mutableStateOf<Int?>(null) }
+    var meshQuotaInput by rememberSaveable(meshQuotaMb) { mutableStateOf(meshQuotaMb.toString()) }
 
     val bluetoothPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
@@ -105,6 +111,10 @@ fun NetworkScreen(vm: MainViewModel) {
     val wifiPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted -> if (granted) vm.setWifiDirectEnabled(true) }
+    val meshPermissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { grants -> if (grants.isNotEmpty() && grants.values.all { it }) vm.setMeshEnabled(true) }
+
 
     fun toggleBluetooth(enabled: Boolean) {
         if (!enabled) {
@@ -136,6 +146,22 @@ fun NetworkScreen(vm: MainViewModel) {
             wifiPermissionLauncher.launch(permission)
         }
     }
+    fun toggleMesh(enabled: Boolean) {
+        if (!enabled) {
+            vm.setMeshEnabled(false)
+            return
+        }
+        val required = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            arrayOf(Manifest.permission.BLUETOOTH_SCAN, Manifest.permission.BLUETOOTH_CONNECT, Manifest.permission.BLUETOOTH_ADVERTISE)
+        } else {
+            arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)
+        }
+        val missing = required.filter {
+            ContextCompat.checkSelfPermission(context, it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (missing.isEmpty()) vm.setMeshEnabled(true) else meshPermissionLauncher.launch(missing.toTypedArray())
+    }
+
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).imePadding().padding(16.dp),
@@ -427,6 +453,75 @@ fun NetworkScreen(vm: MainViewModel) {
             TextButton(onClick = {
                 runCatching { context.startActivity(Intent(Settings.ACTION_BLUETOOTH_SETTINGS)) }
             }) { Text(stringResource(R.string.net_bt_system_settings)) }
+        }
+
+        SectionCard(stringResource(R.string.mesh_title)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(stringResource(R.string.mesh_enable), modifier = Modifier.weight(1f))
+                Switch(checked = meshEnabled, onCheckedChange = ::toggleMesh)
+            }
+            Text(
+                stringResource(R.string.mesh_description),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(stringResource(R.string.mesh_relay_consent), modifier = Modifier.weight(1f))
+                Switch(
+                    checked = meshRelayEnabled,
+                    enabled = meshEnabled,
+                    onCheckedChange = vm::setMeshRelayEnabled,
+                )
+            }
+            Text(
+                stringResource(R.string.mesh_relay_explanation),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            InfoRow(stringResource(R.string.mesh_neighbors), meshStats.neighborCount.toString())
+            InfoRow(stringResource(R.string.mesh_queue), meshStats.queuedPackets.toString())
+            InfoRow(stringResource(R.string.mesh_storage),
+                (meshStats.queuedBytes / (1024 * 1024)).toString() + " MB / " + meshQuotaMb + " MB")
+            InfoRow(stringResource(R.string.mesh_expired), meshStats.expiredPackets.toString())
+            Text(
+                stringResource(
+                    when (meshStatus) {
+                        org.relyra.app.core.network.BleMeshStatus.Disabled -> R.string.mesh_status_disabled
+                        org.relyra.app.core.network.BleMeshStatus.PermissionRequired -> R.string.mesh_status_permission
+                        org.relyra.app.core.network.BleMeshStatus.Unsupported -> R.string.mesh_status_unsupported
+                        org.relyra.app.core.network.BleMeshStatus.BluetoothOff -> R.string.mesh_status_bluetooth_off
+                        org.relyra.app.core.network.BleMeshStatus.Starting -> R.string.mesh_status_starting
+                        org.relyra.app.core.network.BleMeshStatus.Scanning -> R.string.mesh_status_scanning
+                        org.relyra.app.core.network.BleMeshStatus.Active -> R.string.mesh_status_active
+                        org.relyra.app.core.network.BleMeshStatus.Failed -> R.string.mesh_status_failed
+                    }
+                ),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            OutlinedTextField(
+                value = meshQuotaInput,
+                onValueChange = { meshQuotaInput = it.filter(Char::isDigit).take(3) },
+                label = { Text(stringResource(R.string.mesh_quota_label)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Button(
+                onClick = {
+                    val quota = meshQuotaInput.toIntOrNull()
+                    if (quota != null && quota in 5..100) vm.setMeshQuotaMb(quota)
+                    else meshQuotaInput = meshQuotaMb.toString()
+                },
+                modifier = Modifier.fillMaxWidth(),
+            ) { Text(stringResource(R.string.mesh_quota_save)) }
         }
 
         SectionCard(stringResource(R.string.net_wifi_direct_title)) {
