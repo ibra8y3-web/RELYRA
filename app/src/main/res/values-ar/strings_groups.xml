@@ -65,5 +65,6 @@
     <string name="err_group_contact">يجب أن يكون كل عضو من جهات اتصالك ولديه مفتاح تشفير.</string>
     <string name="err_group_invalid">غير صالح (اسم فارغ، أو لا أحد للإضافة، أو أعضاء أكثر من الحد).</string>
     <string name="err_group_state">هذه المجموعة غير نشطة.</string>
+    <string name="group_membership_proposal_sent">تم إرسال طلب التغيير إلى مالك المجموعة، وسيُطبّق بعد مراجعته.</string>
     <string name="err_mls_unavailable">محرك OpenMLS الأصلي غير متاح في هذا الإصدار. تم إيقاف عمليات MLS بدلًا من الرجوع إلى تشفير أضعف.</string>
 </resources>
