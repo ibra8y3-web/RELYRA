@@ -559,6 +559,7 @@ class GroupEngine(
                     // A malformed, unauthorized, replayed or stale proposal is terminally
                     // rejected at this epoch; acknowledge it so the sender does not retry forever.
                     store.recordControlMessage(env.messageId, clock())
+                    refreshPendingMlsProposalsLocked(env.groupId)
                     ack(me, env.from, env.messageId)
                     return
                 }
