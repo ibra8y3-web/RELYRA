@@ -70,6 +70,7 @@ fun NetworkScreen(vm: MainViewModel) {
     val wifiDirectPeers by vm.wifiDirectPeers.collectAsStateWithLifecycle()
     val wifiDirectVerifiedPeers by vm.wifiDirectVerifiedPeers.collectAsStateWithLifecycle()
     val wifiDirectStatus by vm.wifiDirectStatus.collectAsStateWithLifecycle()
+    val lastTransportPath by vm.lastTransportPath.collectAsStateWithLifecycle()
     val internetPeerStates by vm.internetPeerStates.collectAsStateWithLifecycle()
     val incomingInternetOffers by vm.incomingInternetOffers.collectAsStateWithLifecycle()
     val internetSignal by vm.internetSignal.collectAsStateWithLifecycle()
@@ -309,6 +310,12 @@ fun NetworkScreen(vm: MainViewModel) {
         }
 
         SectionCard(stringResource(R.string.net_p2p_title)) {
+            Text(
+                if (lastTransportPath == null) stringResource(R.string.net_transport_no_path)
+                else stringResource(R.string.net_transport_last_path, lastTransportPath.orEmpty()),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
             Text(stringResource(R.string.net_p2p_desc), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             OutlinedTextField(value = p2pPeerId, onValueChange = { p2pPeerId = it.trim() }, label = { Text(stringResource(R.string.net_p2p_peer_id)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
             Button(
