@@ -125,6 +125,8 @@ func (s *Store) CreateInvitation(ctx context.Context, raw []byte, token string) 
 		return inv, errors.New("invalid invitation owner signature")
 	}
 	if strings.EqualFold(inv.OwnerPublicID, inv.MemberPublicID) { return inv, errors.New("owner is already a community member") }
+	banned, banErr := s.IsBanned(ctx, inv.CommunityID, inv.MemberPublicID)
+	if banErr != nil || banned { return inv, errors.New("banned identity cannot be invited to this private community") }
 
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -178,6 +180,8 @@ func (s *Store) AcceptInvitation(ctx context.Context, raw []byte, token string, 
 		manifest.PolicyVersion != inv.PolicyVersion {
 		return membership, errors.New("invitation was revoked by a policy change")
 	}
+	banned, banErr := s.IsBanned(ctx, inv.CommunityID, acceptance.MemberPublicID)
+	if banErr != nil || banned { return membership, errors.New("banned identity cannot join this private community") }
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	storedRaw, err := s.ds.Get(ctx, invitationKey(inv.CommunityID, inv.InviteID))
@@ -207,7 +211,10 @@ func (s *Store) AcceptInvitation(ctx context.Context, raw []byte, token string, 
 func (s *Store) CanReadPrivate(ctx context.Context, communityID, memberPublicID string) bool {
 	manifest, err := s.GetManifest(ctx, communityID, true)
 	if err != nil { return false }
-	if manifest.Visibility == "public" || strings.EqualFold(manifest.OwnerPublicID, memberPublicID) { return true }
+	if manifest.Visibility == "public" { return true }
+	if strings.EqualFold(manifest.OwnerPublicID, memberPublicID) { return true }
+	banned, banErr := s.IsBanned(ctx, communityID, memberPublicID)
+	if banErr != nil || banned { return false }
 	for _, moderator := range manifest.ModeratorPublicIDs {
 		if strings.EqualFold(moderator, memberPublicID) { return true }
 	}
