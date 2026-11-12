@@ -114,7 +114,6 @@ class BackupManager(
             snapshot.delete()
             bundle.delete()
             File(stageDir, "export-prekeys").deleteRecursively()
-        File(stageDir, "verify-vault").deleteRecursively()
             File(stageDir, "verify-vault").deleteRecursively()
         }
     }
@@ -254,6 +253,7 @@ object RestoreApplier {
         File(stageDir, "restored-files").deleteRecursively()
         File(stageDir, "pending-prefs").deleteRecursively()
         File(stageDir, "export-prekeys").deleteRecursively()
+        File(stageDir, "verify-vault").deleteRecursively()
     }
 
     /**
