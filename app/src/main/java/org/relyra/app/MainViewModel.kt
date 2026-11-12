@@ -427,7 +427,10 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun markGroupRead(groupId: String) {
         viewModelScope.launch(Dispatchers.IO) {
             ctr().notifier.cancel(groupId)
-            runCatching { ctr().groupStore.markRead(groupId) }
+            runCatching {
+                ctr().groups.markRead(groupId, readReceipts.value)
+                ctr().delivery.processOutbox()
+            }
         }
     }
 
