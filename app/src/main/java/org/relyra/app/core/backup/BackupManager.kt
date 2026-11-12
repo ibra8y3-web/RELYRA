@@ -71,8 +71,19 @@ class BackupManager(
                     throw java.io.IOException("database checkpoint is busy; retry the backup")
                 }
             }
+            val prekeyDir = File(stageDir, "export-prekeys")
+            prekeyDir.deleteRecursively()
+            check(prekeyDir.mkdirs() || prekeyDir.isDirectory)
             sdb.beginTransaction()
             try {
+                validateReferencedFiles(sdb)
+                val privatePrekeys = secure.exportPreKeys()
+                sdb.query("SELECT keyId FROM prekeys").use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val keyId = cursor.getString(0)
+                        if (keyId !in privatePrekeys) throw java.io.IOException("private prekey $keyId is missing; refusing an incomplete backup")
+                    }
+                }
                 FileInputStream(dbFile).use { input ->
                     FileOutputStream(snapshot).use { fileOut ->
                         input.copyTo(fileOut, 64 * 1024)
@@ -80,18 +91,17 @@ class BackupManager(
                     }
                 }
                 version = sdb.version
+                privatePrekeys.forEach { (id, value) ->
+                    val fileName = id.replace(':', '_')
+                    check(fileName.matches(Regex("[a-z-]+_[0-9]+")))
+                    File(prekeyDir, fileName).writeBytes(value)
+                }
+                BackupArchive.pack(snapshot, backupRoots + ("secure-prekeys" to prekeyDir), encodePreferences(), bundle)
+                // Recheck references after copying: a file deleted or moved during export invalidates the snapshot.
+                validateReferencedFiles(sdb)
             } finally {
                 sdb.endTransaction()
             }
-            val prekeyDir = File(stageDir, "export-prekeys")
-            prekeyDir.deleteRecursively()
-            check(prekeyDir.mkdirs() || prekeyDir.isDirectory)
-            secure.exportPreKeys().forEach { (id, value) ->
-                val fileName = id.replace(':', '_')
-                check(fileName.matches(Regex("[a-z-]+_[0-9]+")))
-                File(prekeyDir, fileName).writeBytes(value)
-            }
-            BackupArchive.pack(snapshot, backupRoots + ("secure-prekeys" to prekeyDir), encodePreferences(), bundle)
             prekeyDir.deleteRecursively()
             val seed = secure.loadSeed()
             val key = secure.databaseKey()
@@ -101,6 +111,38 @@ class BackupManager(
             snapshot.delete()
             bundle.delete()
             File(stageDir, "export-prekeys").deleteRecursively()
+        }
+    }
+
+
+    /** Database rows and their app-private files must describe the same restorable snapshot. */
+    private fun validateReferencedFiles(sdb: androidx.sqlite.db.SupportSQLiteDatabase) {
+        val inbox = File(filesDir, "inbox").canonicalFile.toPath()
+        val outbox = File(filesDir, "outbox").canonicalFile.toPath()
+        sdb.query("SELECT localPath FROM attachments WHERE localPath IS NOT NULL").use { cursor ->
+            while (cursor.moveToNext()) {
+                val file = File(cursor.getString(0)).canonicalFile
+                val path = file.toPath()
+                if (!file.isFile || (!path.startsWith(inbox) && !path.startsWith(outbox))) {
+                    throw java.io.IOException("an attachment referenced by the database is missing or outside private storage")
+                }
+            }
+        }
+        sdb.query("SELECT localPath FROM group_attachments WHERE localPath IS NOT NULL").use { cursor ->
+            while (cursor.moveToNext()) {
+                val file = File(cursor.getString(0)).canonicalFile
+                if (!file.isFile || !file.toPath().startsWith(inbox)) {
+                    throw java.io.IOException("a group attachment referenced by the database is missing or outside private storage")
+                }
+            }
+        }
+        sdb.query("SELECT id FROM vault_items").use { cursor ->
+            while (cursor.moveToNext()) {
+                val file = File(File(filesDir, "vault"), cursor.getString(0) + ".enc").canonicalFile
+                if (!file.isFile || !file.toPath().startsWith(File(filesDir, "vault").canonicalFile.toPath())) {
+                    throw java.io.IOException("a Vault item referenced by the database is missing")
+                }
+            }
         }
     }
 
