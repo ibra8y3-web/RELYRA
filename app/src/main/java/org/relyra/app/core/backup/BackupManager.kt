@@ -114,6 +114,8 @@ class BackupManager(
             snapshot.delete()
             bundle.delete()
             File(stageDir, "export-prekeys").deleteRecursively()
+        File(stageDir, "verify-vault").deleteRecursively()
+            File(stageDir, "verify-vault").deleteRecursively()
         }
     }
 
@@ -159,7 +161,9 @@ class BackupManager(
                 if (!blob.isFile || !blob.toPath().startsWith(vaultRoot)) {
                     throw java.io.IOException("a Vault item referenced by the database is missing")
                 }
-                val temp = File(stageDir, "verify-vault-${UUID.randomUUID()}.tmp")
+                val verifyDir = File(stageDir, "verify-vault")
+                check(verifyDir.mkdirs() || verifyDir.isDirectory) { "could not create Vault verification directory" }
+                val temp = File(verifyDir, "${UUID.randomUUID()}.tmp")
                 try {
                     if (!FileCrypto.decrypt(blob, temp, cursor.getBlob(3), cursor.getBlob(2), cursor.getLong(1))) {
                         throw java.io.IOException("a Vault item failed its authentication or SHA-256 check")
