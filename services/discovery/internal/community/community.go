@@ -443,6 +443,7 @@ func (s *Store) AppendModerationEvent(ctx context.Context, raw []byte) (Moderati
 			}
 		}
 	}
+	if err := s.updatePostingPolicy(ctx, e); err != nil { return e, err }
 	return e, nil
 }
 
@@ -496,7 +497,11 @@ func (s *Store) SubmitReport(ctx context.Context, raw []byte) (Report, error) {
 	if err := VerifyReport(report, s.clock()); err != nil { return report, err }
 	// Reports deliberately have no message-content, attachment, URL or recipient fields.
 	// The report is opt-in and includes only a controlled category and a short summary.
-	if _, err := s.GetManifest(ctx, report.CommunityID, true); err != nil { return report, err }
+	manifest, err := s.GetManifest(ctx, report.CommunityID, true)
+	if err != nil { return report, err }
+	if manifest.Visibility == "private" && !s.CanReadPrivate(ctx, report.CommunityID, report.ReporterPublicID) {
+		return report, errors.New("only current private community members may submit reports")
+	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	key := datastore.NewKey(reportPrefix + strings.ToLower(report.CommunityID) + "/" + strings.ToLower(report.ReportID))
