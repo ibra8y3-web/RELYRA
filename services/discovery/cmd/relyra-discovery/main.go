@@ -425,17 +425,22 @@ func (s *server) publishCommunity(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, http.StatusAccepted, map[string]any{"accepted": true, "community": manifest})
 }
 
-func (s *server) privateMemberFromRequest(r *http.Request, communityID string) (string, error) {
-	memberID := r.Header.Get("X-RELYRA-Public-ID")
-	timestampText := r.Header.Get("X-RELYRA-Timestamp")
-	signature := r.Header.Get("X-RELYRA-Signature")
-	timestamp, err := strconv.ParseInt(timestampText, 10, 64)
+func (s *server) communityActorFromRequest(r *http.Request) (string, error) {
+	actorID := r.Header.Get("X-RELYRA-Public-ID")
+	timestamp, err := strconv.ParseInt(r.Header.Get("X-RELYRA-Timestamp"), 10, 64)
 	if err != nil {
-		return "", errors.New("missing or invalid private community access timestamp")
+		return "", errors.New("missing or invalid community access timestamp")
 	}
-	if err := communities.VerifyAccessProof(r.Method, r.URL.RequestURI(), memberID, timestamp, signature, time.Now()); err != nil {
+	if err := communities.VerifyAccessProof(r.Method, r.URL.RequestURI(), actorID, timestamp,
+		r.Header.Get("X-RELYRA-Signature"), time.Now()); err != nil {
 		return "", err
 	}
+	return actorID, nil
+}
+
+func (s *server) privateMemberFromRequest(r *http.Request, communityID string) (string, error) {
+	memberID, err := s.communityActorFromRequest(r)
+	if err != nil { return "", err }
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
 	if !s.communities.CanReadPrivate(ctx, communityID, memberID) {
@@ -632,7 +637,7 @@ func (s *server) communitySequence(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) listCommunityReports(w http.ResponseWriter, r *http.Request) {
     communityID := r.PathValue("communityID")
-    requesterID, err := s.privateMemberFromRequest(r, communityID)
+    requesterID, err := s.communityActorFromRequest(r)
     if err != nil {
         writeError(w, http.StatusForbidden, "community report access denied")
         return
@@ -658,7 +663,7 @@ func (s *server) listCommunityReports(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *server) submitCommunityReport(w http.ResponseWriter, r *http.Request) {
-	requesterID, accessErr := s.privateMemberFromRequest(r, r.PathValue("communityID"))
+	requesterID, accessErr := s.communityActorFromRequest(r)
 	if accessErr != nil {
 		writeError(w, http.StatusForbidden, "community report submission is not authorized")
 		return
@@ -724,7 +729,7 @@ func (s *server) listCommunityPosts(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) publishCommunityPost(w http.ResponseWriter, r *http.Request) {
 	communityID := r.PathValue("communityID")
-	requesterID, err := s.privateMemberFromRequest(r, communityID)
+	requesterID, err := s.communityActorFromRequest(r)
 	if err != nil {
 		writeError(w, http.StatusForbidden, "community publishing is not authorized")
 		return
@@ -777,7 +782,7 @@ func (s *server) communityPostSequence(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) reviewCommunityReport(w http.ResponseWriter, r *http.Request) {
 	communityID := r.PathValue("communityID")
-	requesterID, err := s.privateMemberFromRequest(r, communityID)
+	requesterID, err := s.communityActorFromRequest(r)
 	if err != nil {
 		writeError(w, http.StatusForbidden, "community report review is not authorized")
 		return
@@ -809,7 +814,7 @@ func (s *server) reviewCommunityReport(w http.ResponseWriter, r *http.Request) {
 
 func (s *server) listCommunityReportAudit(w http.ResponseWriter, r *http.Request) {
 	communityID, reportID := r.PathValue("communityID"), r.PathValue("reportID")
-	requesterID, err := s.privateMemberFromRequest(r, communityID)
+	requesterID, err := s.communityActorFromRequest(r)
 	if err != nil {
 		writeError(w, http.StatusForbidden, "community report audit is not authorized")
 		return
