@@ -52,6 +52,7 @@ internal class FakeGroupStore : GroupStore {
         return true
     }
     override suspend fun recordControlMessage(id: String, receivedAt: Long): Boolean = processed.add(id)
+    override suspend fun hasControlMessage(id: String): Boolean = id in processed
 
     override suspend fun deleteGroup(groupId: String) {
         groups.remove(groupId); memberMap.remove(groupId)
