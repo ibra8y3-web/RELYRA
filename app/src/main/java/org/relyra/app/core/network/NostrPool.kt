@@ -117,6 +117,15 @@ class NostrPool(
                     if (cont.isActive) cont.resume(Unit)
                 }
 
+                override fun onClosing(webSocket: WebSocket, code: Int, reason: String) {
+                    // Fail outstanding publishes as soon as the peer begins a graceful close.
+                    // Waiting only for onClosed can leave callers blocked during the close handshake.
+                    isConnected = false
+                    failPending()
+                    publishStates()
+                    webSocket.close(code, reason)
+                }
+
                 override fun onClosed(webSocket: WebSocket, code: Int, reason: String) {
                     isConnected = false
                     failPending()
