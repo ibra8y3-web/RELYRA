@@ -17,6 +17,7 @@ use openmls_traits::OpenMlsProvider;
 use rusqlite::OptionalExtension;
 use serde::{Deserialize, Serialize};
 use std::path::Path;
+use tls_codec::{Deserialize as TlsDeserialize, Serialize as TlsSerialize};
 use zeroize::Zeroizing;
 
 pub const MLS_CIPHERSUITE: Ciphersuite =
@@ -265,7 +266,7 @@ pub fn join_group(
     group_id: &[u8],
     welcome_bytes: &[u8],
 ) -> Result<u64, MlsError> {
-    let provider = SqlCipherMlsProvider::new(&database.connection)?;
+    let (provider, _signer) = provider_with_signer(database)?;
     let welcome = MlsMessageIn::tls_deserialize_exact_bytes(welcome_bytes)
         .map_err(|_| MlsError::InvalidMessage)?
         .into_welcome()
@@ -291,11 +292,11 @@ pub fn encrypt(
     if plaintext.is_empty() || plaintext.len() > 1024 * 1024 {
         return Err(MlsError::Rejected);
     }
-    let provider = SqlCipherMlsProvider::new(&database.connection)?;
+    let (provider, _signer) = provider_with_signer(database)?;
     let signer = provider.signer()?;
     let id = GroupId::from_slice(group_id);
     let mut group = MlsGroup::load(provider.storage(), &id)
-        .map_err(MlsError::Storage)?
+        .map_err(|e| MlsError::Storage(e.to_string()))?
         .ok_or(MlsError::GroupNotFound)?;
     if !group.is_active() {
         return Err(MlsError::Inactive);
@@ -320,7 +321,7 @@ pub fn process_message(
     if message.is_empty() || message.len() > 1024 * 1024 {
         return Err(MlsError::InvalidMessage);
     }
-    let provider = SqlCipherMlsProvider::new(&database.connection)?;
+    let (provider, _signer) = provider_with_signer(database)?;
     let incoming = MlsMessageIn::tls_deserialize_exact_bytes(message)
         .map_err(|_| MlsError::InvalidMessage)?;
     let protocol: ProtocolMessage = incoming.try_into_protocol_message()
@@ -328,7 +329,7 @@ pub fn process_message(
     let id_bytes = protocol.group_id().as_slice().to_vec();
     let id = GroupId::from_slice(&id_bytes);
     let mut group = MlsGroup::load(provider.storage(), &id)
-        .map_err(MlsError::Storage)?
+        .map_err(|e| MlsError::Storage(e.to_string()))?
         .ok_or(MlsError::GroupNotFound)?;
     if !group.is_active() {
         return Err(MlsError::Inactive);
@@ -340,11 +341,11 @@ pub fn process_message(
             ("application".to_owned(), Some(BASE64.encode(application.into_bytes())))
         }
         ProcessedMessageContent::ProposalMessage(proposal) => {
-            group.store_pending_proposal(provider.storage(), *proposal).map_err(MlsError::Storage)?;
+            group.store_pending_proposal(provider.storage(), *proposal).map_err(|e| MlsError::Storage(e.to_string()))?;
             ("proposal".to_owned(), None)
         }
         ProcessedMessageContent::ExternalJoinProposalMessage(proposal) => {
-            group.store_pending_proposal(provider.storage(), *proposal).map_err(MlsError::Storage)?;
+            group.store_pending_proposal(provider.storage(), *proposal).map_err(|e| MlsError::Storage(e.to_string()))?;
             ("external_join_proposal".to_owned(), None)
         }
         ProcessedMessageContent::StagedCommitMessage(commit) => {
@@ -371,11 +372,11 @@ pub fn remove_member(
     group_id: &[u8],
     member_identity: &[u8],
 ) -> Result<CommitBundle, MlsError> {
-    let provider = SqlCipherMlsProvider::new(&database.connection)?;
+    let (provider, _signer) = provider_with_signer(database)?;
     let signer = provider.signer()?;
     let id = GroupId::from_slice(group_id);
     let mut group = MlsGroup::load(provider.storage(), &id)
-        .map_err(MlsError::Storage)?
+        .map_err(|e| MlsError::Storage(e.to_string()))?
         .ok_or(MlsError::GroupNotFound)?;
     let indexes = group.members().filter_map(|member| {
         if member.credential.serialized_content() == member_identity {
@@ -397,19 +398,19 @@ pub fn remove_member(
 }
 
 pub fn epoch(database: &mut OpenDatabase, group_id: &[u8]) -> Result<u64, MlsError> {
-    let provider = SqlCipherMlsProvider::new(&database.connection)?;
+    let (provider, _signer) = provider_with_signer(database)?;
     let id = GroupId::from_slice(group_id);
     let group = MlsGroup::load(provider.storage(), &id)
-        .map_err(MlsError::Storage)?
+        .map_err(|e| MlsError::Storage(e.to_string()))?
         .ok_or(MlsError::GroupNotFound)?;
     Ok(group.epoch().as_u64())
 }
 
 pub fn members(database: &mut OpenDatabase, group_id: &[u8]) -> Result<Vec<Vec<u8>>, MlsError> {
-    let provider = SqlCipherMlsProvider::new(&database.connection)?;
+    let (provider, _signer) = provider_with_signer(database)?;
     let id = GroupId::from_slice(group_id);
     let group = MlsGroup::load(provider.storage(), &id)
-        .map_err(MlsError::Storage)?
+        .map_err(|e| MlsError::Storage(e.to_string()))?
         .ok_or(MlsError::GroupNotFound)?;
     Ok(group.members().map(|m| m.credential.serialized_content().to_vec()).collect())
 }
