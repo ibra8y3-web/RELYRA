@@ -40,12 +40,19 @@ data class IceServerConfig(
     val username: String = "",
     val credential: String = "",
 ) {
-    fun isValid(): Boolean = url.length <= 512 &&
-        (url.startsWith("stun:") || url.startsWith("stuns:") ||
-            url.startsWith("turn:") || url.startsWith("turns:")) &&
-        !url.any { it.isWhitespace() } &&
-        ((url.startsWith("turn:") || url.startsWith("turns:")) ==
-            (username.isNotBlank() && credential.isNotBlank()))
+    fun isValid(): Boolean {
+        val usesTurn = url.startsWith("turn:") || url.startsWith("turns:")
+        val hasUsername = username.isNotBlank()
+        val hasCredential = credential.isNotBlank()
+        val credentialsValid = if (usesTurn) hasUsername && hasCredential else !hasUsername && !hasCredential
+        return url.length in 1..512 &&
+            (url.startsWith("stun:") || url.startsWith("stuns:") ||
+                url.startsWith("turn:") || url.startsWith("turns:")) &&
+            !url.any { it.isWhitespace() || it.isISOControl() } &&
+            username.length <= 256 && credential.length <= 512 &&
+            !username.any { it.isISOControl() } && !credential.any { it.isISOControl() } &&
+            credentialsValid
+    }
 }
 
 enum class InternetPeerState { NEW, CONNECTING, CONNECTED, DISCONNECTED, FAILED }
