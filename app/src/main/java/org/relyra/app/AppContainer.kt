@@ -191,7 +191,7 @@ class AppContainer(context: Context) {
     }
     val blossom by lazy { BlossomServers(appContext) }
     val transfers: TransferEngine by lazy { TransferEngine(appContext, blossom, messages, { identities.nostrSecret() }) }
-    val router by lazy { AdaptiveRouter { listOf(mesh, internetP2p, wifiDirect, bluetooth, nearby, nostr) } }
+    val router by lazy { AdaptiveRouter { listOf(internetP2p, wifiDirect, bluetooth, nearby, nostr, mesh) } }
     val transports: List<Transport> by lazy { listOf(router) }
 
     val delivery: DeliveryEngine by lazy {
