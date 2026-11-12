@@ -35,14 +35,18 @@ import org.relyra.app.core.messaging.AttachmentPhase
 import org.relyra.app.core.messaging.StoredAttachment
 import org.relyra.app.core.transfer.DownloadResult
 import org.relyra.app.core.transfer.PrepareResult
+import org.relyra.app.core.messaging.UploadOutcome
 import org.relyra.app.core.database.GroupDeliveryCount
 import org.relyra.app.core.database.GroupEntity
 import org.relyra.app.core.database.GroupMemberEntity
 import org.relyra.app.core.database.GroupMessageEntity
+import org.relyra.app.core.database.GroupAttachmentEntity
 import org.relyra.app.core.database.GroupSummary
 import org.relyra.app.core.messaging.GroupKind
 import org.relyra.app.core.messaging.GroupOutcome
 import org.relyra.app.core.messaging.GroupResult
+import org.relyra.app.core.messaging.GroupAttachmentData
+import org.relyra.app.core.messaging.GroupAttachmentPhase
 import org.relyra.app.background.ConnectionService
 import org.relyra.app.core.database.ChatPrefEntity
 import org.relyra.app.core.diagnostics.DeviceInfo
@@ -376,6 +380,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     fun groupDelivery(id: String): Flow<List<GroupDeliveryCount>> =
         if (storage.value is StorageState.Ready) ctr().groupStore.observeDelivery(id) else emptyFlow()
 
+    fun groupAttachments(id: String): Flow<List<GroupAttachmentEntity>> =
+        if (storage.value is StorageState.Ready) ctr().groupStore.observeGroupAttachments(id) else emptyFlow()
+
     fun groupOf(id: String): Flow<GroupEntity?> =
         if (storage.value is StorageState.Ready) ctr().groupStore.observeGroup(id) else emptyFlow()
 
@@ -413,6 +420,76 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
 
     fun sendGroupMessage(groupId: String, body: String, onSent: () -> Unit) =
         groupOp(onDone = { if (it == GroupResult.OK) onSent() }) { ctr().groups.send(groupId, body) }
+
+    fun sendGroupFile(groupId: String, uri: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val c = ctr()
+            if (c.blossom.servers.value.none { it.enabled }) {
+                message.value = UiMessage(R.string.err_no_file_server)
+                return@launch
+            }
+            busy.value = true
+            var encryptedPath: String? = null
+            try {
+                when (val prepared = c.transfers.prepare(getApplication<Application>().contentResolver, uri)) {
+                    PrepareResult.Empty -> message.value = UiMessage(R.string.err_file_empty)
+                    PrepareResult.TooLarge ->
+                        message.value = UiMessage(R.string.err_file_too_large, listOf(AttachmentLimits.MAX_BYTES / (1024 * 1024)))
+                    PrepareResult.Unreadable -> message.value = UiMessage(R.string.err_file_unreadable)
+                    is PrepareResult.Ok -> {
+                        val file = prepared.file
+                        encryptedPath = file.blobPath
+                        when (val upload = c.transfers.upload(file.blobPath, file.blobSha256)) {
+                            is UploadOutcome.Done -> {
+                                val result = c.groups.sendAttachment(
+                                    groupId,
+                                    GroupAttachmentData(
+                                        file.name, file.mime, file.size, file.blobSize,
+                                        file.plainSha256, file.blobSha256, file.key, upload.serverUrl,
+                                    ),
+                                )
+                                groupError(result)
+                                if (result == GroupResult.OK) c.delivery.processOutbox()
+                            }
+                            UploadOutcome.Unavailable -> message.value = UiMessage(R.string.err_group_file_upload)
+                            is UploadOutcome.Rejected -> message.value = UiMessage(R.string.err_download, listOf(upload.reason))
+                        }
+                    }
+                }
+            } catch (t: Throwable) {
+                fail(t)
+            } finally {
+                encryptedPath?.let(c.transfers::discard)
+                busy.value = false
+            }
+        }
+    }
+
+    fun downloadGroupAttachment(messageId: String) {
+        if (settings.wifiOnlyDownloads.value && !DeviceInfo.onUnlimitedLink(rely)) {
+            message.value = UiMessage(R.string.err_wifi_only)
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            val c = ctr()
+            val attachment = c.groupStore.groupAttachment(messageId) ?: return@launch
+            val result = c.transfers.downloadGroupAttachment(attachment) {
+                c.groupStore.updateGroupAttachment(it)
+            }
+            if (result is DownloadResult.Failed) message.value = UiMessage(R.string.err_download, listOf(result.reason))
+        }
+    }
+
+    fun exportGroupAttachment(messageId: String, dest: Uri) {
+        viewModelScope.launch(Dispatchers.IO) {
+            val c = ctr()
+            val attachment = c.groupStore.groupAttachment(messageId)
+            val ok = attachment?.let {
+                c.transfers.exportGroupAttachment(getApplication<Application>().contentResolver, it, dest)
+            } == true
+            message.value = UiMessage(if (ok) R.string.file_saved else R.string.err_file_save)
+        }
+    }
 
     fun addGroupMembers(groupId: String, ids: List<String>) = groupOp { ctr().groups.addMembers(groupId, ids) }
     fun removeGroupMember(groupId: String, id: String) = groupOp { ctr().groups.removeMember(groupId, id) }
