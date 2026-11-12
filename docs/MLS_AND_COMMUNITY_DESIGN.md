@@ -1,12 +1,22 @@
 # RELYRA Phase 3 — MLS and Community Protocol Design
 
-Status: design decision and staged integration plan. This document does not claim that MLS or public communities are implemented.
+Status: protocol design plus partial implementation status. Source implementation is present on branch `phase-3-group-protocol`, but the phase is not release-complete until CI and independent-device interoperability gates pass.
+
+## 0. Implementation status
+
+The current branch contains:
+- Group read receipts bound to the exact per-member message-copy ID.
+- OpenMLS 0.9.2 through Rust/JNI, with SQLCipher-backed group state.
+- RELYRA account/device credentials signed by the existing Ed25519 identity key and verified before KeyPackage acceptance.
+- KeyPackage, Welcome, Commit, ApplicationData, owner-serialized membership commits, member removal and a SQLCipher reopen-recovery regression test.
+- MLS-encrypted group file descriptors, Blossom ciphertext upload/download, and digest verification tests.
+- Signed community manifests/events, private invitations and access proofs, private membership ban/unban, and a moderator-only report inbox.
+
+Not yet complete: distributed multi-admin MLS proposal coordination, public replication of the community index, a community post/feed pipeline for mute and slow-mode enforcement, Android device/ABI interoperability, and clean CI on the final PR head.
 
 ## 1. Current group baseline
 
-The existing group engine sends a separate RELYRA one-to-one encrypted packet to every member. Each packet uses that member's existing Double Ratchet session. This preserves the current delivery and retry model, but sending cost grows with the number of recipients. Removing a member stops future fan-out to that member; it does not create a new cryptographic group epoch or rotate a shared group secret.
-
-The current production group engine is therefore **pairwise fan-out, not MLS**. It must not be relabelled as MLS until a real MLS state machine is integrated and interoperable tests pass.
+Legacy groups retain the earlier pairwise RELYRA one-to-one Double Ratchet fan-out path. New groups created with the phase-3 implementation set MLS enabled and use one OpenMLS group epoch for application data. Existing legacy groups are not silently migrated into MLS; the distinction is carried in stored group state and shown by the UI.
 
 ## 2. MLS implementation decision
 
@@ -66,7 +76,7 @@ Attachments:
 - Keep downloads user initiated; verify ciphertext and plaintext hashes before opening.
 - Never send the file key in an unencrypted group control packet.
 
-This phase's per-recipient group read receipts are an incremental feature on the existing pairwise fan-out path; they are not the final MLS receipt format. Group attachments are still not implemented.
+Read receipts currently use authenticated per-recipient RELYRA control packets bound to the exact group-message copy; they are not yet encoded as MLS application/control messages. For MLS-enabled groups, attachment descriptors are sent inside MLS ApplicationData and encrypted file bytes are uploaded to Blossom. JVM tests verify download, ciphertext digest, decryption and plaintext digest. A real-device transfer test remains a release gate.
 
 ## 6. Public communities are a separate protocol surface
 
@@ -98,15 +108,16 @@ Moderation:
 
 ## 7. Non-goals and release gates
 
-This design does not create a public community index, moderation server, hosted relay, or live MLS service. Those require separately deployed infrastructure and reviewed protocols.
+The branch implements a signed community manifest service and a local Pebble-backed public index, not a globally replicated community DHT. Private invitations, signed moderation events, replay sequences, private membership ban/unban and a moderator-only report inbox are implemented. There is no community post/feed pipeline yet, so mute, slow-mode and allow-post events are not enforced by a content service and are not exposed in the current moderation UI.
 
 Phase 3 is not complete until:
 - MLS state is genuinely produced and consumed by the pinned OpenMLS integration on supported Android ABIs.
 - RFC 9420 vectors and independent clients interoperate.
 - A removed member cannot decrypt messages created after its committed removal epoch.
 - Restart recovery, duplicate commits, stale commits, concurrent proposals and member churn are covered by tests.
-- Group attachments and optional read receipts pass authenticated integration tests.
-- Community event signatures, moderator authorization, replay controls and service-side rate limiting are implemented and tested.
-- CI passes from a clean checkout.
+- Group attachments and optional read receipts pass the current JVM/native regression tests; independent Android-device transfer remains open.
+- Community event signatures, owner/moderator authorization, per-actor sequence replay controls, private ban/unban effects, report authorization and service-side rate limiting are implemented and tested.
+- Distributed MLS proposal reconciliation and community-index replication remain separate incomplete items.
+- CI passes from a clean checkout and supported Android ABIs interoperate.
 
 Until those gates pass, the current pairwise group transport remains active and must be labelled accurately.
