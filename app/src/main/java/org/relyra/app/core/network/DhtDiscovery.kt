@@ -128,7 +128,7 @@ object PeerPresenceCodec {
 interface DiscoveryTransport {
     suspend fun publish(baseUrl: String, signedRecordJson: String): Boolean
     suspend fun lookup(baseUrl: String, publicId: String): String?
-    override suspend fun turnCredentials(
+    suspend fun turnCredentials(
         baseUrl: String,
         publicId: String,
         sign: (ByteArray) -> ByteArray?,
@@ -168,7 +168,7 @@ class DhtDiscoveryClient(
         }
     }
 
-    suspend fun turnCredentials(
+    override suspend fun turnCredentials(
         baseUrl: String,
         publicId: String,
         sign: (ByteArray) -> ByteArray?,
