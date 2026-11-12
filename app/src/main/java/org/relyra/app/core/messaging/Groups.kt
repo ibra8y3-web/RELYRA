@@ -3,7 +3,9 @@ package org.relyra.app.core.messaging
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
+import java.io.DataInputStream
 import java.io.DataOutputStream
 import java.security.MessageDigest
 import java.util.Base64
@@ -66,6 +68,8 @@ interface GroupStore {
     suspend fun recordIncomingMessage(m: GroupMessage): Boolean
     suspend fun enqueue(rows: List<OutboxRow>)
     /** Atomically advances the Room MLS epoch/member snapshot and persists its retryable Commit outbox. */
+    suspend fun pendingProposalDeliveries(groupId: String): Int = 0
+    suspend fun outboxGroup(id: String): String? = null
     suspend fun applyMlsCommit(
         group: GroupRecord,
         members: List<GroupMemberRef>,
@@ -134,6 +138,7 @@ class GroupEngine(
 ) : GroupInbound {
     private val lock = Mutex()
     val pendingMlsProposals = MutableStateFlow<Map<String, Int>>(emptyMap())
+    val pendingMlsProposalDeliveries = MutableStateFlow<Map<String, Int>>(emptyMap())
 
     /**
      * Holds the same lock used by every group state transition while a cross-store
@@ -462,7 +467,12 @@ class GroupEngine(
 
     // ---- receiving -----------------------------------------------------------------------------------------
 
-    override suspend fun onAck(ack: Envelope.Ack): Boolean = store.markAcked(ack.messageId, ack.from)
+    override suspend fun onAck(ack: Envelope.Ack): Boolean {
+        val groupId = store.outboxGroup(ack.messageId)
+        val acked = store.markAcked(ack.messageId, ack.from)
+        if (acked && groupId != null) lock.withLock { refreshPendingMlsProposalsLocked(groupId) }
+        return acked
+    }
 
     override suspend fun onEnvelope(env: Envelope) {
         val me = ownId() ?: return
@@ -756,8 +766,12 @@ class GroupEngine(
     /** Reads and validates the RELYRA-signed account/device credentials in the local MLS tree. */
     private suspend fun refreshPendingMlsProposalsLocked(groupId: String): Int {
         val count = runCatching { mls?.pendingProposalCount(groupId) ?: 0 }.getOrDefault(0)
+        val deliveries = runCatching { store.pendingProposalDeliveries(groupId) }.getOrDefault(0)
         pendingMlsProposals.value = pendingMlsProposals.value.toMutableMap().apply {
             if (count == 0) remove(groupId) else put(groupId, count)
+        }
+        pendingMlsProposalDeliveries.value = pendingMlsProposalDeliveries.value.toMutableMap().apply {
+            if (deliveries == 0) remove(groupId) else put(groupId, deliveries)
         }
         return count
     }
@@ -772,6 +786,7 @@ class GroupEngine(
         if (!group.mlsEnabled || group.owner != me) return@withLock GroupResult.NOT_ALLOWED
         val engine = mls ?: return@withLock GroupResult.MLS_UNAVAILABLE
         if (engine.epoch(groupId) != group.mlsEpoch) return@withLock GroupResult.INVALID
+        if (store.pendingProposalDeliveries(groupId) > 0) return@withLock GroupResult.PROPOSAL_QUEUED
         val pending = engine.pendingProposalCount(groupId)
         if (pending == 0) {
             refreshPendingMlsProposalsLocked(groupId)
