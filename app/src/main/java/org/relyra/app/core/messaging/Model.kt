@@ -38,7 +38,7 @@ data class StoredMessage(
 )
 
 enum class AckKind { DELIVERED, READ }
-enum class P2pSignalKind { OFFER, ANSWER }
+enum class P2pSignalKind { OFFER, ANSWER, CALL_OFFER, CALL_ANSWER, CALL_DECLINE, CALL_END }
 
 enum class GroupKind { GROUP, CHANNEL }
 enum class GroupRole { MEMBER, ADMIN, OWNER }
