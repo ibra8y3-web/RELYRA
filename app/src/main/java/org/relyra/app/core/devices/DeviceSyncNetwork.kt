@@ -42,7 +42,17 @@ class DeviceSyncNetwork(
         private const val CHUNK_BYTES = 20 * 1024
         private const val MAX_CHUNKS = 512
         private const val SYNC_TAG = "relyra-device-sync-v1"
+        private const val ACK_TAG = "relyra-device-sync-ack-v1"
+        private const val MAX_TRANSFER_AGE_SECONDS = 24 * 60 * 60L
     }
+
+    private data class OutgoingTransfer(
+        val targetId: String,
+        val senderId: String,
+        val count: Int,
+        val createdAt: Long,
+        val directory: File,
+    )
 
     private data class IncomingTransfer(
         val senderId: String,
@@ -54,9 +64,12 @@ class DeviceSyncNetwork(
     private val receiveLock = Mutex()
     // Persist opaque, already device-encrypted chunks so an Android process death does not
     // discard a partially received transfer. The manifest contains routing metadata only.
+    private val databaseDirectory by lazy { File(database.openHelper.writableDatabase.path).parentFile }
     private val incomingRoot: File by lazy {
-        File(File(database.openHelper.writableDatabase.path).parentFile, "device-sync-incoming")
-            .apply { mkdirs() }
+        File(databaseDirectory, "device-sync-incoming").apply { mkdirs() }
+    }
+    private val outgoingRoot: File by lazy {
+        File(databaseDirectory, "device-sync-outgoing").apply { mkdirs() }
     }
     private val pool by lazy {
         NostrPool(
@@ -101,28 +114,16 @@ class DeviceSyncNetwork(
         val local = devices.ensureLocalDevice()
         val trusted = database.trustedDeviceDao().observeForAccount(identity.publicId).first()
             .filter { it.status == TrustedDeviceStatus.APPROVED && it.deviceId != local.deviceId }
-        var sentDevices=0
+        purgeStaleTransfers()
+        var sentDevices = 0
         for (target in trusted) {
-            val wire = sync.exportEncrypted(target.deviceId)
-            require(wire.size <= CHUNK_BYTES * MAX_CHUNKS) { "Device sync payload exceeds the relay transfer limit" }
-            val transferId = UUID.randomUUID().toString()
-            val createdAt = System.currentTimeMillis() / 1000
-            val chunks = wire.toList().chunked(CHUNK_BYTES)
-            chunks.forEachIndexed { index, bytes ->
-                val tags = listOf(
-                    listOf("p", publicKey),
-                    listOf("d", target.deviceId),
-                    listOf("s", local.deviceId),
-                    listOf("e", transferId),
-                    listOf("n", index.toString()),
-                    listOf("c", chunks.size.toString()),
-                    listOf("t", SYNC_TAG),
-                )
-                val content = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes.toByteArray())
-                val event = NostrEvents.create(secret, KIND, tags, content, createdAt)
-                check(pool.publish(event)) { "No configured relay accepted device-sync chunk $index" }
+            var transfer = findPendingOutgoing(target.deviceId, local.deviceId)
+            if (transfer == null) {
+                val wire = sync.exportEncrypted(target.deviceId)
+                require(wire.size <= 8 * 1024 * 1024) { "Device sync payload exceeds the encrypted snapshot limit" }
+                transfer = stageOutgoingTransfer(target.deviceId, local.deviceId, wire)
             }
-            sentDevices++
+            if (publishOutgoingTransfer(secret, publicKey, transfer)) sentDevices++
         }
         return sentDevices
     }
@@ -192,20 +193,32 @@ class DeviceSyncNetwork(
         val ownPublicKey = identities.nostrPublicKeyHex() ?: return@withLock
         if (event.kind != KIND || event.pubkey != ownPublicKey) return@withLock
         fun tag(name: String): String? = event.tags.firstOrNull { it.size >= 2 && it[0] == name }?.get(1)
-        if (tag("t") != SYNC_TAG || tag("p") != ownPublicKey ||
-            tag("d") != secure.deviceId()) return@withLock
+        if (tag("p") != ownPublicKey) return@withLock
 
         val senderId = tag("s") ?: return@withLock
         val transferId = tag("e") ?: return@withLock
+        val sender = database.trustedDeviceDao().get(senderId) ?: return@withLock
+        if (sender.status != TrustedDeviceStatus.APPROVED) return@withLock
+        val nowSeconds = System.currentTimeMillis() / 1000
+        if (event.createdAt > nowSeconds + 300 || nowSeconds - event.createdAt > MAX_TRANSFER_AGE_SECONDS) return@withLock
+        when (tag("t")) {
+            ACK_TAG -> {
+                if (tag("d") != secure.deviceId()) return@withLock
+                val directory = File(outgoingRoot, transferId)
+                val manifest = runCatching { JSONObject(File(directory, "manifest.json").readText()) }.getOrNull()
+                    ?: return@withLock
+                if (manifest.optString("target") == senderId &&
+                    manifest.optString("sender") == secure.deviceId()) directory.deleteRecursively()
+                return@withLock
+            }
+            SYNC_TAG -> if (tag("d") != secure.deviceId()) return@withLock
+            else -> return@withLock
+        }
         val index = tag("n")?.toIntOrNull() ?: return@withLock
         val count = tag("c")?.toIntOrNull() ?: return@withLock
         if (count !in 1..MAX_CHUNKS || index !in 0 until count ||
             runCatching { UUID.fromString(transferId).toString() == transferId }.getOrDefault(false).not() ||
             runCatching { UUID.fromString(senderId).toString() == senderId }.getOrDefault(false).not()) return@withLock
-        val sender = database.trustedDeviceDao().get(senderId) ?: return@withLock
-        if (sender.status != TrustedDeviceStatus.APPROVED) return@withLock
-        val nowSeconds = System.currentTimeMillis() / 1000
-        if (event.createdAt > nowSeconds + 300 || nowSeconds - event.createdAt > 24 * 60 * 60) return@withLock
         val chunk = runCatching {
             Base64.getUrlDecoder().decode(event.content).also { require(it.size in 1..CHUNK_BYTES) }
         }.getOrNull() ?: return@withLock
@@ -250,7 +263,108 @@ class DeviceSyncNetwork(
         runCatching { sync.importEncrypted(wire) }
             .onSuccess {
                 network.inboxSince = maxOf(network.inboxSince, transfer.createdAt)
+                publishTransferAck(transferId, senderId, secure.deviceId(), ownPublicKey)
                 directory.deleteRecursively()
             }
+    }
+
+    private fun findPendingOutgoing(targetId: String, senderId: String): OutgoingTransfer? {
+        return outgoingRoot.listFiles()?.firstNotNullOfOrNull { directory ->
+            if (!directory.isDirectory) return@firstNotNullOfOrNull null
+            runCatching {
+                val manifest = JSONObject(File(directory, "manifest.json").readText())
+                if (manifest.optString("target") != targetId || manifest.optString("sender") != senderId) return@runCatching null
+                OutgoingTransfer(
+                    targetId, senderId, manifest.getInt("count"), manifest.getLong("createdAt"), directory,
+                )
+            }.getOrNull()
+        }
+    }
+
+    private fun stageOutgoingTransfer(targetId: String, senderId: String, wire: ByteArray): OutgoingTransfer {
+        require(wire.isNotEmpty() && wire.size <= 8 * 1024 * 1024)
+        val chunks = wire.toList().chunked(CHUNK_BYTES)
+        require(chunks.size in 1..MAX_CHUNKS)
+        val transferId = UUID.randomUUID().toString()
+        val directory = File(outgoingRoot, transferId)
+        check(directory.mkdirs()) { "Could not stage device sync transfer" }
+        val createdAt = System.currentTimeMillis() / 1000
+        try {
+            val manifest = JSONObject().put("version", 1).put("target", targetId)
+                .put("sender", senderId).put("count", chunks.size).put("createdAt", createdAt)
+            FileOutputStream(File(directory, "manifest.json")).use { output ->
+                output.write(manifest.toString().toByteArray(Charsets.UTF_8))
+                output.fd.sync()
+            }
+            chunks.forEachIndexed { index, bytes ->
+                FileOutputStream(File(directory, "%04d.part".format(index))).use { output ->
+                    output.write(bytes.toByteArray())
+                    output.fd.sync()
+                }
+            }
+            return OutgoingTransfer(targetId, senderId, chunks.size, createdAt, directory)
+        } catch (failure: Throwable) {
+            directory.deleteRecursively()
+            throw failure
+        }
+    }
+
+    private suspend fun publishOutgoingTransfer(
+        secret: ByteArray,
+        publicKey: String,
+        transfer: OutgoingTransfer,
+    ): Boolean {
+        for (index in 0 until transfer.count) {
+            val part = File(transfer.directory, "%04d.part".format(index))
+            if (!part.isFile || part.length() !in 1..CHUNK_BYTES.toLong()) return false
+            val tags = listOf(
+                listOf("p", publicKey),
+                listOf("d", transfer.targetId),
+                listOf("s", transfer.senderId),
+                listOf("e", transfer.directory.name),
+                listOf("n", index.toString()),
+                listOf("c", transfer.count.toString()),
+                listOf("t", SYNC_TAG),
+            )
+            val content = Base64.getUrlEncoder().withoutPadding().encodeToString(part.readBytes())
+            val event = NostrEvents.create(secret, KIND, tags, content, transfer.createdAt)
+            if (!pool.publish(event)) return false
+        }
+        return true
+    }
+
+    private suspend fun publishTransferAck(
+        transferId: String,
+        targetSenderId: String,
+        localDeviceId: String,
+        publicKey: String,
+    ) {
+        val secret = identities.nostrSecret() ?: return
+        val tags = listOf(
+            listOf("p", publicKey),
+            listOf("d", targetSenderId),
+            listOf("s", localDeviceId),
+            listOf("e", transferId),
+            listOf("t", ACK_TAG),
+        )
+        val event = NostrEvents.create(secret, KIND, tags, "received", System.currentTimeMillis() / 1000)
+        runCatching { pool.publish(event) }
+    }
+
+    private fun purgeStaleTransfers() {
+        val now = System.currentTimeMillis() / 1000
+        listOf(incomingRoot, outgoingRoot).forEach { root ->
+            root.listFiles()?.forEach { directory ->
+                if (!directory.isDirectory) directory.delete()
+                else {
+                    val created = runCatching {
+                        JSONObject(File(directory, "manifest.json").readText()).getLong("createdAt")
+                    }.getOrNull()
+                    if (created == null || created > now + 300 || now - created > MAX_TRANSFER_AGE_SECONDS) {
+                        directory.deleteRecursively()
+                    }
+                }
+            }
+        }
     }
 }
