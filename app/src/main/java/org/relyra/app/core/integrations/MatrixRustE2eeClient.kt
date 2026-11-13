@@ -9,7 +9,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.matrix.rustcomponents.sdk.Client
 import org.matrix.rustcomponents.sdk.ClientBuilder
-import org.matrix.rustcomponents.sdk.EncryptionState
+import uniffi.matrix_sdk_base.EncryptionState
 import org.matrix.rustcomponents.sdk.Session
 import org.matrix.rustcomponents.sdk.SlidingSyncVersion
 import org.matrix.rustcomponents.sdk.SlidingSyncVersionBuilder
@@ -73,7 +73,7 @@ class MatrixRustE2eeClient(
     suspend fun startSync() = withContext(Dispatchers.IO) {
         val sdk = requireClient()
         if (!syncStarted) {
-            sdk.syncService().withOfflineMode().finish().startSync().getOrThrow()
+            sdk.syncService().start()
             persistSession(sdk.session())
             syncStarted = true
         }
@@ -90,7 +90,8 @@ class MatrixRustE2eeClient(
     suspend fun sendEncrypted(roomId: String, body: String) = withContext(Dispatchers.IO) {
         require(roomId.startsWith("!") && roomId.length <= 255)
         require(body.isNotBlank() && body.length <= 65536)
-        val room = requireClient().getRoom(roomId) ?: error("Matrix room is not available in the restored SDK store")
+        val sdk = requireClient()
+        val room = sdk.getRoom(roomId) ?: error("Matrix room is not available in the restored SDK store")
         room.use {
             require(it.latestEncryptionState() == EncryptionState.ENCRYPTED) { "This room is not end-to-end encrypted; RELYRA blocks plaintext Matrix sends" }
             it.timeline().use { timeline ->

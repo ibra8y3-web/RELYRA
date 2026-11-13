@@ -4,10 +4,11 @@ import android.content.Context
 import org.jivesoftware.smack.android.AndroidSmackInitializer
 import org.jivesoftware.smack.tcp.XMPPTCPConnection
 import org.jivesoftware.smack.tcp.XMPPTCPConnectionConfiguration
-import org.jivesoftware.smackx.omemo.OmemoConfiguration
 import org.jivesoftware.smackx.omemo.OmemoManager
 import org.jivesoftware.smackx.omemo.internal.OmemoDevice
 import org.jivesoftware.smackx.omemo.signal.SignalOmemoService
+import org.jivesoftware.smackx.omemo.signal.SignalCachingOmemoStore
+import org.jivesoftware.smackx.omemo.signal.SignalFileBasedOmemoStore
 import org.jivesoftware.smackx.omemo.trust.OmemoFingerprint
 import org.jivesoftware.smackx.omemo.trust.OmemoTrustCallback
 import org.jivesoftware.smackx.omemo.trust.TrustState
@@ -73,7 +74,11 @@ class XmppOmemoClient(context: Context) {
             if (!SmackOmemoSetup.initialized) {
                 SignalOmemoService.acknowledgeLicense()
                 SignalOmemoService.setup()
-                OmemoConfiguration.setFileBasedOmemoStoreDefaultPath(File(app.noBackupFilesDir, "xmpp-omemo"))
+                val service = SignalOmemoService.getInstance() as SignalOmemoService
+                val storeDirectory = File(app.noBackupFilesDir, "xmpp-omemo").apply { mkdirs() }
+                service.setOmemoStoreBackend(
+                    SignalCachingOmemoStore(SignalFileBasedOmemoStore(storeDirectory))
+                )
                 SmackOmemoSetup.initialized = true
             }
         }
@@ -144,7 +149,8 @@ class XmppOmemoClient(context: Context) {
         val omemo = requireManager()
         val jid: BareJid = JidCreate.bareFrom(recipient)
         val encrypted = omemo.encrypt(jid, plaintext)
-        client.sendStanza(encrypted.asMessage(jid))
+        val builder = client.stanzaFactory.buildMessageStanza()
+        client.sendStanza(encrypted.buildMessage(builder, jid))
     }
 
     @Synchronized

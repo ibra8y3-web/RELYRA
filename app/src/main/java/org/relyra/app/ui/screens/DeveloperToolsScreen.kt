@@ -44,6 +44,7 @@ fun DeveloperToolsScreen(vm: MainViewModel, onOpenDiagnostics: () -> Unit) {
     var removePluginId by remember { mutableStateOf<String?>(null) }
     var pluginActionMessage by remember { mutableStateOf<Int?>(null) }
     val activeToken = api.token
+    val tokenExpiry = api.expiresAtMillis
 
     Column(
         Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp),
@@ -72,11 +73,11 @@ fun DeveloperToolsScreen(vm: MainViewModel, onOpenDiagnostics: () -> Unit) {
                     clipboard.setText(AnnotatedString("adb forward tcp:8787 tcp:$port"))
                 }) { Text(stringResource(R.string.developer_tools_copy_forward)) }
             }
-            if (api.expiresAtMillis != null) {
+            if (tokenExpiry != null) {
                 InfoRow(
                     stringResource(R.string.developer_tools_token_expires),
                     DateFormat.getDateTimeInstance(DateFormat.SHORT, DateFormat.SHORT)
-                        .format(Date(api.expiresAtMillis)),
+                        .format(Date(tokenExpiry)),
                 )
             }
             if (activeToken != null) {
