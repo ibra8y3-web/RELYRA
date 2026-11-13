@@ -122,7 +122,8 @@ class TransferEngine(
         val kubo = ipfs?.endpoint?.value.orEmpty()
         if (kubo.isNotBlank()) {
             return try {
-                val cid = ipfs.addCiphertext(kubo, file)
+                val ipfsStore = ipfs ?: return UploadOutcome.Unavailable
+                val cid = ipfsStore.addCiphertext(kubo, file)
                 UploadOutcome.Done("ipfs://$cid")
             } catch (e: Exception) {
                 UploadOutcome.Rejected(e.message?.take(180) ?: "IPFS upload failed")
@@ -178,7 +179,8 @@ class TransferEngine(
                 try {
                     val endpoint = ipfs?.endpoint?.value.orEmpty()
                     require(endpoint.isNotBlank()) { "Configure the Kubo HTTPS endpoint to download this attachment" }
-                    ipfs.fetchCiphertext(endpoint, ipfsCid!!, part)
+                    val ipfsStore = ipfs ?: error("IPFS storage is not configured")
+                    ipfsStore.fetchCiphertext(endpoint, ipfsCid!!, part)
                     require(part.length() == a.blobSize && java.security.MessageDigest.isEqual(FileCrypto.sha256(part), a.blobSha256)) { "IPFS ciphertext hash mismatch" }
                 } catch (e: Exception) {
                     part.delete()
