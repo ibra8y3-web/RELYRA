@@ -56,13 +56,13 @@ sealed interface PluginInstallResult {
 class PluginRuntime(context: android.content.Context) {
     private val root = File(context.applicationContext.filesDir, "plugins").apply { mkdirs() }
     private val prefs = context.applicationContext.getSharedPreferences("relyra_plugins", android.content.Context.MODE_PRIVATE)
+    private val allowedPermissions = setOf("clipboard.write", "external.open")
+    private val allowedActionTypes = setOf("notice", "copy_text", "open_url")
+
     private val _installed = kotlinx.coroutines.flow.MutableStateFlow(loadInstalled())
     val installed: kotlinx.coroutines.flow.StateFlow<List<PluginInfo>> = _installed
     private val _events = kotlinx.coroutines.flow.MutableStateFlow(loadEvents())
     val events: kotlinx.coroutines.flow.StateFlow<List<PluginLogEntry>> = _events
-
-    private val allowedPermissions = setOf("clipboard.write", "external.open")
-    private val allowedActionTypes = setOf("notice", "copy_text", "open_url")
 
     suspend fun inspect(resolver: ContentResolver, uri: Uri): PluginInfo? = withContext(Dispatchers.IO) {
         val raw = readPackage(resolver, uri) ?: return@withContext null
