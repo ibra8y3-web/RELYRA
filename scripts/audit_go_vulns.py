@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Review govulncheck JSON findings against explicit, version-scoped VEX decisions."""
+"""Review govulncheck JSON findings and explicitly retain unresolved DHT advisories."""
 from __future__ import annotations
 
 import argparse
@@ -86,13 +86,18 @@ def build_report(ids: list[str], module_info: dict[str, Any]) -> tuple[str, bool
         "# Go vulnerability triage",
         "",
         "Generated from govulncheck JSON output and the resolved Go module graph.",
-        "Unknown findings fail this gate; this file records the only reviewed version-scoped exception.",
+        "Unknown findings fail this gate; known conflicting advisories remain review-required even when govulncheck reports no reachable path.",
         "",
     ]
     unresolved = False
-    if not ids:
+    reviewed_ids = set(ids)
+    # Keep this known advisory visible independently of govulncheck reachability.
+    # A missing finding is not proof that Kademlia lookup cannot be censored by Sybil peers.
+    if module_info.get("Path") == DHT_MODULE:
+        reviewed_ids.add(DHT_ADVISORY)
+    if not reviewed_ids:
         lines.append("- Result: no govulncheck findings.")
-    for advisory in ids:
+    for advisory in sorted(reviewed_ids):
         if advisory == DHT_ADVISORY:
             status, reason = triage_dht_advisory(module_info)
             version = module_info.get("Version", "unknown")
@@ -107,7 +112,7 @@ def build_report(ids: list[str], module_info: dict[str, Any]) -> tuple[str, bool
         "## Residual design risk",
         "",
         "The package advisory concerns Sybil peers censoring Kademlia content-routing records. ",
-        "The version-scoped decision above does not certify a public DHT against generic Sybil or censorship attacks. ",
+        "The unresolved DHT advisory remains open regardless of govulncheck reachability. Its scope does not certify a public DHT against generic Sybil or censorship attacks. ",
         "RELYRA records are signature-validated, and the DHT configuration uses public-query/routing filters and peer-diversity limits; ",
         "multi-operator deployment and independent-node interoperability remain operational requirements.",
         "",

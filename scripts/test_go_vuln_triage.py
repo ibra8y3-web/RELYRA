@@ -57,6 +57,15 @@ class GoVulnerabilityTriageTests(unittest.TestCase):
         self.assertTrue(unresolved)
         self.assertIn("REVIEW_REQUIRED", report)
 
+    def test_dht_advisory_stays_visible_even_when_govulncheck_has_no_finding(self):
+        report, unresolved = build_report([], {
+            "Path": "github.com/libp2p/go-libp2p-kad-dht",
+            "Version": "v0.43.0",
+        })
+        self.assertTrue(unresolved)
+        self.assertIn(DHT_ADVISORY, report)
+        self.assertIn("REVIEW_REQUIRED", report)
+
     def test_json_stream_reads_findings(self):
         messages = [
             {"config": {"protocol_version": "v1.0.0"}},
