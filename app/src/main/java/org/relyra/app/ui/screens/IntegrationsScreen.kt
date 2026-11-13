@@ -310,6 +310,10 @@ fun IntegrationsScreen(vm: MainViewModel) {
         SectionCard("IPFS — encrypted attachments") {
             Text("Kubo RPC over HTTPS only. Select a RELYRA .enc ciphertext file; plaintext files are rejected.", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(ipfsApi, { ipfsApi = it }, label = { Text("Kubo HTTPS API URL") }, modifier = Modifier.fillMaxWidth())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { runCatching { vm.ipfs.configureEndpoint(ipfsApi); ipfsStatus = "Kubo endpoint saved; new attachments will use IPFS" }.onFailure { ipfsStatus = it.message ?: "Invalid endpoint" } }, enabled = ipfsApi.startsWith("https://")) { Text("Save endpoint") }
+                OutlinedButton(onClick = { vm.ipfs.configureEndpoint(""); ipfsApi = ""; ipfsStatus = "IPFS disabled; Blossom remains active" }) { Text("Disable IPFS") }
+            }
             Button(onClick = { ipfsPicker.launch(arrayOf("application/octet-stream", "*/*")) }, enabled = ipfsApi.startsWith("https://")) { Text("Upload encrypted .enc file") }
             OutlinedTextField(ipfsCid, { ipfsCid = it }, label = { Text("CIDv1") }, modifier = Modifier.fillMaxWidth())
             Button(onClick = { ipfsSavePicker.launch("${ipfsCid}.enc") }, enabled = ipfsApi.startsWith("https://") && ipfsCid.startsWith("b")) { Text("Download ciphertext") }
