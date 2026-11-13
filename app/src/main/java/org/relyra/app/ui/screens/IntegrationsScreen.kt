@@ -77,6 +77,7 @@ fun IntegrationsScreen(vm: MainViewModel) {
     var xmppRecipient by remember { mutableStateOf("") }
     var xmppText by remember { mutableStateOf("") }
     var xmppStatus by remember { mutableStateOf("Disconnected") }\n    var xmppDeviceJid by remember { mutableStateOf("") }\n    var xmppFingerprints by remember { mutableStateOf<List<org.relyra.app.core.integrations.XmppOmemoFingerprint>>(emptyList()) }
+    val xmppIncoming by vm.xmpp.incoming.collectAsStateWithLifecycle()
     var ipfsApi by remember(vm.ipfs.endpoint.value) { mutableStateOf(vm.ipfs.endpoint.value) }
     var ipfsCid by remember { mutableStateOf("") }
     var ipfsStatus by remember { mutableStateOf("") }
@@ -304,6 +305,15 @@ fun IntegrationsScreen(vm: MainViewModel) {
                 }
             }
             Text("Trust fingerprints must be verified out-of-band. OMEMO key storage is not yet Keystore-backed.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+
+            Text("Received decrypted OMEMO messages", style = MaterialTheme.typography.titleSmall)
+            xmppIncoming.takeLast(30).forEach { item ->
+                Column(verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                    Text(item.from, style = MaterialTheme.typography.labelSmall)
+                    Text(item.body, style = MaterialTheme.typography.bodyMedium)
+                    Text(java.text.DateFormat.getDateTimeInstance().format(java.util.Date(item.receivedAt)), style = MaterialTheme.typography.labelSmall)
+                }
+            }
             Text(xmppStatus, style = MaterialTheme.typography.bodySmall)
         }
 

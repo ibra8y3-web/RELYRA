@@ -11,6 +11,13 @@ import org.jivesoftware.smackx.omemo.signal.SignalOmemoService
 import org.jivesoftware.smackx.omemo.trust.OmemoFingerprint
 import org.jivesoftware.smackx.omemo.trust.OmemoTrustCallback
 import org.jivesoftware.smackx.omemo.trust.TrustState
+import org.jivesoftware.smackx.omemo.listener.OmemoMessageListener
+import org.jivesoftware.smack.packet.Stanza
+import org.jivesoftware.smack.packet.Message
+import org.jivesoftware.smackx.omemo.OmemoMessage
+import org.jivesoftware.smackx.carbons.packet.CarbonExtension
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
 import org.jxmpp.jid.BareJid
 import org.jxmpp.jid.impl.JidCreate
 import java.io.File
@@ -22,7 +29,25 @@ import java.util.concurrent.ConcurrentHashMap
  * the fingerprint. The store is app-private; a Keystore-backed custom OMEMO store is still needed
  * before claiming hardware-bound encryption at rest for OMEMO state.
  */
+
+data class XmppIncomingMessage(val from: String, val body: String, val receivedAt: Long)
+
 class XmppOmemoClient(context: Context) {
+    private val _incoming = MutableStateFlow<List<XmppIncomingMessage>>(emptyList())
+    val incoming: StateFlow<List<XmppIncomingMessage>> = _incoming
+    private val incomingListener = object : OmemoMessageListener {
+        override fun onOmemoMessageReceived(stanza: Stanza, decryptedMessage: OmemoMessage.Received) {
+            val body = decryptedMessage.body ?: return
+            val from = stanza.from?.toString() ?: return
+            _incoming.value = (_incoming.value + XmppIncomingMessage(from, body, System.currentTimeMillis())).takeLast(200)
+        }
+        override fun onOmemoCarbonCopyReceived(direction: CarbonExtension.Direction, carbonCopy: Message, wrappingMessage: Message, decryptedCarbonCopy: OmemoMessage.Received) {
+            val body = decryptedCarbonCopy.body ?: return
+            val from = carbonCopy.from?.toString() ?: return
+            _incoming.value = (_incoming.value + XmppIncomingMessage(from, body, System.currentTimeMillis())).takeLast(200)
+        }
+    }
+
     private val app = context.applicationContext
     private var connection: XMPPTCPConnection? = null
     private var manager: OmemoManager? = null
@@ -61,6 +86,7 @@ class XmppOmemoClient(context: Context) {
                     trust[key(device, fingerprint)] = state
                 }
             })
+            omemo.addOmemoMessageListener(incomingListener)
             omemo.initialize()
             connection = client
             manager = omemo
@@ -110,6 +136,7 @@ class XmppOmemoClient(context: Context) {
 
     @Synchronized
     fun disconnect() {
+        manager?.removeOmemoMessageListener(incomingListener)
         manager = null
         connection?.let { runCatching { it.disconnect() } }
         connection = null
