@@ -2,12 +2,14 @@ package org.relyra.app.ui.screens
 
 import android.content.Intent
 import android.net.Uri
+import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -92,6 +94,41 @@ fun IntegrationsScreen(vm: MainViewModel) {
                     inspectError = null
                 }
             }
+        }
+    }
+
+    val ipfsPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) scope.launch {
+            ipfsStatus = "Uploading encrypted file…"
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val displayName = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                        if (cursor.moveToFirst()) cursor.getString(0).orEmpty() else ""
+                    }.orEmpty()
+                    require(displayName.endsWith(".enc")) { "Only RELYRA .enc ciphertext files can be uploaded" }
+                    val input = context.contentResolver.openInputStream(uri) ?: error("Cannot open selected file")
+                    val temp = File(context.cacheDir, "ipfs-${System.nanoTime()}.enc")
+                    input.use { source -> temp.outputStream().use { source.copyTo(it) } }
+                    try { vm.ipfs.addCiphertext(ipfsApi, temp) } finally { temp.delete() }
+                }
+            }.onSuccess { ipfsCid = it; ipfsStatus = "Pinned ciphertext: $it" }
+             .onFailure { ipfsStatus = it.message ?: "IPFS upload failed" }
+        }
+    }
+    val ipfsSavePicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
+        if (uri != null) scope.launch {
+            ipfsStatus = "Downloading encrypted object…"
+            runCatching {
+                withContext(Dispatchers.IO) {
+                    val target = File(context.cacheDir, "${ipfsCid}.enc")
+                    try {
+                        vm.ipfs.fetchCiphertext(ipfsApi, ipfsCid, target)
+                        val output = context.contentResolver.openOutputStream(uri) ?: error("Cannot open destination")
+                        output.use { out -> target.inputStream().use { it.copyTo(out) } }
+                    } finally { target.delete() }
+                }
+            }.onSuccess { ipfsStatus = "Encrypted object saved" }
+             .onFailure { ipfsStatus = it.message ?: "IPFS download failed" }
         }
     }
 
@@ -227,32 +264,32 @@ fun IntegrationsScreen(vm: MainViewModel) {
 
         SectionCard("Matrix") {
             Text("Matrix Client-Server API. E2EE is not enabled in this adapter; do not use plaintext send for private conversations.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
-            OutlinedTextField(matrixServer, { matrixServer = it }, label = { Text("Homeserver HTTPS URL") }, modifier = Modifier.fillMaxSize())
-            OutlinedTextField(matrixUser, { matrixUser = it }, label = { Text("User ID") }, modifier = Modifier.fillMaxSize())
-            OutlinedTextField(matrixPassword, { matrixPassword = it }, label = { Text("Password") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxSize())
+            OutlinedTextField(matrixServer, { matrixServer = it }, label = { Text("Homeserver HTTPS URL") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(matrixUser, { matrixUser = it }, label = { Text("User ID") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(matrixPassword, { matrixPassword = it }, label = { Text("Password") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { scope.launch { runCatching { vm.matrix.login(matrixServer, matrixUser, matrixPassword) }.onSuccess { matrixSession = it; matrixStatus = "Signed in: ${it.userId}" }.onFailure { matrixStatus = it.message ?: "Login failed" } } }) { Text("Sign in") }
                 OutlinedButton(onClick = { scope.launch { runCatching { vm.matrix.sync(matrixSession ?: error("Sign in first")) }.onSuccess { matrixStatus = "Sync OK · ${it.joinedRoomIds.size} joined rooms"; }.onFailure { matrixStatus = it.message ?: "Sync failed" } } }, enabled = matrixSession != null) { Text("Sync") }
             }
-            OutlinedTextField(matrixRoom, { matrixRoom = it }, label = { Text("Room ID or alias") }, modifier = Modifier.fillMaxSize())
+            OutlinedTextField(matrixRoom, { matrixRoom = it }, label = { Text("Room ID or alias") }, modifier = Modifier.fillMaxWidth())
             Button(onClick = { scope.launch { runCatching { vm.matrix.join(matrixSession ?: error("Sign in first"), matrixRoom) }.onSuccess { matrixStatus = "Joined room: $it" }.onFailure { matrixStatus = it.message ?: "Join failed" } } }, enabled = matrixSession != null && matrixRoom.isNotBlank()) { Text("Join room") }
-            OutlinedTextField(matrixText, { matrixText = it }, label = { Text("Message (unencrypted)") }, modifier = Modifier.fillMaxSize())
+            OutlinedTextField(matrixText, { matrixText = it }, label = { Text("Message (unencrypted)") }, modifier = Modifier.fillMaxWidth())
             Button(onClick = { scope.launch { runCatching { vm.matrix.sendText(matrixSession ?: error("Sign in first"), matrixRoom, matrixText) }.onSuccess { matrixStatus = "Message sent: $it"; matrixText = "" }.onFailure { matrixStatus = it.message ?: "Send failed" } } }, enabled = matrixSession != null && matrixRoom.startsWith("!") && matrixText.isNotBlank()) { Text("Send plaintext test message") }
             Text(matrixStatus, style = MaterialTheme.typography.bodySmall)
         }
 
         SectionCard("XMPP / OMEMO") {
-            OutlinedTextField(xmppDomain, { xmppDomain = it }, label = { Text("XMPP domain") }, modifier = Modifier.fillMaxSize())
-            OutlinedTextField(xmppHost, { xmppHost = it }, label = { Text("Server host") }, modifier = Modifier.fillMaxSize())
-            OutlinedTextField(xmppPort, { xmppPort = it }, label = { Text("Port") }, modifier = Modifier.fillMaxSize())
-            OutlinedTextField(xmppUser, { xmppUser = it }, label = { Text("Username") }, modifier = Modifier.fillMaxSize())
-            OutlinedTextField(xmppPassword, { xmppPassword = it }, label = { Text("Password") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxSize())
+            OutlinedTextField(xmppDomain, { xmppDomain = it }, label = { Text("XMPP domain") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(xmppHost, { xmppHost = it }, label = { Text("Server host") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(xmppPort, { xmppPort = it }, label = { Text("Port") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(xmppUser, { xmppUser = it }, label = { Text("Username") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(xmppPassword, { xmppPassword = it }, label = { Text("Password") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { scope.launch { runCatching { withContext(Dispatchers.IO) { vm.xmpp.connect(xmppDomain, xmppHost, xmppPort.toInt(), xmppUser, xmppPassword) } }.onSuccess { xmppStatus = "Connected as $it" }.onFailure { xmppStatus = it.message ?: "Connection failed" } } }) { Text("Connect") }
                 OutlinedButton(onClick = { vm.xmpp.disconnect(); xmppStatus = "Disconnected" }) { Text("Disconnect") }
             }
-            OutlinedTextField(xmppRecipient, { xmppRecipient = it }, label = { Text("Recipient JID") }, modifier = Modifier.fillMaxSize())
-            OutlinedTextField(xmppText, { xmppText = it }, label = { Text("OMEMO message") }, modifier = Modifier.fillMaxSize())
+            OutlinedTextField(xmppRecipient, { xmppRecipient = it }, label = { Text("Recipient JID") }, modifier = Modifier.fillMaxWidth())
+            OutlinedTextField(xmppText, { xmppText = it }, label = { Text("OMEMO message") }, modifier = Modifier.fillMaxWidth())
             Button(onClick = { scope.launch { runCatching { withContext(Dispatchers.IO) { vm.xmpp.sendEncrypted(xmppRecipient, xmppText) } }.onSuccess { xmppStatus = "Encrypted message sent"; xmppText = "" }.onFailure { xmppStatus = it.message ?: "OMEMO send failed" } } }, enabled = xmppRecipient.isNotBlank() && xmppText.isNotBlank()) { Text("Send encrypted") }
             Text("Trust fingerprints must be verified out-of-band. OMEMO key storage is not yet Keystore-backed.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             Text(xmppStatus, style = MaterialTheme.typography.bodySmall)
@@ -260,9 +297,9 @@ fun IntegrationsScreen(vm: MainViewModel) {
 
         SectionCard("IPFS — encrypted attachments") {
             Text("Kubo RPC over HTTPS only. Select a RELYRA .enc ciphertext file; plaintext files are rejected.", style = MaterialTheme.typography.bodySmall)
-            OutlinedTextField(ipfsApi, { ipfsApi = it }, label = { Text("Kubo HTTPS API URL") }, modifier = Modifier.fillMaxSize())
+            OutlinedTextField(ipfsApi, { ipfsApi = it }, label = { Text("Kubo HTTPS API URL") }, modifier = Modifier.fillMaxWidth())
             Button(onClick = { ipfsPicker.launch(arrayOf("application/octet-stream", "*/*")) }, enabled = ipfsApi.startsWith("https://")) { Text("Upload encrypted .enc file") }
-            OutlinedTextField(ipfsCid, { ipfsCid = it }, label = { Text("CIDv1") }, modifier = Modifier.fillMaxSize())
+            OutlinedTextField(ipfsCid, { ipfsCid = it }, label = { Text("CIDv1") }, modifier = Modifier.fillMaxWidth())
             Button(onClick = { ipfsSavePicker.launch("${ipfsCid}.enc") }, enabled = ipfsApi.startsWith("https://") && ipfsCid.startsWith("b")) { Text("Download ciphertext") }
             Text(ipfsStatus, style = MaterialTheme.typography.bodySmall)
         }
