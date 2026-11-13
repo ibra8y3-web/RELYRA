@@ -995,6 +995,10 @@ mod tests {
 
         // Two copies of the same owner state create different valid commits at the same base epoch.
         std::fs::copy(&owner_path, &fork_path).unwrap();
+        let owner_wal = std::path::PathBuf::from(format!("{}-wal", owner_path.display()));
+        if owner_wal.exists() {
+            std::fs::copy(&owner_wal, format!("{}-wal", fork_path.display())).unwrap();
+        }
         let mut owner_a = database(owner_path.to_str().unwrap(), &owner_key);
         let mut owner_b = database(fork_path.to_str().unwrap(), &owner_key);
         let commit_a = remove_member(&mut owner_a, gid, &carol_credential).unwrap();
