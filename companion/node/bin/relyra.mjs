@@ -13,6 +13,7 @@ import {
   deleteServiceBackup
 } from "../src/compose.mjs";
 import { startServerStudio } from "../src/studio.mjs";
+import { inventoryPhase10Devices, runPhase10DeviceLab } from "../src/device-lab.mjs";
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const defaultRoot = path.resolve(here, "../../..");
@@ -22,7 +23,7 @@ function options(args) {
   for (let i = 0; i < args.length; i++) {
     if (args[i].startsWith("--")) {
       const key = args[i].slice(2);
-      if (key === "no-open") {
+      if (key === "no-open" || key === "allow-single-device") {
         result[key] = true;
         continue;
       }
@@ -45,6 +46,10 @@ function usage() {
     "  relyra server studio [--port <port>] [--no-open]",
     "  relyra server status|start|stop|restart|rebuild|logs",
     "  relyra server backup create|list|verify <id>|restore <id> --confirm 'RESTORE <id>'|delete <id> --confirm 'DELETE <id>',
+    "",
+    "Physical device validation (requires Android SDK Platform Tools):",
+    "  relyra device-lab inventory",
+    "  relyra device-lab run [--allow-single-device] [--output <directory>] [--adb <path>] [--gradle <path>]",
     "",
     "Android companion (enable Local API in RELYRA first):",
     "  relyra android forward --device-port <app-port> [--local-port 8787] [--serial <adb-serial>]",
@@ -111,6 +116,27 @@ async function main() {
       return;
     }
     throw new Error("Unknown server command. Use 'relyra help'.");
+  }
+
+  if (area === "device-lab") {
+    if (command === "inventory") {
+      print(await inventoryPhase10Devices({ adbPath: parsed.adb || "adb" }));
+      return;
+    }
+    if (command === "run") {
+      const outputDir = parsed.output ? path.resolve(root, parsed.output) : undefined;
+      const result = await runPhase10DeviceLab({
+        adbPath: parsed.adb || "adb",
+        gradlePath: parsed.gradle || "gradle",
+        cwd: root,
+        outputDir,
+        allowSingleDevice: parsed["allow-single-device"] === true
+      });
+      print({ outputDir: result.outputDir, phaseGate: result.report.phaseGate, results: result.report.results });
+      if (result.report.phaseGate !== "PENDING_MANUAL_MULTI_DEVICE_VALIDATION") process.exitCode = 1;
+      return;
+    }
+    throw new Error("Use device-lab inventory|run.");
   }
 
   if (area === "android") {

@@ -116,3 +116,14 @@ const diagnostics = await client.diagnostics();
 ```
 
 The existing plugin runtime remains a constrained JSON workflow engine. This package does not load arbitrary DEX, JavaScript, native code or shell scripts and does not bypass Android permissions.
+
+## Physical Device Lab — Phase 10
+
+Connect at least two authorized physical Android phones over ADB, each with an independent RELYRA identity. Emulators are excluded from the physical-device inventory.
+
+```bash
+node ./bin/relyra.mjs device-lab inventory
+node ./bin/relyra.mjs device-lab run
+```
+
+The run command executes Android instrumentation on each physical phone and writes a privacy-minimized JSON/Markdown report plus a manual acceptance CSV under the repository's `.relyra-device-lab/` directory. Use `--allow-single-device` only for a one-phone preflight; it does not close Phase 10. Multi-phone messaging, calls, MLS, TURN, Mesh, handover and recovery scenarios must still be performed and recorded manually. See [the Arabic Phase 10 validation guide](../../docs/PHASE10_DEVICE_VALIDATION_AR.md) and [the English guide](../../docs/PHASE10_DEVICE_VALIDATION.md).

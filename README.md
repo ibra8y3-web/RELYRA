@@ -185,3 +185,8 @@ Issues and pull requests are welcome. For substantial changes, describe the thre
 ---
 
 <p align="center"><strong>RELYRA · Private by design. Connected by choice.</strong></p>
+
+
+## Phase 10 — Physical Device Validation
+
+The repository includes an ADB-based physical-device lab runner and an Android instrumentation profile test. Connect at least two authorized physical phones and run the workflow described in [the Phase 10 validation guide](docs/PHASE10_DEVICE_VALIDATION.md). Emulator runs do not count as physical-device acceptance, and cross-phone scenarios remain pending until executed and recorded.

@@ -15,3 +15,6 @@ services/discovery/.env
 
 # Local Server Studio volume snapshots (may contain private service state)
 .relyra-backups/
+
+# Local physical-device test reports (may contain device/build metadata)
+.relyra-device-lab/
