@@ -218,8 +218,8 @@ class DeviceSyncNetwork(
         }
         val partFile = File(directory, "%04d.part".format(index))
         if (!partFile.isFile) {
-            if (directory.listFiles()?.filter { it.extension == "part" }?.sumOf { it.length() }?.plus(chunk.size)
-                ?: chunk.size.toLong() > 8L * 1024 * 1024) return@withLock
+            val storedBytes = directory.listFiles()?.filter { it.extension == "part" }?.sumOf { it.length() } ?: 0L
+            if (storedBytes + chunk.size > 8L * 1024 * 1024) return@withLock
             val temporary = File(directory, partFile.name + ".tmp")
             try {
                 FileOutputStream(temporary).use { output ->
