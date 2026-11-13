@@ -10,7 +10,7 @@ name = "relyra_mls"
 crate-type = ["cdylib", "rlib"]
 
 [dependencies]
-base64 = "0.22.1"
+base64 = "0.23.1"
 jni = "0.21.1"
 openmls = { git = "https://github.com/openmls/openmls", rev = "6100df3fb1d8c3eeab53e349fcbd621f98c44fe2" }
 openmls_basic_credential = { git = "https://github.com/openmls/openmls", rev = "6100df3fb1d8c3eeab53e349fcbd621f98c44fe2" }
