@@ -125,7 +125,16 @@ class DeviceManager(private val db: AppDatabase, private val secure: SecureStore
         val values=DataInputStream(ByteArrayInputStream(body)).use { i ->
             require(i.readUTF()==APPROVAL); List(10){i.readUTF()}.also{require(i.available()==0)}
         }
-        val (account,id,challenge,approved,signer,approverId,approverName,approverPlatform,approverSign,approverEnc)=values
+        val account = values[0]
+        val id = values[1]
+        val challenge = values[2]
+        val approved = values[3]
+        val signer = values[4]
+        val approverId = values[5]
+        val approverName = values[6]
+        val approverPlatform = values[7]
+        val approverSign = values[8]
+        val approverEnc = values[9]
         require(account==identity.publicId && id==secure.deviceId() && un64(signer).contentEquals(identity.publicKey))
         require(approverId != id && runCatching { java.util.UUID.fromString(approverId) }.isSuccess)
         require(un64(approverSign).size==32 && un64(approverEnc).size==32)
