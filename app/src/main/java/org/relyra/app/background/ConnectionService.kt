@@ -57,6 +57,8 @@ class ConnectionService : Service() {
             return
         }
         container.nostr.setIdentity(secret)
+        // Keep the encrypted replication subscriber and retry queue alive with the foreground service.
+        container.deviceSyncNetwork.start()
         val nm = getSystemService(NotificationManager::class.java)
         val s = scope ?: return
         s.launch {
