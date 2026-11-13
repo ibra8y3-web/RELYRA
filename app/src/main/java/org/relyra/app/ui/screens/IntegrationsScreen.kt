@@ -77,7 +77,7 @@ fun IntegrationsScreen(vm: MainViewModel) {
     var xmppRecipient by remember { mutableStateOf("") }
     var xmppText by remember { mutableStateOf("") }
     var xmppStatus by remember { mutableStateOf("Disconnected") }\n    var xmppDeviceJid by remember { mutableStateOf("") }\n    var xmppFingerprints by remember { mutableStateOf<List<org.relyra.app.core.integrations.XmppOmemoFingerprint>>(emptyList()) }
-    var ipfsApi by remember { mutableStateOf("") }
+    var ipfsApi by remember(vm.ipfs.endpoint.value) { mutableStateOf(vm.ipfs.endpoint.value) }
     var ipfsCid by remember { mutableStateOf("") }
     var ipfsStatus by remember { mutableStateOf("") }
 

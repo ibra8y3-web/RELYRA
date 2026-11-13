@@ -52,6 +52,7 @@ class TransferEngine(
     private val identitySecret: () -> ByteArray?,
     private val client: BlossomClient = BlossomClient(),
     private val clock: () -> Long = { System.currentTimeMillis() },
+    private val ipfs: org.relyra.app.core.integrations.IpfsEncryptedStore? = null,
 ) : BlobUploader {
     private val root: File = context.applicationContext.filesDir
     private val outbox = File(root, "outbox")
@@ -118,6 +119,15 @@ class TransferEngine(
     override suspend fun upload(blobPath: String, sha256: ByteArray): UploadOutcome {
         val file = File(blobPath)
         if (!isInside(file, outbox) || !file.isFile) return UploadOutcome.Rejected("the encrypted file is missing")
+        val kubo = ipfs?.endpoint?.value.orEmpty()
+        if (kubo.isNotBlank()) {
+            return try {
+                val cid = ipfs.addCiphertext(kubo, file)
+                UploadOutcome.Done("ipfs://$cid")
+            } catch (e: Exception) {
+                UploadOutcome.Rejected(e.message?.take(180) ?: "IPFS upload failed")
+            }
+        }
         val enabled = servers.servers.value.filter { it.enabled }
         if (enabled.isEmpty()) return UploadOutcome.Unavailable
         val hex = Hex.encode(sha256)
@@ -156,18 +166,31 @@ class TransferEngine(
             val a = store.attachment(messageId) ?: return DownloadResult.Failed("unknown file")
             if (a.phase == AttachmentPhase.READY) return DownloadResult.Done
             if (store.get(messageId)?.outgoing != false) return DownloadResult.Failed("not an incoming file")
-            val url = BlossomUrl.normalize(a.serverUrl, allowPrivate = false)
+            val isIpfs = a.serverUrl.startsWith("ipfs://")
+            val ipfsCid = if (isIpfs) a.serverUrl.removePrefix("ipfs://") else null
+            val url = if (isIpfs) null else BlossomUrl.normalize(a.serverUrl, allowPrivate = false)
                 ?: return DownloadResult.Failed("the file server address is not allowed")
-
+            if (isIpfs && !Regex("b[a-z2-7]{20,120}").matches(ipfsCid.orEmpty())) return DownloadResult.Failed("invalid IPFS CID")
             store.updateAttachment(a.copy(phase = AttachmentPhase.DOWNLOADING))
             inbox.mkdirs()
             val part = File(inbox, "$messageId.part")
-            val res = client.download(url, Hex.encode(a.blobSha256), part, a.blobSize) { bytes ->
-                progress.update { it + (messageId to bytes) }
-            }
-            if (res is BlossomDownload.Failed) {
-                store.updateAttachment(a.copy(phase = if (res.retryable) AttachmentPhase.REMOTE else AttachmentPhase.FAILED))
-                return DownloadResult.Failed(res.reason)
+            if (isIpfs) {
+                try {
+                    val endpoint = ipfs?.endpoint?.value.orEmpty()
+                    require(endpoint.isNotBlank()) { "Configure the Kubo HTTPS endpoint to download this attachment" }
+                    ipfs.fetchCiphertext(endpoint, ipfsCid!!, part)
+                    require(part.length() == a.blobSize && java.security.MessageDigest.isEqual(FileCrypto.sha256(part), a.blobSha256)) { "IPFS ciphertext hash mismatch" }
+                } catch (e: Exception) {
+                    part.delete()
+                    store.updateAttachment(a.copy(phase = AttachmentPhase.REMOTE))
+                    return DownloadResult.Failed(e.message ?: "IPFS download failed")
+                }
+            } else {
+                val res = client.download(url!!, Hex.encode(a.blobSha256), part, a.blobSize) { bytes -> progress.update { it + (messageId to bytes) } }
+                if (res is BlossomDownload.Failed) {
+                    store.updateAttachment(a.copy(phase = if (res.retryable) AttachmentPhase.REMOTE else AttachmentPhase.FAILED))
+                    return DownloadResult.Failed(res.reason)
+                }
             }
 
             val dir = File(inbox, messageId)
@@ -204,22 +227,32 @@ class TransferEngine(
             if (attachment.phase == org.relyra.app.core.messaging.GroupAttachmentPhase.READY &&
                 attachment.localPath?.let { File(it).isFile } == true
             ) return DownloadResult.Done
-            val url = BlossomUrl.normalize(attachment.serverUrl, allowPrivate = false)
+            val isIpfs = attachment.serverUrl.startsWith("ipfs://")
+            val ipfsCid = if (isIpfs) attachment.serverUrl.removePrefix("ipfs://") else null
+            val url = if (isIpfs) null else BlossomUrl.normalize(attachment.serverUrl, allowPrivate = false)
                 ?: return DownloadResult.Failed("the file server address is not allowed")
+            if (isIpfs && !Regex("b[a-z2-7]{20,120}").matches(ipfsCid.orEmpty())) return DownloadResult.Failed("invalid IPFS CID")
             update(attachment.copy(phase = org.relyra.app.core.messaging.GroupAttachmentPhase.DOWNLOADING))
             val groupInbox = File(inbox, "groups")
             groupInbox.mkdirs()
             val part = File(groupInbox, "${attachment.messageId}.part")
-            val result = client.download(url, Hex.encode(attachment.blobSha256), part, attachment.blobSize) { bytes ->
-                progress.update { it + (progressId to bytes) }
-            }
-            if (result is BlossomDownload.Failed) {
-                update(attachment.copy(phase = if (result.retryable) {
-                    org.relyra.app.core.messaging.GroupAttachmentPhase.REMOTE
-                } else {
-                    org.relyra.app.core.messaging.GroupAttachmentPhase.FAILED
-                }))
-                return DownloadResult.Failed(result.reason)
+            if (isIpfs) {
+                try {
+                    val endpoint = ipfs?.endpoint?.value.orEmpty()
+                    require(endpoint.isNotBlank()) { "Configure the Kubo HTTPS endpoint to download this group attachment" }
+                    ipfs.fetchCiphertext(endpoint, ipfsCid!!, part)
+                    require(part.length() == attachment.blobSize && java.security.MessageDigest.isEqual(FileCrypto.sha256(part), attachment.blobSha256)) { "IPFS group ciphertext hash mismatch" }
+                } catch (e: Exception) {
+                    part.delete()
+                    update(attachment.copy(phase = org.relyra.app.core.messaging.GroupAttachmentPhase.REMOTE))
+                    return DownloadResult.Failed(e.message ?: "IPFS group download failed")
+                }
+            } else {
+                val result = client.download(url!!, Hex.encode(attachment.blobSha256), part, attachment.blobSize) { bytes -> progress.update { it + (progressId to bytes) } }
+                if (result is BlossomDownload.Failed) {
+                    update(attachment.copy(phase = if (result.retryable) org.relyra.app.core.messaging.GroupAttachmentPhase.REMOTE else org.relyra.app.core.messaging.GroupAttachmentPhase.FAILED))
+                    return DownloadResult.Failed(result.reason)
+                }
             }
             val targetDir = File(groupInbox, attachment.messageId)
             targetDir.mkdirs()

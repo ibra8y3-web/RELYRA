@@ -115,7 +115,7 @@ class AppContainer(context: Context) {
     }
     val plugins by lazy { org.relyra.app.core.integrations.PluginRuntime(appContext) }
     val matrix by lazy { org.relyra.app.core.integrations.MatrixClient() }
-    val ipfs by lazy { org.relyra.app.core.integrations.IpfsEncryptedStore() }
+    val ipfs by lazy { org.relyra.app.core.integrations.IpfsEncryptedStore(appContext) }
     val xmpp by lazy { org.relyra.app.core.integrations.XmppOmemoClient(appContext) }
 
     val network by lazy { NetworkManager(appContext) }
@@ -200,7 +200,7 @@ class AppContainer(context: Context) {
         )
     }
     val blossom by lazy { BlossomServers(appContext) }
-    val transfers: TransferEngine by lazy { TransferEngine(appContext, blossom, messages, { identities.nostrSecret() }) }
+    val transfers: TransferEngine by lazy { TransferEngine(appContext, blossom, messages, { identities.nostrSecret() }, ipfs = ipfs) }
     val router by lazy { AdaptiveRouter { listOf(internetP2p, wifiDirect, bluetooth, nearby, nostr, mesh) } }
     val transports: List<Transport> by lazy { listOf(router) }
 

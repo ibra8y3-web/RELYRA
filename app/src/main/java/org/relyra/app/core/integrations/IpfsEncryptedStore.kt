@@ -1,6 +1,10 @@
 package org.relyra.app.core.integrations
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import androidx.core.content.edit
+import android.content.Context
 import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.MultipartBody
 import okhttp3.OkHttpClient
@@ -13,8 +17,19 @@ import java.net.URI
 import java.util.concurrent.TimeUnit
 
 /** Optional Kubo RPC storage. Only RELYRA encrypted .enc blobs are accepted. */
-class IpfsEncryptedStore(private val http:OkHttpClient=OkHttpClient.Builder().callTimeout(90,TimeUnit.SECONDS).build()) {
- suspend fun addCiphertext(api:String,file:File):String=withContext(Dispatchers.IO) {
+class IpfsEncryptedStore(
+ private val context: Context,
+ private val http:OkHttpClient=OkHttpClient.Builder().callTimeout(90,TimeUnit.SECONDS).build()
+) {
+ private val prefs = context.applicationContext.getSharedPreferences("relyra_ipfs", Context.MODE_PRIVATE)
+ private val _endpoint = MutableStateFlow(prefs.getString("kubo_https_endpoint", "").orEmpty())
+ val endpoint: StateFlow<String> = _endpoint
+ fun configureEndpoint(input: String) {
+  val normalized = if (input.isBlank()) "" else normalize(input)
+  prefs.edit { putString("kubo_https_endpoint", normalized) }
+  _endpoint.value = normalized
+ }
+ suspend fun addCiphertext(api:String = endpoint.value,file:File):String=withContext(Dispatchers.IO) {
   val base=normalize(api); require(file.isFile && file.extension=="enc" && file.length() in 1..MAX_BYTES)
   val body=MultipartBody.Builder().setType(MultipartBody.FORM)
    .addFormDataPart("file",file.name,file.asRequestBody("application/octet-stream".toMediaType())).build()
@@ -25,7 +40,7 @@ class IpfsEncryptedStore(private val http:OkHttpClient=OkHttpClient.Builder().ca
    val cid=JSONObject(last).optString("Hash"); require(CID.matches(cid)){"Invalid CIDv1 from Kubo"}; cid
   }
  }
- suspend fun fetchCiphertext(api:String,cid:String,target:File,maxBytes:Long=MAX_BYTES):File=withContext(Dispatchers.IO) {
+ suspend fun fetchCiphertext(api:String = endpoint.value,cid:String,target:File,maxBytes:Long=MAX_BYTES):File=withContext(Dispatchers.IO) {
   require(CID.matches(cid) && maxBytes in 1..MAX_BYTES)
   val req=Request.Builder().url(normalize(api)+"/api/v0/cat?arg="+cid).post(ByteArray(0).toRequestBody()).build()
   http.newCall(req).execute().use { res ->
@@ -42,7 +57,7 @@ class IpfsEncryptedStore(private val http:OkHttpClient=OkHttpClient.Builder().ca
    } catch(t:Throwable){temp.delete();throw t}
   }
  }
- suspend fun pin(api:String,cid:String)=withContext(Dispatchers.IO) {
+ suspend fun pin(api:String = endpoint.value,cid:String)=withContext(Dispatchers.IO) {
   require(CID.matches(cid))
   val req=Request.Builder().url(normalize(api)+"/api/v0/pin/add?arg="+cid).post(ByteArray(0).toRequestBody()).build()
   http.newCall(req).execute().use{if(!it.isSuccessful)throw IOException("IPFS pin HTTP "+it.code)}
