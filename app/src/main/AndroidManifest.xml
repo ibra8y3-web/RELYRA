@@ -61,6 +61,11 @@
         </activity>
 
         <service
+            android:name=".core.integrations.PluginSandboxService"
+            android:exported="false"
+            android:isolatedProcess="true" />
+
+        <service
             android:name=".background.CallForegroundService"
             android:exported="false"
             android:foregroundServiceType="microphone|camera" />
