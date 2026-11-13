@@ -265,7 +265,7 @@ fun IntegrationsScreen(vm: MainViewModel) {
 
 
         SectionCard("Matrix") {
-            Text("Matrix Client-Server API. E2EE is not enabled in this adapter; do not use plaintext send for private conversations.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            Text("Matrix Rust SDK handles Olm/Megolm, device keys and encrypted room events. RELYRA blocks sending to rooms without E2EE enabled.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(matrixServer, { matrixServer = it }, label = { Text("Homeserver HTTPS URL") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(matrixUser, { matrixUser = it }, label = { Text("User ID") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(matrixPassword, { matrixPassword = it }, label = { Text("Password") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
