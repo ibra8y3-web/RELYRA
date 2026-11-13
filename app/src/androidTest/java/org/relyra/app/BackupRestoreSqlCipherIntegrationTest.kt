@@ -53,7 +53,8 @@ class BackupRestoreSqlCipherIntegrationTest {
                 AppDatabase.MIGRATION_9_10, AppDatabase.MIGRATION_10_11,
                 AppDatabase.MIGRATION_11_12, AppDatabase.MIGRATION_12_13,
                 AppDatabase.MIGRATION_13_14, AppDatabase.MIGRATION_14_15,
-                AppDatabase.MIGRATION_15_16,
+                AppDatabase.MIGRATION_15_16, AppDatabase.MIGRATION_16_17,
+                AppDatabase.MIGRATION_17_18,
             )
             migrations.forEachIndexed { index, migration ->
                 db.beginTransaction()
@@ -65,7 +66,7 @@ class BackupRestoreSqlCipherIntegrationTest {
                     db.endTransaction()
                 }
             }
-            assertEquals(16, db.version)
+            assertEquals(18, db.version)
             val tables = mutableSetOf<String>()
             db.query("SELECT name FROM sqlite_master WHERE type='table'").use { cursor ->
                 while (cursor.moveToNext()) tables += cursor.getString(0)
@@ -74,7 +75,7 @@ class BackupRestoreSqlCipherIntegrationTest {
                 "identity", "contacts", "security_events", "messages", "processed_ids",
                 "attachments", "ratchet_sessions", "chat_groups", "group_members",
                 "group_messages", "group_outbox", "chat_prefs", "vault_items", "prekeys",
-                "encrypted_packets", "group_attachments", "communities",
+                "encrypted_packets", "group_attachments", "communities", "trusted_devices",
             )))
             val contactColumns = mutableSetOf<String>()
             db.query("PRAGMA table_info(contacts)").use { cursor ->
@@ -94,6 +95,18 @@ class BackupRestoreSqlCipherIntegrationTest {
                 while (cursor.moveToNext()) communityIndexes += cursor.getString(1)
             }
             assertTrue("index_communities_updatedAt" in communityIndexes)
+            val deviceIndexes = mutableSetOf<String>()
+            db.query("PRAGMA index_list(trusted_devices)").use { cursor ->
+                while (cursor.moveToNext()) deviceIndexes += cursor.getString(1)
+            }
+            assertTrue(deviceIndexes.containsAll(setOf(
+                "index_trusted_devices_accountId", "index_trusted_devices_status",
+            )))
+            val chatPrefColumns = mutableSetOf<String>()
+            db.query("PRAGMA table_info(chat_prefs)").use { cursor ->
+                while (cursor.moveToNext()) chatPrefColumns += cursor.getString(1)
+            }
+            assertTrue("updatedAt" in chatPrefColumns)
         } finally {
             helper.close()
             context.deleteDatabase(name)
