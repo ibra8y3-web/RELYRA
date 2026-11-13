@@ -219,7 +219,7 @@ fun IntegrationsScreen(vm: MainViewModel) {
                     OutlinedButton(
                         onClick = {
                             scope.launch {
-                                when (val command = vm.plugins.runActionIsolated(context, plugin.id, action.id)) {
+                                when (val command = runCatching { vm.plugins.runActionIsolated(context, plugin.id, action.id) }.getOrNull()) {
                                     is PluginCommand.Notice -> snackbar.showSnackbar("${command.title}: ${command.text}")
                                     is PluginCommand.CopyText -> {
                                         clipboard.setText(AnnotatedString(command.text))
