@@ -767,8 +767,14 @@ class GroupEngine(
                 if (!sender.mlsJoined || sender.role != GroupRole.OWNER) return
                 val engine = mls ?: return
                 if (store.hasControlMessage(env.messageId)) { ack(me, env.from, env.messageId); return }
+                // Refuse to apply a Commit when Room and the native OpenMLS tree already disagree.
+                // OpenMLS itself enforces the base epoch; this guard prevents an out-of-sync local
+                // snapshot from silently accepting a competing or skipped epoch.
+                val nativeEpoch = runCatching { engine.epoch(env.groupId) }.getOrNull() ?: return
+                if (nativeEpoch != group.mlsEpoch) return
                 val result = engine.processMessage(env.payload)
-                if (result.groupId != env.groupId || result.kind !in setOf("commit", "own_commit")) return
+                if (result.groupId != env.groupId || result.kind != "commit" ||
+                    result.epoch != group.mlsEpoch + 1L) return
                 store.putGroup(group.copy(mlsEpoch = result.epoch), members)
                 store.recordControlMessage(env.messageId, clock())
                 ack(me, env.from, env.messageId)
