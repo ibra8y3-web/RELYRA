@@ -2,7 +2,7 @@
 name = "relyra-mls-native"
 version = "0.1.0"
 edition = "2021"
-rust-version = "1.91"
+rust-version = "1.94"
 publish = false
 
 [lib]
@@ -12,12 +12,12 @@ crate-type = ["cdylib", "rlib"]
 [dependencies]
 base64 = "0.22.1"
 jni = "0.21.1"
-openmls = "=0.9.2"
-openmls_basic_credential = "=0.6.0"
-openmls_rust_crypto = "=0.6.0"
-openmls_sqlite_storage = "=0.3.0"
-openmls_traits = "=0.6.0"
-rusqlite = { version = "=0.37.0", features = ["bundled-sqlcipher-vendored-openssl"] }
+openmls = { git = "https://github.com/openmls/openmls", rev = "6100df3fb1d8c3eeab53e349fcbd621f98c44fe2" }
+openmls_basic_credential = { git = "https://github.com/openmls/openmls", rev = "6100df3fb1d8c3eeab53e349fcbd621f98c44fe2" }
+openmls_rust_crypto = { git = "https://github.com/openmls/openmls", rev = "6100df3fb1d8c3eeab53e349fcbd621f98c44fe2" }
+openmls_sqlite_storage = { path = "vendor/openmls_sqlite_storage" }
+openmls_traits = { git = "https://github.com/openmls/openmls", rev = "6100df3fb1d8c3eeab53e349fcbd621f98c44fe2" }
+rusqlite = { version = "=0.42.0", features = ["bundled-sqlcipher-vendored-openssl"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
 thiserror = "2.0"
@@ -26,3 +26,6 @@ zeroize = "1.8"
 
 [dev-dependencies]
 tempfile = "3.23"
+
+[patch.crates-io]
+refinery-core = { path = "vendor/refinery_core" }

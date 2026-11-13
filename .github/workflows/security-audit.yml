@@ -47,12 +47,13 @@ jobs:
           cache-dependency-path: services/discovery/go.mod
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          toolchain: stable
+          toolchain: 1.94.0
       - name: Resolve and lock all dependency graphs
         run: |
           set -euo pipefail
           (cd services/discovery && go mod tidy)
           cargo generate-lockfile --manifest-path native/mls/Cargo.toml
+          cargo update --manifest-path native/mls/Cargo.toml -p crypto-bigint --precise 0.7.6
           cargo metadata --locked --manifest-path native/mls/Cargo.toml --format-version 1 > "$RUNNER_TEMP/relyra-cargo-metadata.json"
           gradle --no-daemon --no-parallel --write-locks --write-verification-metadata sha256 cyclonedxBom :app:generateLicenseReport
       - name: Install pinned Syft and verify checksum
@@ -79,15 +80,18 @@ jobs:
         id: govulncheck
         continue-on-error: true
         run: |
-          set -uo pipefail
+          set -euo pipefail
           mkdir -p security-reports/vulnerabilities
-          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0 2>&1 | tee security-reports/vulnerabilities/govulncheck-install.log
-          install_status=${PIPESTATUS[0]}
-          if [ "$install_status" -ne 0 ]; then
-            exit "$install_status"
-          fi
-          (cd services/discovery && "$(go env GOPATH)/bin/govulncheck" ./...) 2>&1 | tee security-reports/vulnerabilities/govulncheck.log
-          exit "${PIPESTATUS[0]}"
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0 > security-reports/vulnerabilities/govulncheck-install.log 2>&1
+          (cd services/discovery && "$(go env GOPATH)/bin/govulncheck" -json ./...) \
+            > security-reports/vulnerabilities/govulncheck.json \
+            2> security-reports/vulnerabilities/govulncheck.log
+          (cd services/discovery && go list -m -json github.com/libp2p/go-libp2p-kad-dht) \
+            > security-reports/vulnerabilities/kad-dht-module.json
+          python3 scripts/audit_go_vulns.py \
+            --govulncheck-json security-reports/vulnerabilities/govulncheck.json \
+            --dht-module-json security-reports/vulnerabilities/kad-dht-module.json \
+            --output security-reports/vulnerabilities/go-vuln-triage.md
 
       - name: Run Rust dependency vulnerability audit
         id: cargo-audit
@@ -167,7 +171,7 @@ jobs:
           cache-disabled: true
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
-          toolchain: stable
+          toolchain: 1.94.0
           targets: aarch64-linux-android,x86_64-linux-android
       - name: Install Android SDK components
         run: |

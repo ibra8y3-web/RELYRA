@@ -19,13 +19,16 @@ The inventory distinguishes:
 
 ## 3. Vulnerability and workflow checks
 
-- govulncheck analyzes reachable Go vulnerabilities.
+- The discovery service runs on Go 1.26.11 with `golang.org/x/net` 0.60.0.
+- govulncheck emits machine-readable findings. `scripts/audit_go_vulns.py` rejects unknown findings and applies a version-scoped VEX review to GO-2024-3218. The Go database currently reports all module versions with no known fix, while the reviewed GitHub advisory identifies the affected range as `<=0.20.0`; RELYRA resolves `v0.43.0`. The script checks the actual module version on every audit and fails if it is in the affected range.
+- The MLS dependency graph is pinned to OpenMLS Git revision `6100df3fb1d8c3eeab53e349fcbd621f98c44fe2`. It upgrades `libcrux-kem` to 0.0.10, `crypto-bigint` to 0.7.6, and uses `rusqlite 0.42.0 / libsqlite3-sys 0.40.0` with SQLCipher 4.20.0 and SQLite 3.54.1 bundled. This addresses the two Libcrux panics, the constant-time arithmetic advisory and the SQLite CVE without dropping SQLCipher.
+- `proc-macro-error2` remains an unmaintained RustSec notice introduced by `hax-lib-macros` in the Libcrux toolchain; RustSec has no fixed release. It is not itself a reported vulnerability and remains visible rather than being silently suppressed.
 - cargo audit checks the Rust dependency graph against RustSec.
 - zizmor analyzes GitHub Actions workflow definitions for risky or exploitable patterns.
 - Build workflow Actions are pinned to full commit SHAs and checkout credential persistence is disabled.
 - Dependabot monitors Gradle, GitHub Actions, Go Modules and Cargo.
 
-A clean automated result means no finding blocked the tool under its database and rules at scan time; it does not prove the absence of every possible vulnerability.
+A clean automated result means no finding blocked the tool after fixes or a documented, version-scoped applicability review. It does not prove the absence of every possible vulnerability. DHT Sybil/censorship risk remains a separate architectural and multi-operator deployment concern.
 
 ## 4. Dependency locks and checksum verification
 
