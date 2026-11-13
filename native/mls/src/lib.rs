@@ -963,6 +963,59 @@ mod tests {
     }
 
     #[test]
+    fn duplicate_and_competing_epoch_commits_are_rejected_without_advancing_receiver() {
+        let temp = tempdir().unwrap();
+        let owner_path = temp.path().join("owner.db");
+        let bob_path = temp.path().join("bob.db");
+        let carol_path = temp.path().join("carol.db");
+        let fork_path = temp.path().join("owner-fork.db");
+        let owner_key = [0xa1; 32];
+        let bob_key = [0xa2; 32];
+        let carol_key = [0xa3; 32];
+        let gid = b"rfc9420-competing-epoch-commits";
+        let owner_credential = test_credential("alice", "00000000-0000-4000-8000-000000000051");
+        let bob_credential = test_credential("bob", "00000000-0000-4000-8000-000000000052");
+        let carol_credential = test_credential("carol", "00000000-0000-4000-8000-000000000053");
+
+        {
+            let mut owner = database(owner_path.to_str().unwrap(), &owner_key);
+            let mut bob = database(bob_path.to_str().unwrap(), &bob_key);
+            let mut carol = database(carol_path.to_str().unwrap(), &carol_key);
+            create_group(&mut owner, gid, &owner_credential).unwrap();
+            let bob_package = generate_key_package(&mut bob, &bob_credential).unwrap();
+            let carol_package = generate_key_package(&mut carol, &carol_credential).unwrap();
+            let joined = add_members(&mut owner, gid, &[bob_package, carol_package]).unwrap();
+            let welcome = BASE64.decode(joined.welcome.unwrap()).unwrap();
+            join_group(&mut bob, gid, &welcome, &bob_credential).unwrap();
+            join_group(&mut carol, gid, &welcome, &carol_credential).unwrap();
+            assert_eq!(epoch(&mut owner, gid).unwrap(), 1);
+            assert_eq!(epoch(&mut bob, gid).unwrap(), 1);
+            assert_eq!(epoch(&mut carol, gid).unwrap(), 1);
+        }
+
+        // Two copies of the same owner state create different valid commits at the same base epoch.
+        std::fs::copy(&owner_path, &fork_path).unwrap();
+        let mut owner_a = database(owner_path.to_str().unwrap(), &owner_key);
+        let mut owner_b = database(fork_path.to_str().unwrap(), &owner_key);
+        let commit_a = remove_member(&mut owner_a, gid, &carol_credential).unwrap();
+        let commit_b = remove_member(&mut owner_b, gid, &bob_credential).unwrap();
+        assert_ne!(commit_a.commit, commit_b.commit);
+
+        let mut receiver = database(bob_path.to_str().unwrap(), &bob_key);
+        let first_commit = BASE64.decode(commit_a.commit).unwrap();
+        let competing_commit = BASE64.decode(commit_b.commit).unwrap();
+        assert_eq!(process_message(&mut receiver, &first_commit).unwrap().kind, "commit");
+        assert_eq!(epoch(&mut receiver, gid).unwrap(), 2);
+
+        // The exact same authenticated Commit is a replay; a different Commit from the
+        // same base epoch is a fork. Neither may advance or rewrite the receiver's state.
+        assert!(process_message(&mut receiver, &first_commit).is_err());
+        assert!(process_message(&mut receiver, &competing_commit).is_err());
+        assert_eq!(epoch(&mut receiver, gid).unwrap(), 2);
+        assert_eq!(members(&mut receiver, gid).unwrap().len(), 2);
+    }
+
+    #[test]
     fn staged_commit_bundle_survives_restart_and_merges_once() {
         let temp = tempdir().unwrap();
         let owner_path = temp.path().join("owner.db");
