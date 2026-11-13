@@ -90,6 +90,14 @@ class XmppOmemoClient(context: Context) {
         requireManager().distrustOmemoIdentity(device, fingerprint)
     }
 
+    /** Applies a trust decision only to a currently advertised device and exact fingerprint. */
+    fun setDeviceTrust(jid: String, fingerprintText: String, trusted: Boolean) {
+        val match = knownDevices(jid).firstOrNull { it.fingerprint == fingerprintText }
+            ?: error("OMEMO fingerprint is no longer advertised by this contact")
+        if (trusted) trustFingerprint(match.device, match.rawFingerprint)
+        else distrustFingerprint(match.device, match.rawFingerprint)
+    }
+
     @Synchronized
     fun sendEncrypted(recipient: String, plaintext: String) {
         require(plaintext.isNotBlank() && plaintext.length <= 65536)
