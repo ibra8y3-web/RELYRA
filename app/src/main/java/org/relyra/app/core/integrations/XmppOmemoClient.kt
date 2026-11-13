@@ -77,7 +77,7 @@ class XmppOmemoClient(context: Context) {
         omemo.requestDeviceListUpdateFor(bare)
         return omemo.getDevicesOf(bare).map { device ->
             val fingerprint = omemo.getFingerprint(device)
-            XmppOmemoFingerprint(device, fingerprint.toString(), omemo.isTrustedOmemoIdentity(device, fingerprint))
+            XmppOmemoFingerprint(device, fingerprint.toString(), omemo.isTrustedOmemoIdentity(device, fingerprint), fingerprint)
         }
     }
 
@@ -113,4 +113,4 @@ class XmppOmemoClient(context: Context) {
     companion object { private object SmackOmemoSetup { @Volatile var initialized = false } }
 }
 
-data class XmppOmemoFingerprint(val device: OmemoDevice, val fingerprint: String, val trusted: Boolean)
+data class XmppOmemoFingerprint(val device: OmemoDevice, val fingerprint: String, val trusted: Boolean, internal val rawFingerprint: OmemoFingerprint)

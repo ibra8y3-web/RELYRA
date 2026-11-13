@@ -76,7 +76,7 @@ fun IntegrationsScreen(vm: MainViewModel) {
     var xmppPassword by remember { mutableStateOf("") }
     var xmppRecipient by remember { mutableStateOf("") }
     var xmppText by remember { mutableStateOf("") }
-    var xmppStatus by remember { mutableStateOf("Disconnected") }
+    var xmppStatus by remember { mutableStateOf("Disconnected") }\n    var xmppDeviceJid by remember { mutableStateOf("") }\n    var xmppFingerprints by remember { mutableStateOf<List<org.relyra.app.core.integrations.XmppOmemoFingerprint>>(emptyList()) }
     var ipfsApi by remember { mutableStateOf("") }
     var ipfsCid by remember { mutableStateOf("") }
     var ipfsStatus by remember { mutableStateOf("") }
@@ -291,6 +291,18 @@ fun IntegrationsScreen(vm: MainViewModel) {
             OutlinedTextField(xmppRecipient, { xmppRecipient = it }, label = { Text("Recipient JID") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(xmppText, { xmppText = it }, label = { Text("OMEMO message") }, modifier = Modifier.fillMaxWidth())
             Button(onClick = { scope.launch { runCatching { withContext(Dispatchers.IO) { vm.xmpp.sendEncrypted(xmppRecipient, xmppText) } }.onSuccess { xmppStatus = "Encrypted message sent"; xmppText = "" }.onFailure { xmppStatus = it.message ?: "OMEMO send failed" } } }, enabled = xmppRecipient.isNotBlank() && xmppText.isNotBlank()) { Text("Send encrypted") }
+            OutlinedTextField(xmppDeviceJid, { xmppDeviceJid = it }, label = { Text("Contact JID for device verification") }, modifier = Modifier.fillMaxWidth())
+            Button(onClick = { scope.launch { runCatching { withContext(Dispatchers.IO) { vm.xmpp.knownDevices(xmppDeviceJid) } }.onSuccess { xmppFingerprints = it; xmppStatus = "Loaded ${it.size} OMEMO devices" }.onFailure { xmppStatus = it.message ?: "Device lookup failed" } } }, enabled = xmppDeviceJid.isNotBlank()) { Text("Refresh device fingerprints") }
+            xmppFingerprints.forEach { device ->
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text("Device ${device.device} · ${device.fingerprint}", style = MaterialTheme.typography.bodySmall)
+                    Text(if (device.trusted) "Trusted" else "Not trusted", color = if (device.trusted) MaterialTheme.colorScheme.tertiary else MaterialTheme.colorScheme.error)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        OutlinedButton(onClick = { scope.launch { runCatching { withContext(Dispatchers.IO) { vm.xmpp.setDeviceTrust(xmppDeviceJid, device.fingerprint, true) }; vm.xmpp.knownDevices(xmppDeviceJid) }.onSuccess { xmppFingerprints = it }.onFailure { xmppStatus = it.message ?: "Trust failed" } } }) { Text("Trust after verification") }
+                        OutlinedButton(onClick = { scope.launch { runCatching { withContext(Dispatchers.IO) { vm.xmpp.setDeviceTrust(xmppDeviceJid, device.fingerprint, false) }; vm.xmpp.knownDevices(xmppDeviceJid) }.onSuccess { xmppFingerprints = it }.onFailure { xmppStatus = it.message ?: "Distrust failed" } } }) { Text("Distrust") }
+                    }
+                }
+            }
             Text("Trust fingerprints must be verified out-of-band. OMEMO key storage is not yet Keystore-backed.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             Text(xmppStatus, style = MaterialTheme.typography.bodySmall)
         }
