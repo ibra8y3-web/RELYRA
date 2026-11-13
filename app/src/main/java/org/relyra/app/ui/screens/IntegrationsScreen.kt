@@ -2,7 +2,6 @@ package org.relyra.app.ui.screens
 
 import android.content.Intent
 import android.net.Uri
-import android.provider.OpenableColumns
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.layout.Arrangement
@@ -97,24 +96,6 @@ fun IntegrationsScreen(vm: MainViewModel) {
         }
     }
 
-    val ipfsPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
-        if (uri != null) scope.launch {
-            ipfsStatus = "Uploading encrypted file…"
-            runCatching {
-                withContext(Dispatchers.IO) {
-                    val displayName = context.contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
-                        if (cursor.moveToFirst()) cursor.getString(0).orEmpty() else ""
-                    }.orEmpty()
-                    require(displayName.endsWith(".enc")) { "Only RELYRA .enc ciphertext files can be uploaded" }
-                    val input = context.contentResolver.openInputStream(uri) ?: error("Cannot open selected file")
-                    val temp = File(context.cacheDir, "ipfs-${System.nanoTime()}.enc")
-                    input.use { source -> temp.outputStream().use { source.copyTo(it) } }
-                    try { vm.ipfs.addCiphertext(ipfsApi, temp) } finally { temp.delete() }
-                }
-            }.onSuccess { ipfsCid = it; ipfsStatus = "Pinned ciphertext: $it" }
-             .onFailure { ipfsStatus = it.message ?: "IPFS upload failed" }
-        }
-    }
     val ipfsSavePicker = rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("application/octet-stream")) { uri ->
         if (uri != null) scope.launch {
             ipfsStatus = "Downloading encrypted object…"
@@ -320,13 +301,12 @@ fun IntegrationsScreen(vm: MainViewModel) {
         }
 
         SectionCard("IPFS — encrypted attachments") {
-            Text("Kubo RPC over HTTPS only. Select a RELYRA .enc ciphertext file; plaintext files are rejected.", style = MaterialTheme.typography.bodySmall)
+            Text("RELYRA encrypts outgoing attachments before Kubo upload. Incoming IPFS attachments are hash-verified before decryption.", style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(ipfsApi, { ipfsApi = it }, label = { Text("Kubo HTTPS API URL") }, modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 Button(onClick = { runCatching { vm.ipfs.configureEndpoint(ipfsApi); ipfsStatus = "Kubo endpoint saved; new attachments will use IPFS" }.onFailure { ipfsStatus = it.message ?: "Invalid endpoint" } }, enabled = ipfsApi.startsWith("https://")) { Text("Save endpoint") }
                 OutlinedButton(onClick = { vm.ipfs.configureEndpoint(""); ipfsApi = ""; ipfsStatus = "IPFS disabled; Blossom remains active" }) { Text("Disable IPFS") }
             }
-            Button(onClick = { ipfsPicker.launch(arrayOf("application/octet-stream", "*/*")) }, enabled = ipfsApi.startsWith("https://")) { Text("Upload encrypted .enc file") }
             OutlinedTextField(ipfsCid, { ipfsCid = it }, label = { Text("CIDv1") }, modifier = Modifier.fillMaxWidth())
             Button(onClick = { ipfsSavePicker.launch("${ipfsCid}.enc") }, enabled = ipfsApi.startsWith("https://") && ipfsCid.startsWith("b")) { Text("Download ciphertext") }
             Text(ipfsStatus, style = MaterialTheme.typography.bodySmall)
