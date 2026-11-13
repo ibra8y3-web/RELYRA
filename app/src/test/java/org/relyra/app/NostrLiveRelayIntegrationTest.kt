@@ -41,8 +41,8 @@ class NostrLiveRelayIntegrationTest {
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(0, TimeUnit.MILLISECONDS)
             .build()
-        val alice = NostrPool(http, aliceScope, { System.currentTimeMillis() / 1000 - 30 }) { }
-        val bob = NostrPool(http, bobScope, { System.currentTimeMillis() / 1000 - 30 }) {
+        val alice = NostrPool(http, aliceScope, { System.currentTimeMillis() / 1000 - 30 }, onEvent = { })
+        val bob = NostrPool(http, bobScope, { System.currentTimeMillis() / 1000 - 30 }, onEvent = {
             if (it.pubkey == alicePub && it.tags.any { tag -> tag.size >= 2 && tag[0] == "p" && tag[1] == bobPub }) {
                 received.complete(it)
             }

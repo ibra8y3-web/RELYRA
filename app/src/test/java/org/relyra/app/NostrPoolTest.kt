@@ -52,7 +52,7 @@ class NostrPoolTest {
         }
         server.enqueue(MockResponse().withWebSocketUpgrade(listener))
         val http = OkHttpClient()
-        val pool = NostrPool(http, scope, { 1_700_000_000L }) { received.complete(it) }
+        val pool = NostrPool(http, scope, { 1_700_000_000L }, onEvent = { received.complete(it) })
         try {
             val ws = server.url("/").toString().replaceFirst("http", "ws")
             pool.configure(secret, setOf(ws))
@@ -86,7 +86,7 @@ class NostrPoolTest {
         }
         server.enqueue(MockResponse().withWebSocketUpgrade(listener))
         val http = OkHttpClient()
-        val pool = NostrPool(http, scope, { 1_700_000_000L }) { }
+        val pool = NostrPool(http, scope, { 1_700_000_000L }, onEvent = { })
         try {
             pool.configure(secret, setOf(server.url("/").toString().replaceFirst("http", "ws")))
             withTimeout(5_000) { subscribed.await() }
