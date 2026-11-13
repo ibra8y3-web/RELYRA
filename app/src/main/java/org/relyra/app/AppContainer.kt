@@ -116,6 +116,7 @@ class AppContainer(context: Context) {
     val plugins by lazy { org.relyra.app.core.integrations.PluginRuntime(appContext) }
     val matrix by lazy { org.relyra.app.core.integrations.MatrixClient() }
     val ipfs by lazy { org.relyra.app.core.integrations.IpfsEncryptedStore() }
+    val xmpp by lazy { org.relyra.app.core.integrations.XmppOmemoClient(appContext) }
 
     val network by lazy { NetworkManager(appContext) }
     val discovery by lazy {

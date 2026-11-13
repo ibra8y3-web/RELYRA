@@ -112,6 +112,14 @@ dependencies {
     implementation(libs.tink)
     implementation(libs.okhttp)
     implementation(libs.webrtc)
+
+    // XMPP + XEP-0384 OMEMO (Signal provider is GPL-3.0; preserve its notices in distributions).
+    implementation("org.igniterealtime.smack:smack-android:4.5.0")
+    implementation("org.igniterealtime.smack:smack-tcp:4.5.0")
+    implementation("org.igniterealtime.smack:smack-im:4.5.0")
+    implementation("org.igniterealtime.smack:smack-extensions:4.5.0")
+    implementation("org.igniterealtime.smack:smack-omemo:4.5.0")
+    implementation("org.igniterealtime.smack:smack-omemo-signal:4.5.0")
     implementation(libs.secp256k1)
     implementation(libs.secp256k1.android)
     implementation(libs.zxing.core)
