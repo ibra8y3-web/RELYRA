@@ -1,9 +1,24 @@
 package org.relyra.app.core.integrations
 
 import android.content.ContentResolver
+import android.content.Context
+import android.content.Intent
+import android.content.ComponentName
+import android.content.ServiceConnection
+import android.os.Bundle
+import android.os.Handler
+import android.os.Looper
+import android.os.IBinder
+import android.os.Message
+import android.os.Messenger
 import android.net.Uri
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.suspendCancellableCoroutine
+import java.util.concurrent.atomic.AtomicBoolean
+import kotlin.coroutines.resume
 import org.json.JSONArray
 import org.json.JSONObject
 import org.relyra.app.core.tools.BrowserUrlPolicy
@@ -153,6 +168,71 @@ class PluginRuntime(context: android.content.Context) {
             else -> null
         }
         recordEvent(pluginId, actionId, if (command == null) "blocked_permission_or_invalid" else "executed")
+        return command
+    }
+
+    suspend fun runActionIsolated(context: Context, pluginId: String, actionId: String): PluginCommand? {
+        val plugin = _installed.value.firstOrNull { it.id == pluginId } ?: return null
+        if (!plugin.enabled) {
+            recordEvent(pluginId, actionId, "blocked_disabled")
+            return null
+        }
+        val action = plugin.actions.firstOrNull { it.id == actionId } ?: return null
+        val appContext = context.applicationContext
+        val command = withContext(Dispatchers.Main.immediate) {
+            withTimeout(10_000L) {
+                suspendCancellableCoroutine<PluginCommand?> { continuation ->
+                    val bound = AtomicBoolean(false)
+                    val finished = AtomicBoolean(false)
+                    lateinit var connection: ServiceConnection
+                    fun finish(value: PluginCommand?) {
+                        if (!finished.compareAndSet(false, true)) return
+                        if (bound.get()) runCatching { appContext.unbindService(connection) }
+                        if (continuation.isActive) continuation.resume(value)
+                    }
+                    val reply = Messenger(Handler(Looper.getMainLooper()) { response ->
+                        val data = response.data ?: Bundle()
+                        val value = when (data.getString("kind")) {
+                            "notice" -> PluginCommand.Notice(data.getString("title").orEmpty(), data.getString("text").orEmpty())
+                            "copy_text" -> PluginCommand.CopyText(data.getString("text").orEmpty())
+                            "open_url" -> PluginCommand.OpenUrl(data.getString("url").orEmpty())
+                            else -> null
+                        }
+                        finish(value)
+                        true
+                    })
+                    connection = object : ServiceConnection {
+                        override fun onServiceConnected(name: ComponentName, binder: IBinder) {
+                            val request = Message.obtain(null, PluginSandboxService.MSG_EXECUTE)
+                            request.data = Bundle().apply {
+                                putString("pluginId", plugin.id)
+                                putString("actionId", action.id)
+                                putString("type", action.type)
+                                putString("title", action.title)
+                                putString("text", action.text)
+                                putString("url", action.url)
+                                putStringArrayList("permissions", ArrayList(plugin.grantedPermissions))
+                            }
+                            request.replyTo = reply
+                            runCatching { Messenger(binder).send(request) }.onFailure { finish(null) }
+                        }
+                        override fun onServiceDisconnected(name: ComponentName) = finish(null)
+                        override fun onBindingDied(name: ComponentName) = finish(null)
+                        override fun onNullBinding(name: ComponentName) = finish(null)
+                    }
+                    val intent = Intent(appContext, PluginSandboxService::class.java)
+                    val didBind = runCatching { appContext.bindService(intent, connection, Context.BIND_AUTO_CREATE) }.getOrDefault(false)
+                    bound.set(didBind)
+                    if (!didBind) finish(null)
+                    continuation.invokeOnCancellation {
+                        if (finished.compareAndSet(false, true) && bound.get()) {
+                            runCatching { appContext.unbindService(connection) }
+                        }
+                    }
+                }
+            }
+        }
+        recordEvent(pluginId, actionId, if (command == null) "sandbox_blocked_or_failed" else "sandbox_executed")
         return command
     }
 
