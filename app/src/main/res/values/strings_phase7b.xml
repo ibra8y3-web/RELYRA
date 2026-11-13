@@ -237,4 +237,9 @@
     <string name="integrations_plugin_installed">Plugin installed. It remains disabled until you enable it.</string>
     <string name="integrations_phase7_limitations">Matrix, XMPP/OMEMO and IPFS connectors are not enabled in this build. They are not represented as active integrations.</string>
 
+
+    <string name="integrations_api_expires">Token expires: %1$s</string>
+    <string name="integrations_plugin_activity">Plugin activity log</string>
+    <string name="integrations_plugin_activity_empty">No plugin activity yet.</string>
+
 </resources>
