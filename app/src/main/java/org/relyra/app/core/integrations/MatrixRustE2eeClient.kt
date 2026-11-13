@@ -11,6 +11,7 @@ import org.matrix.rustcomponents.sdk.Client
 import org.matrix.rustcomponents.sdk.ClientBuilder
 import org.matrix.rustcomponents.sdk.Session
 import org.matrix.rustcomponents.sdk.SlidingSyncVersion
+import org.matrix.rustcomponents.sdk.SlidingSyncVersionBuilder
 import org.matrix.rustcomponents.sdk.SqliteStoreBuilder
 import org.matrix.rustcomponents.sdk.messageEventContentFromMarkdown
 import org.matrix.rustcomponents.sdk.use
@@ -72,13 +73,17 @@ class MatrixRustE2eeClient(
         val sdk = requireClient()
         if (!syncStarted) {
             sdk.syncService().withOfflineMode().finish().startSync().getOrThrow()
+            persistSession(sdk.session())
             syncStarted = true
         }
     }
 
     suspend fun joinRoom(roomIdOrAlias: String): String = withContext(Dispatchers.IO) {
         require(roomIdOrAlias.isNotBlank() && roomIdOrAlias.length <= 512)
-        requireClient().joinRoomByIdOrAlias(roomIdOrAlias, emptyList()).use { it.id() }
+        val sdk = requireClient()
+        val roomId = sdk.joinRoomByIdOrAlias(roomIdOrAlias, emptyList()).use { it.id() }
+        persistSession(sdk.session())
+        roomId
     }
 
     suspend fun sendEncrypted(roomId: String, body: String) = withContext(Dispatchers.IO) {
@@ -92,6 +97,7 @@ class MatrixRustE2eeClient(
                 }
             }
         }
+        persistSession(sdk.session())
     }
 
     fun disconnect() {
@@ -107,6 +113,8 @@ class MatrixRustE2eeClient(
         key.fill(0)
         return ClientBuilder()
             .serverNameOrHomeserverUrl(homeserver)
+            .slidingSyncVersionBuilder(SlidingSyncVersionBuilder.DISCOVER_NATIVE)
+            .handleRefreshTokens()
             .sqliteStore(store)
             .autoEnableCrossSigning(true)
             .autoEnableBackups(true)
