@@ -38,7 +38,6 @@ class MatrixRustE2eeClient(
     private val prefs = app.getSharedPreferences("relyra_matrix_session", Context.MODE_PRIVATE)
     @Volatile private var client: Client? = null
     @Volatile private var syncStarted = false
-    @Volatile private var syncService: org.matrix.rustcomponents.sdk.SyncService? = null
 
     suspend fun login(homeserver: String, username: String, password: String): String = withContext(Dispatchers.IO) {
         require(username.isNotBlank() && password.isNotEmpty())
@@ -74,9 +73,7 @@ class MatrixRustE2eeClient(
     suspend fun startSync() = withContext(Dispatchers.IO) {
         val sdk = requireClient()
         if (!syncStarted) {
-            val service = sdk.syncService().withOfflineMode().finish()
-            service.start()
-            syncService = service
+            sdk.syncService().withOfflineMode().finish().start()
             persistSession(sdk.session())
             syncStarted = true
         }
@@ -108,7 +105,6 @@ class MatrixRustE2eeClient(
 
     fun disconnect() {
         syncStarted = false
-        syncService = null
         client?.let { runCatching { it.close() } }
         client = null
     }
