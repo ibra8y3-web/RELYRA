@@ -28,6 +28,7 @@ data class LocalApiState(
     val port: Int? = null,
     val token: String? = null,
     val exposesIdentity: Boolean = false,
+    val expiresAtMillis: Long? = null,
     val error: String? = null,
 )
 
@@ -47,6 +48,7 @@ class LocalApiServer(
     @Volatile private var listener: Job? = null
     @Volatile private var bearer: String? = null
     @Volatile private var identityAllowed = false
+    @Volatile private var tokenExpiresAt = 0L
 
     private val _state = kotlinx.coroutines.flow.MutableStateFlow(LocalApiState())
     val state: kotlinx.coroutines.flow.StateFlow<LocalApiState> = _state
@@ -63,8 +65,9 @@ class LocalApiServer(
             server = socket
             bearer = token
             identityAllowed = exposeIdentity
+            tokenExpiresAt = System.currentTimeMillis() + TOKEN_LIFETIME_MS
             running.set(true)
-            _state.value = LocalApiState(true, socket.localPort, token, exposeIdentity, null)
+            _state.value = LocalApiState(true, socket.localPort, token, exposeIdentity, tokenExpiresAt, null)
             listener = scope.launch {
                 while (isActive && running.get()) {
                     try {
@@ -91,6 +94,7 @@ class LocalApiServer(
         running.set(false)
         bearer = null
         identityAllowed = false
+        tokenExpiresAt = 0L
         listener?.cancel()
         listener = null
         runCatching { server?.close() }
@@ -134,6 +138,12 @@ class LocalApiServer(
             }
             headers[line.substring(0, split).trim().lowercase(Locale.ROOT)] = line.substring(split + 1).trim()
         }
+        if (headers["transfer-encoding"] != null ||
+            headers["content-length"]?.toLongOrNull()?.let { it != 0L } == true
+        ) {
+            respond(socket.getOutputStream(), 400, errorJson("request bodies are not supported"))
+            return
+        }
         val host = headers["host"].orEmpty().lowercase(Locale.ROOT)
         if (host != "127.0.0.1:$port" && host != "localhost:$port") {
             respond(socket.getOutputStream(), 400, errorJson("invalid host"))
@@ -146,7 +156,7 @@ class LocalApiServer(
         }
         val supplied = headers["authorization"]?.takeIf { it.startsWith("Bearer ", true) }?.substring(7)
         val expected = bearer
-        if (expected == null || supplied == null ||
+        if (expected == null || System.currentTimeMillis() >= tokenExpiresAt || supplied == null ||
             !MessageDigest.isEqual(expected.toByteArray(StandardCharsets.UTF_8), supplied.toByteArray(StandardCharsets.UTF_8))
         ) {
             respond(socket.getOutputStream(), 401, errorJson("bearer token required"))
@@ -205,6 +215,10 @@ class LocalApiServer(
     }
 
     private fun errorJson(message: String) = JSONObject().put("error", message).toString()
+
+    companion object {
+        const val TOKEN_LIFETIME_MS = 15L * 60L * 1000L
+    }
 
     private fun respond(output: OutputStream, status: Int, body: String) {
         val bytes = body.toByteArray(StandardCharsets.UTF_8)
