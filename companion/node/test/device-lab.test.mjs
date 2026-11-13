@@ -46,9 +46,8 @@ test("package parser handles installed and missing app states", () => {
   assert.equal(parseAppVersion("Unable to find package org.relyra.app"), null);
 });
 
-test("device profile hashes serial and stores only a privacy-minimized subset", () => {
+test("device profile excludes serial and stores only a privacy-minimized subset", () => {
   const profile = makeDeviceProfile({
-    serial: "PRIVATE-SERIAL-123",
     properties: {
       "ro.product.manufacturer": "Samsung", "ro.product.model": "SM-A525F",
       "ro.product.device": "a52", "ro.build.version.release": "14",
@@ -61,8 +60,8 @@ test("device profile hashes serial and stores only a privacy-minimized subset", 
     featuresOutput: "feature:android.hardware.camera\nfeature:android.hardware.bluetooth_le\n",
     packageOutput: "versionCode=10 versionName=0.9.0"
   });
-  assert.equal(profile.serialHash.length, 12);
   assert.equal("serial" in profile, false);
+  assert.equal("serialHash" in profile, false);
   assert.equal(profile.manufacturer, "Samsung");
   assert.deepEqual(profile.networkTransports, ["cellular"]);
   assert.equal(JSON.stringify(profile).includes("PRIVATE-SERIAL-123"), false);

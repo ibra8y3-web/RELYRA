@@ -1,6 +1,5 @@
 import { execFile as execFileCallback } from "node:child_process";
 import { promisify } from "node:util";
-import { createHash } from "node:crypto";
 import { mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 
@@ -65,14 +64,12 @@ export function parseAppVersion(output) {
   return versionName || versionCode ? { versionName, versionCode } : null;
 }
 
-export function makeDeviceProfile({ serial, properties, batteryOutput = "", connectivityOutput = "", featuresOutput = "", packageOutput = "" }) {
-  const serialHash = createHash("sha256").update(serial).digest("hex").slice(0, 12);
+export function makeDeviceProfile({ properties, batteryOutput = "", connectivityOutput = "", featuresOutput = "", packageOutput = "" }) {
   const features = featuresOutput.split(/\r?\n/)
     .map((line) => line.trim().replace(/^feature:/, ""))
     .filter((name) => /camera|bluetooth|wifi\.direct|telephony|microphone|nfc/i.test(name))
     .sort();
   return {
-    serialHash,
     manufacturer: properties["ro.product.manufacturer"] || null,
     model: properties["ro.product.model"] || null,
     device: properties["ro.product.device"] || null,
@@ -120,7 +117,7 @@ export async function discoverPhysicalDevices({ adbPath = "adb", run = defaultRu
     ]);
     physical.push({
       serial,
-      profile: makeDeviceProfile({ serial, properties, batteryOutput, connectivityOutput, featuresOutput, packageOutput })
+      profile: makeDeviceProfile({ properties, batteryOutput, connectivityOutput, featuresOutput, packageOutput })
     });
   }
   return physical;
@@ -198,10 +195,10 @@ export async function runPhase10DeviceLab({
         timeout: 60 * 60 * 1000,
         maxBuffer: 32 * 1024 * 1024
       });
-      results.push({ serialHash: device.profile.serialHash, status: "passed", exitCode: 0 });
+      results.push({ deviceAlias: `device-${results.length + 1}`, status: "passed", exitCode: 0 });
     } catch (error) {
       results.push({
-        serialHash: device.profile.serialHash,
+        deviceAlias: `device-${results.length + 1}`,
         status: "failed",
         exitCode: Number.isInteger(error.code) ? error.code : null
       });
