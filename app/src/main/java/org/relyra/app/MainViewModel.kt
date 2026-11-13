@@ -228,6 +228,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                     val signer: ((ByteArray) -> ByteArray?)? =
                         if (identity == null) null else { bytes -> container.identities.sign(bytes) }
                     container.mesh.configure(identity?.publicId, signer, enabled, relay, quota)
+                    if (enabled) ConnectionService.start(rely)
+                    else if (!container.settings.keepConnected.value) ConnectionService.stop(rely)
                 }
             }
             launch {
@@ -246,7 +248,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
             launch { container.groupStore.observeSummaries().collect { groupSummaries.value = it } }
             launch { container.vault.observe().collect { vaultItems.value = it } }
             launch { container.data.observePrefs().collect { list -> chatPrefs.value = list.associateBy { it.chatId } } }
-            if (container.settings.keepConnected.value) ConnectionService.start(rely)
+            if (container.settings.keepConnected.value || container.network.meshEnabled.value) ConnectionService.start(rely)
             container.messages.resetStaleDownloads()
             container.delivery.processOutbox()
             // While the app is open, retry whatever is due (the engine's backoff decides what is actually sent).
