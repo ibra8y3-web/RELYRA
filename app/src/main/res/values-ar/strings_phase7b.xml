@@ -202,4 +202,39 @@
     <string name="tool_apk_unsigned">غير موقّع.</string>
     <string name="tool_apk_perms">الأذونات المطلوبة (%1$d)</string>
     <string name="tool_apk_note">أندرويد نفسه يقرر هل يُثبَّت التطبيق وكيف. هذه الأداة تقرأ الملف فقط.</string>
+
+    <string name="settings_cat_integrations">التكاملات</string>
+    <string name="settings_cat_integrations_desc">واجهة API محلية وإضافات مقيدة واتصالات بالبروتوكولات الخارجية</string>
+    <string name="integrations_title">التكاملات</string>
+    <string name="integrations_local_api">واجهة API محلية موثّقة</string>
+    <string name="integrations_local_api_desc">واجهة HTTP للقراءة فقط تعمل على 127.0.0.1 بمنفذ مؤقت، وتتوقف عند انتهاء عملية التطبيق. كل المسارات تتطلب رمز وصول مؤقتًا.</string>
+    <string name="integrations_api_identity_scope">السماح بعرض بيانات الهوية</string>
+    <string name="integrations_api_identity_scope_desc">عرض الاسم العام ومعرّف RELYRA العام فقط عبر المسار /v1/identity.</string>
+    <string name="integrations_api_start">تشغيل Local API</string>
+    <string name="integrations_api_stop">إيقاف Local API</string>
+    <string name="integrations_api_rotate">تغيير الرمز</string>
+    <string name="integrations_api_endpoint">العنوان: http://127.0.0.1:%1$d</string>
+    <string name="integrations_api_token">رمز وصول مؤقت</string>
+    <string name="integrations_api_copy_token">نسخ الرمز</string>
+    <string name="integrations_api_example">مثال للطلب</string>
+    <string name="integrations_api_identity_enabled">تم تفعيل صلاحية قراءة الهوية لهذا الرمز.</string>
+    <string name="integrations_api_security">الواجهة غير متاحة لأجهزة الشبكة المحلية أو الإنترنت. تقبل GET فقط، وتفرض حدًا للطلبات، وترفض طلبات المتصفح من مصادر أخرى، ولا تعرض الرسائل أو المرفقات أو المفاتيح الخاصة.</string>
+    <string name="integrations_plugins">بيئة تشغيل إضافات محدودة</string>
+    <string name="integrations_plugins_desc">استورد ملفات سير عمل بصيغة JSON وامتداد .rplugin. لا تشغّل البيئة سوى أوامر محددة؛ ولا تحمّل DEX أو كودًا أصليًا أو JavaScript أو أوامر shell أو نصوصًا برمجية عامة. راجع الصلاحيات قبل التثبيت.</string>
+    <string name="integrations_plugin_import">استيراد إضافة</string>
+    <string name="integrations_plugin_invalid">ملف الإضافة غير صالح أو لا يمكن قراءته.</string>
+    <string name="integrations_plugin_empty">لا توجد إضافات مثبتة.</string>
+    <string name="integrations_plugin_permissions">الصلاحيات الممنوحة: %1$s</string>
+    <string name="integrations_plugin_no_permissions">لا توجد صلاحيات إضافية</string>
+    <string name="integrations_plugin_copied">تم نسخ نص الإضافة.</string>
+    <string name="integrations_plugin_open_failed">تعذّر فتح رابط HTTPS.</string>
+    <string name="integrations_plugin_not_enabled">فعّل الإضافة قبل تشغيل أوامرها.</string>
+    <string name="integrations_plugin_remove">إزالة الإضافة</string>
+    <string name="integrations_plugin_review">مراجعة الإضافة: %1$s</string>
+    <string name="integrations_plugin_requested_permissions">الصلاحيات المطلوبة:</string>
+    <string name="integrations_plugin_trust_warning">الإضافات محتوى من جهات خارجية. الموافقة على صلاحية تسمح للحزمة باستخدامها عند تشغيل أوامرها. ثبّت الإضافات التي تثق بمصدرها فقط.</string>
+    <string name="integrations_plugin_approve_install">الموافقة والتثبيت</string>
+    <string name="integrations_plugin_installed">تم تثبيت الإضافة، وستظل معطّلة حتى تقوم بتفعيلها.</string>
+    <string name="integrations_phase7_limitations">تكاملات Matrix وXMPP/OMEMO وIPFS غير مفعّلة في هذا الإصدار، ولا تظهر على أنها خدمات عاملة.</string>
+
 </resources>
