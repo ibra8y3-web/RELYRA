@@ -78,6 +78,6 @@ RELYRA will not forward message plaintext to these services and call that an enc
 | Matrix bridge | Not implemented |
 | XMPP/OMEMO bridge | Not implemented |
 | IPFS integration | Not implemented |
-| Build/runtime tests | Not run, as requested |
+| Build/runtime tests | None were manually started; the repository workflow triggers automatically on every push to main. Automatic run [#43406875573](https://github.com/ibra8y3-web/RELYRA/actions/runs/43406875573) was created by the push and does not by itself establish final app verification. |
 
 **Conclusion:** Phase 7 is not complete. The implemented portion is the authenticated Local API and restricted JSON workflow runtime with in-app management. Matrix, XMPP/OMEMO and IPFS, plus runtime tests and security review, remain before Phase 7 can be declared complete.
