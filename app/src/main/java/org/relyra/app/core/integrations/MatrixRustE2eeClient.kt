@@ -114,7 +114,6 @@ class MatrixRustE2eeClient(
         return ClientBuilder()
             .serverNameOrHomeserverUrl(homeserver)
             .slidingSyncVersionBuilder(SlidingSyncVersionBuilder.DISCOVER_NATIVE)
-            .handleRefreshTokens()
             .sqliteStore(store)
             .autoEnableCrossSigning(true)
             .autoEnableBackups(true)
