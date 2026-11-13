@@ -64,6 +64,7 @@ import org.relyra.app.ui.screens.NotificationsSettingsScreen
 import org.relyra.app.ui.screens.BrowserDocumentsSettingsScreen
 import org.relyra.app.ui.screens.CommunitiesScreen
 import org.relyra.app.ui.screens.DevicesScreen
+import org.relyra.app.ui.screens.IntegrationsScreen
 
 private object Routes {
     const val HOME = "home"
@@ -94,6 +95,7 @@ private object Routes {
     const val SETTINGS_STORAGE = "settings/storage"
     const val SETTINGS_NOTIFICATIONS = "settings/notifications"
     const val SETTINGS_BROWSER_DOCS = "settings/browser-documents"
+    const val INTEGRATIONS = "settings/integrations"
 }
 
 private class Tab(val route: String, @StringRes val label: Int, val icon: ImageVector)
@@ -285,9 +287,11 @@ fun AppNav(
                     onOpenDiagnostics = { nav.navigate(Routes.DIAG) },
                     onOpenDevices = { nav.navigate(Routes.DEVICES) },
                     onOpenHome = { nav.navigate(Routes.HOME) },
+                    onOpenIntegrations = { nav.navigate(Routes.INTEGRATIONS) },
                 )
             }
             composable(Routes.DEVICES) { DevicesScreen(vm) }
+            composable(Routes.INTEGRATIONS) { IntegrationsScreen(vm) }
             composable(Routes.SETTINGS_PRIVACY) {
                 PrivacySecuritySettingsScreen(vm, authenticate, onOpenLog = { nav.navigate(Routes.LOG) })
             }
