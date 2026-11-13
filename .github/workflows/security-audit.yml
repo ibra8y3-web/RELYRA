@@ -1,0 +1,179 @@
+name: RELYRA Security and Supply Chain Audit
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "17 5 * * 1"
+permissions:
+  contents: read
+jobs:
+  workflow-security:
+    name: GitHub Actions security analysis
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Install pinned zizmor
+        run: python3 -m pip install --disable-pip-version-check --no-input "zizmor==1.32.0"
+      - name: Audit workflow definitions
+        run: zizmor --format=github .github/workflows
+
+  dependency-audit:
+    name: SBOM, licenses and known vulnerabilities
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+        with:
+          gradle-version: 9.6.0
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
+        with:
+          go-version: "1.26.0"
+          cache-dependency-path: services/discovery/go.mod
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+      - name: Resolve and lock all dependency graphs
+        run: |
+          set -euo pipefail
+          (cd services/discovery && go mod tidy)
+          cargo generate-lockfile --manifest-path native/mls/Cargo.toml
+          cargo metadata --locked --manifest-path native/mls/Cargo.toml --format-version 1 > "$RUNNER_TEMP/relyra-cargo-metadata.json"
+          gradle --no-daemon --no-parallel --write-locks --write-verification-metadata sha256 cyclonedxBom :app:generateLicenseReport
+      - name: Install pinned Syft and verify checksum
+        run: |
+          set -euo pipefail
+          archive="$RUNNER_TEMP/syft_1.57.1_linux_amd64.tar.gz"
+          curl --fail --location --silent --show-error \
+            "https://github.com/anchore/syft/releases/download/v1.57.1/syft_1.57.1_linux_amd64.tar.gz" \
+            --output "$archive"
+          printf '%s  %s\n' "bf52519eb57f675d47c07d43213cb6dff6449f3d6d1147ff6701ed91f44eef0c" "$archive" | sha256sum --check
+          tar -xzf "$archive" -C "$RUNNER_TEMP" syft
+          echo "$RUNNER_TEMP" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/syft" version
+      - name: Generate Go, Rust and Node SBOMs
+        run: |
+          set -euo pipefail
+          mkdir -p security-reports/sbom security-reports/lock-bootstrap
+          "$RUNNER_TEMP/syft" dir:services/discovery -o cyclonedx-json=security-reports/sbom/discovery.cdx.json
+          "$RUNNER_TEMP/syft" dir:native/mls -o cyclonedx-json=security-reports/sbom/mls-native.cdx.json
+          "$RUNNER_TEMP/syft" dir:companion/node -o cyclonedx-json=security-reports/sbom/companion-node.cdx.json
+          test -s build/reports/cyclonedx/bom.json
+          cp build/reports/cyclonedx/bom.json security-reports/sbom/android-gradle.cdx.json
+      - name: Run vulnerability checks for Go and Rust
+        run: |
+          set -euo pipefail
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
+          (cd services/discovery && "$(go env GOPATH)/bin/govulncheck" ./...)
+          cargo install cargo-audit --version 0.23.0 --locked
+          cargo audit --file native/mls/Cargo.lock
+      - name: Build license and accessibility reports
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s scripts -p "test_*.py"
+          python3 scripts/audit_sbom.py \
+            --sbom security-reports/sbom/android-gradle.cdx.json \
+            --sbom security-reports/sbom/discovery.cdx.json \
+            --sbom security-reports/sbom/mls-native.cdx.json \
+            --sbom security-reports/sbom/companion-node.cdx.json
+          python3 scripts/audit_accessibility.py --output-dir security-reports/accessibility
+      - name: Collect dependency lock and checksum bootstrap files
+        if: always()
+        run: |
+          set -euo pipefail
+          mkdir -p security-reports/lock-bootstrap
+          for file in app/gradle.lockfile gradle.lockfile gradle/verification-metadata.xml native/mls/Cargo.lock services/discovery/go.mod services/discovery/go.sum; do
+            if [ -f "$file" ]; then
+              mkdir -p "security-reports/lock-bootstrap/$(dirname "$file")"
+              cp "$file" "security-reports/lock-bootstrap/$file"
+            fi
+          done
+      - name: Upload audit evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: relyra-phase9-audit-\${{ github.run_number }}
+          path: |
+            security-reports/
+            build/reports/cyclonedx/
+            app/build/reports/dependency-license/
+            gradle/verification-metadata.xml
+          if-no-files-found: warn
+          retention-days: 30
+
+  reproducible-debug-build:
+    name: Clean debug build reproducibility check
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: gradle/actions/setup-gradle@8da46b539cd8fe6ab27ca75128919a18d757604c # v6
+        with:
+          gradle-version: 9.6.0
+          cache-disabled: true
+      - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
+        with:
+          toolchain: stable
+          targets: aarch64-linux-android,x86_64-linux-android
+      - name: Install Android SDK components
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --channel=3 \
+            "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.2.12479018" > /dev/null
+      - name: Build OpenMLS Android libraries
+        run: bash scripts/build_mls_android.sh
+      - name: Compare two clean debug builds
+        run: |
+          set -euo pipefail
+          mkdir -p security-reports
+          gradle --no-daemon --console=plain clean assembleDebug
+          first="$RUNNER_TEMP/relyra-debug-first.apk"
+          cp app/build/outputs/apk/debug/app-debug.apk "$first"
+          first_hash="$(sha256sum "$first" | awk '{print $1}')"
+          gradle --no-daemon --console=plain clean assembleDebug
+          second="app/build/outputs/apk/debug/app-debug.apk"
+          second_hash="$(sha256sum "$second" | awk '{print $1}')"
+          {
+            echo "# RELYRA same-runner reproducibility check"
+            echo
+            echo "- First clean build SHA-256: $first_hash"
+            echo "- Second clean build SHA-256: $second_hash"
+            if [ "$first_hash" = "$second_hash" ]; then
+              echo "- Result: identical APK bytes."
+            else
+              echo "- Result: APK bytes differ."
+            fi
+            echo "- Scope: same runner image and toolchain; this is not cross-runner reproducibility proof."
+          } | tee security-reports/reproducibility.md
+          test "$first_hash" = "$second_hash"
+      - name: Upload reproducibility evidence
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: relyra-phase9-reproducibility-\${{ github.run_number }}
+          path: security-reports/reproducibility.md
+          if-no-files-found: warn
+          retention-days: 30
