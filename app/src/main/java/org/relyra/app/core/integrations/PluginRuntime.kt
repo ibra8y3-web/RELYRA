@@ -133,9 +133,17 @@ class PluginRuntime(context: android.content.Context) {
         return try {
             val input = resolver.openInputStream(uri) ?: return null
             input.use {
-                val bytes = it.readNBytes(MAX_PACKAGE_BYTES + 1)
-                if (bytes.size > MAX_PACKAGE_BYTES) return null
-                String(bytes, StandardCharsets.UTF_8).also { text ->
+                val output = java.io.ByteArrayOutputStream()
+                val buffer = ByteArray(8 * 1024)
+                var total = 0
+                while (true) {
+                    val count = it.read(buffer)
+                    if (count < 0) break
+                    total += count
+                    if (total > MAX_PACKAGE_BYTES) return null
+                    output.write(buffer, 0, count)
+                }
+                String(output.toByteArray(), StandardCharsets.UTF_8).also { text ->
                     if (text.isBlank()) return null
                 }
             }
