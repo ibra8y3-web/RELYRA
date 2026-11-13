@@ -179,6 +179,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
                 return@launch
             }
             storage.value = StorageState.Ready
+            // Start relay-backed device replication while the app is open.
+            container.deviceSyncNetwork.start()
             if (rely.restoreApplied) message.value = UiMessage(R.string.backup_applied)
             launch {
                 container.identities.observe().collect { e ->
