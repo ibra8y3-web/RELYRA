@@ -202,4 +202,39 @@
     <string name="tool_apk_unsigned">Not signed.</string>
     <string name="tool_apk_perms">Permissions requested (%1$d)</string>
     <string name="tool_apk_note">Android itself decides whether and how an APK is installed. This only reads the file.</string>
+
+    <string name="settings_cat_integrations">Integrations</string>
+    <string name="settings_cat_integrations_desc">Local API, restricted plugins and external protocol connections</string>
+    <string name="integrations_title">Integrations</string>
+    <string name="integrations_local_api">Authenticated Local API</string>
+    <string name="integrations_local_api_desc">A read-only HTTP API bound to 127.0.0.1 on a temporary port. It stops when the app process ends. Every endpoint requires the generated bearer token.</string>
+    <string name="integrations_api_identity_scope">Allow identity details</string>
+    <string name="integrations_api_identity_scope_desc">Expose only the public display name and public RELYRA ID at /v1/identity.</string>
+    <string name="integrations_api_start">Start Local API</string>
+    <string name="integrations_api_stop">Stop Local API</string>
+    <string name="integrations_api_rotate">Rotate token</string>
+    <string name="integrations_api_endpoint">Endpoint: http://127.0.0.1:%1$d</string>
+    <string name="integrations_api_token">Temporary bearer token</string>
+    <string name="integrations_api_copy_token">Copy token</string>
+    <string name="integrations_api_example">Example request</string>
+    <string name="integrations_api_identity_enabled">Identity read access is enabled for this token.</string>
+    <string name="integrations_api_security">The API is unavailable to LAN/WAN devices. It supports only GET, has a rate limit, rejects browser cross-origin requests, and does not expose messages, attachments or private keys.</string>
+    <string name="integrations_plugins">Restricted Plugin Runtime</string>
+    <string name="integrations_plugins_desc">Install .rplugin JSON workflow files. The runtime supports a fixed list of actions only; it never loads DEX, native code, JavaScript, shell commands or arbitrary scripts. Review the requested capabilities before installation.</string>
+    <string name="integrations_plugin_import">Import plugin package</string>
+    <string name="integrations_plugin_invalid">The plugin package is invalid or unreadable.</string>
+    <string name="integrations_plugin_empty">No plugins installed.</string>
+    <string name="integrations_plugin_permissions">Granted capabilities: %1$s</string>
+    <string name="integrations_plugin_no_permissions">No extra capabilities</string>
+    <string name="integrations_plugin_copied">Plugin text copied.</string>
+    <string name="integrations_plugin_open_failed">Could not open this HTTPS link.</string>
+    <string name="integrations_plugin_not_enabled">Enable this plugin before running its actions.</string>
+    <string name="integrations_plugin_remove">Remove plugin</string>
+    <string name="integrations_plugin_review">Review plugin: %1$s</string>
+    <string name="integrations_plugin_requested_permissions">Requested capabilities:</string>
+    <string name="integrations_plugin_trust_warning">Plugins are third-party content. Approving a capability allows this package to use it when you run its actions. Only install packages you trust.</string>
+    <string name="integrations_plugin_approve_install">Approve and install</string>
+    <string name="integrations_plugin_installed">Plugin installed. It remains disabled until you enable it.</string>
+    <string name="integrations_phase7_limitations">Matrix, XMPP/OMEMO and IPFS connectors are not enabled in this build. They are not represented as active integrations.</string>
+
 </resources>
