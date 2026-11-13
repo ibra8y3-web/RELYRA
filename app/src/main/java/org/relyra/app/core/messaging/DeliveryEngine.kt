@@ -340,7 +340,9 @@ class DeliveryEngine(
             }
             is Envelope.Attachment -> {
                 if (!AttachmentLimits.validSizes(env.size, env.blobSize)) return
-                val url = BlossomUrl.normalize(env.serverUrl, allowPrivate = false) ?: return
+                val isIpfs = env.serverUrl.startsWith("ipfs://")
+                val url = if (isIpfs) env.serverUrl else BlossomUrl.normalize(env.serverUrl, allowPrivate = false) ?: return
+                if (isIpfs && !Regex("ipfs://b[a-z2-7]{20,120}").matches(url)) return
                 val name = FileNames.sanitize(env.name)
                 val fresh = store.recordIncomingAttachment(
                     StoredMessage(env.messageId, env.from, false, name, clock(),
