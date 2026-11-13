@@ -139,7 +139,7 @@ class LocalApiServer(
             headers[line.substring(0, split).trim().lowercase(Locale.ROOT)] = line.substring(split + 1).trim()
         }
         if (headers["transfer-encoding"] != null ||
-            headers["content-length"]?.toLongOrNull()?.let { it != 0L } == true
+            headers["content-length"]?.let { it.toLongOrNull() != 0L } == true
         ) {
             respond(socket.getOutputStream(), 400, errorJson("request bodies are not supported"))
             return
