@@ -21,6 +21,15 @@ import kotlinx.coroutines.flow.StateFlow
 import org.jxmpp.jid.BareJid
 import org.jxmpp.jid.impl.JidCreate
 import java.io.File
+import android.security.keystore.KeyGenParameterSpec
+import android.security.keystore.KeyProperties
+import android.util.Base64
+import org.json.JSONObject
+import java.security.KeyStore
+import javax.crypto.Cipher
+import javax.crypto.KeyGenerator
+import javax.crypto.SecretKey
+import javax.crypto.spec.GCMParameterSpec
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -51,7 +60,8 @@ class XmppOmemoClient(context: Context) {
     private val app = context.applicationContext
     private var connection: XMPPTCPConnection? = null
     private var manager: OmemoManager? = null
-    private val trust = ConcurrentHashMap<String, TrustState>()
+    private val trustPrefs = app.getSharedPreferences("relyra_xmpp_trust", Context.MODE_PRIVATE)
+    private val trust = ConcurrentHashMap<String, TrustState>().apply { putAll(loadTrustDecisions()) }
 
     @Synchronized
     fun connect(domain: String, host: String, port: Int, username: String, password: String): String {
@@ -83,7 +93,7 @@ class XmppOmemoClient(context: Context) {
                 override fun getTrust(device: OmemoDevice, fingerprint: OmemoFingerprint): TrustState =
                     trust[key(device, fingerprint)] ?: TrustState.undecided
                 override fun setTrust(device: OmemoDevice, fingerprint: OmemoFingerprint, state: TrustState) {
-                    trust[key(device, fingerprint)] = state
+                    synchronized(trust) { trust[key(device, fingerprint)] = state; saveTrustDecisions() }
                 }
             })
             omemo.addOmemoMessageListener(incomingListener)
