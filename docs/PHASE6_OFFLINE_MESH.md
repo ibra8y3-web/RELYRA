@@ -23,7 +23,7 @@ A local BLE mesh is separate from Bluetooth Classic RFCOMM, Wi-Fi Direct and Nea
 - Delivery is opportunistic: participating devices must be powered, in radio range and running the mesh service.
 
 ## Not verified / acceptance work still required
-- No APK build, unit tests, emulator tests or physical-device tests were run for this implementation.
+- Mesh envelope and signed delivery-receipt codec unit tests have since been added to the JVM test suite. No APK build, emulator instrumentation or physical-device interoperability tests are claimed here.
 - BLE GATT interoperability, MTU negotiation, OEM-specific scan/advertise restrictions, multi-hop delivery while devices move, and battery impact must be tested on multiple Android devices.
 - Android may stop BLE scanning/advertising in the background or after force-stop; reliable background mesh operation is not claimed.
 - There is no global route table or guaranteed eventual delivery. The transport uses opportunistic neighbor forwarding.
