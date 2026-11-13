@@ -134,6 +134,13 @@ dependencies {
     testImplementation(libs.okhttp.mockwebserver)
 }
 
+// Smack 4.5 publishes both xpp3:xpp3_min and the CodeLibs-compatible
+// org.codelibs:xpp3 runtime implementation. Both contain org.xmlpull classes;
+// retain the CodeLibs implementation and exclude the duplicate legacy jar.
+configurations.configureEach {
+    exclude(group = "xpp3", module = "xpp3_min")
+}
+
 tasks.withType<Test>().configureEach {
     // Emit each test boundary into Actions logs so a stalled test is identifiable.
     testLogging {
