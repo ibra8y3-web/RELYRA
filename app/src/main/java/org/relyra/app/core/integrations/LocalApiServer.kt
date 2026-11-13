@@ -69,7 +69,7 @@ class LocalApiServer(
                 while (isActive && running.get()) {
                     try {
                         val client = socket.accept()
-                        launch { client.use { handle(it, socket.localPort) } }
+                        launch { runCatching { client.use { handle(it, socket.localPort) } } }
                     } catch (_: java.net.SocketTimeoutException) {
                         // Periodic cancellation and close check.
                     } catch (t: Throwable) {
@@ -118,14 +118,15 @@ class LocalApiServer(
         }
         val headers = linkedMapOf<String, String>()
         var total = requestLine.length
-        repeat(32) {
-            val line = readBoundedLine(reader, 2_048) ?: return@repeat
+        var headerCount = 0
+        while (true) {
+            val line = readBoundedLine(reader, 2_048) ?: return
             total += line.length
-            if (total > 8_192) {
+            if (total > 8_192 || ++headerCount > 32) {
                 respond(socket.getOutputStream(), 431, errorJson("headers too large"))
                 return
             }
-            if (line.isEmpty()) return@repeat
+            if (line.isEmpty()) break
             val split = line.indexOf(':')
             if (split <= 0) {
                 respond(socket.getOutputStream(), 400, errorJson("invalid header"))
