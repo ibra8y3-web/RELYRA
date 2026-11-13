@@ -218,20 +218,22 @@ fun IntegrationsScreen(vm: MainViewModel) {
                 plugin.actions.forEach { action ->
                     OutlinedButton(
                         onClick = {
-                            when (val command = vm.plugins.runAction(plugin.id, action.id)) {
-                                is PluginCommand.Notice -> scope.launch { snackbar.showSnackbar("${command.title}: ${command.text}") }
-                                is PluginCommand.CopyText -> {
-                                    clipboard.setText(AnnotatedString(command.text))
-                                    scope.launch { snackbar.showSnackbar(context.getString(R.string.integrations_plugin_copied)) }
-                                }
-                                is PluginCommand.OpenUrl -> {
-                                    runCatching {
-                                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(command.url)))
-                                    }.onFailure {
-                                        scope.launch { snackbar.showSnackbar(context.getString(R.string.integrations_plugin_open_failed)) }
+                            scope.launch {
+                                when (val command = vm.plugins.runActionIsolated(context, plugin.id, action.id)) {
+                                    is PluginCommand.Notice -> snackbar.showSnackbar("${command.title}: ${command.text}")
+                                    is PluginCommand.CopyText -> {
+                                        clipboard.setText(AnnotatedString(command.text))
+                                        snackbar.showSnackbar(context.getString(R.string.integrations_plugin_copied))
                                     }
+                                    is PluginCommand.OpenUrl -> {
+                                        runCatching {
+                                            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(command.url)))
+                                        }.onFailure {
+                                            snackbar.showSnackbar(context.getString(R.string.integrations_plugin_open_failed))
+                                        }
+                                    }
+                                    null -> snackbar.showSnackbar(context.getString(R.string.integrations_plugin_not_enabled))
                                 }
-                                null -> scope.launch { snackbar.showSnackbar(context.getString(R.string.integrations_plugin_not_enabled)) }
                             }
                         },
                         enabled = plugin.enabled,
