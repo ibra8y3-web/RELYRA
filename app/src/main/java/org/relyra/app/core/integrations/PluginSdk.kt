@@ -14,7 +14,7 @@ object PluginSdk {
  private val actionTypes=setOf("notice","copy_text","open_url")
  fun parse(source:String):PluginValidation=try {
   require(source.toByteArray(Charsets.UTF_8).size<=262144){"Plugin package too large"}
-  val root=JSONObject(source);require(root.optInt("schema")==SCHEMA){"Unsupported plugin schema"}
+  val root=JSONObject(source);require(root.optInt("schemaVersion")==SCHEMA){"Unsupported plugin schema"}
   val id=root.getString("id");require(id.matches(Regex("[a-z0-9][a-z0-9._-]{2,63}"))){"Invalid plugin id"}
   val name=root.getString("name").trim();val version=root.getString("version").trim()
   require(name.isNotEmpty()&&name.length<=80&&version.matches(Regex("[0-9]+\\.[0-9]+\\.[0-9]+"))){"Invalid plugin metadata"}
@@ -25,7 +25,7 @@ object PluginSdk {
   val parsed=(0 until a.length()).map{i->
    val item=a.getJSONObject(i);val aid=item.getString("id");val type=item.getString("type");val title=item.getString("title").trim()
    require(aid.matches(Regex("[A-Za-z0-9_-]{1,48}"))&&type in actionTypes&&title.isNotEmpty()&&title.length<=80){"Invalid action"}
-   val value=item.optString("value").takeIf{it.isNotEmpty()}
+   val value=when(type){"notice","copy_text"->item.optString("text").takeIf{it.isNotEmpty()};"open_url"->item.optString("url").takeIf{it.isNotEmpty()};else->null}
    when(type){"copy_text"->require("clipboard.write" in grants&&value!=null&&value.length<=8192)
     "open_url"->require("external.open" in grants&&value?.startsWith("https://")==true)
     "notice"->require(value!=null&&value.length<=2048)}
