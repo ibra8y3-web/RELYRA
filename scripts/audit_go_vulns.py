@@ -69,14 +69,15 @@ def triage_dht_advisory(module_info: dict[str, Any]) -> tuple[str, str]:
         return "UNRESOLVED", f"Could not parse resolved DHT module version {version!r}."
     if parsed <= DHT_MAX_AFFECTED:
         return "AFFECTED", (
-            f"{DHT_MODULE}@{version} is within the advisory's stated affected range "
+            f"{DHT_MODULE}@{version} is within the GitHub advisory's stated affected range "
             "(through v0.20.0)."
         )
-    return "NOT_APPLICABLE", (
-        f"{DHT_MODULE}@{version} is newer than the advisory's stated affected range "
-        "(through v0.20.0). The Go vulnerability database currently reports a broader "
-        "'all versions/no known fixed version' range, so this decision is based on the "
-        f"version range in the reviewed GitHub advisory: {DHT_REFERENCE}."
+    return "REVIEW_REQUIRED", (
+        f"{DHT_MODULE}@{version} is newer than the GitHub advisory's stated affected range "
+        "(through v0.20.0), but the official Go vulnerability database reports all versions "
+        "as affected with no known fix. These sources conflict; the newer version alone "
+        f"does not clear this finding. Maintainer confirmation or a verifiable architectural "
+        f"mitigation is required. GitHub advisory: {DHT_REFERENCE}."
     )
 
 

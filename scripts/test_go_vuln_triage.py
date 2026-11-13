@@ -19,12 +19,14 @@ class GoVulnerabilityTriageTests(unittest.TestCase):
         self.assertEqual(semver_tuple("v0.43.0"), (0, 43, 0))
         self.assertIsNone(semver_tuple("latest"))
 
-    def test_dht_advisory_current_version_is_outside_ghsa_range(self):
-        status, _ = triage_dht_advisory({
+    def test_dht_advisory_current_version_requires_manual_adjudication(self):
+        status, reason = triage_dht_advisory({
             "Path": "github.com/libp2p/go-libp2p-kad-dht",
             "Version": "v0.43.0",
         })
-        self.assertEqual(status, "NOT_APPLICABLE")
+        self.assertEqual(status, "REVIEW_REQUIRED")
+        self.assertIn("sources conflict", reason)
+        self.assertIn("no known fix", reason)
 
     def test_dht_advisory_old_version_remains_affected(self):
         status, _ = triage_dht_advisory({
@@ -47,13 +49,13 @@ class GoVulnerabilityTriageTests(unittest.TestCase):
         self.assertTrue(unresolved)
         self.assertIn("GO-2026-9999", report)
 
-    def test_known_advisory_is_version_triaged(self):
+    def test_known_advisory_does_not_pass_with_conflicting_sources(self):
         report, unresolved = build_report([DHT_ADVISORY], {
             "Path": "github.com/libp2p/go-libp2p-kad-dht",
             "Version": "v0.43.0",
         })
-        self.assertFalse(unresolved)
-        self.assertIn("NOT_APPLICABLE", report)
+        self.assertTrue(unresolved)
+        self.assertIn("REVIEW_REQUIRED", report)
 
     def test_json_stream_reads_findings(self):
         messages = [

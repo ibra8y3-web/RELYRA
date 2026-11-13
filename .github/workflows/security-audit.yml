@@ -53,7 +53,7 @@ jobs:
           set -euo pipefail
           (cd services/discovery && go mod tidy)
           cargo generate-lockfile --manifest-path native/mls/Cargo.toml
-          cargo update --manifest-path native/mls/Cargo.toml -p crypto-bigint --precise 0.7.6
+          cargo update --manifest-path native/mls/Cargo.toml -p crypto-bigint --precise 0.7.8
           cargo metadata --locked --manifest-path native/mls/Cargo.toml --format-version 1 > "$RUNNER_TEMP/relyra-cargo-metadata.json"
           gradle --no-daemon --no-parallel --write-locks --write-verification-metadata sha256 cyclonedxBom :app:generateLicenseReport
       - name: Install pinned Syft and verify checksum
