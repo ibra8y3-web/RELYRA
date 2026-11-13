@@ -37,6 +37,12 @@ class MatrixClient(private val http:OkHttpClient=OkHttpClient.Builder().callTime
  }
  suspend fun sendText(s:MatrixSession,room:String,text:String):String=withContext(Dispatchers.IO) {
   require(text.isNotBlank() && text.length<=65536)
+  require(room.startsWith("!") && room.length<=255)
+  val stateUrl = s.homeserver+"/_matrix/client/v3/rooms/"+URLEncoder.encode(room,"UTF-8")+"/state/m.room.encryption"
+  http.newCall(Request.Builder().url(stateUrl).header("Authorization","Bearer "+s.accessToken).get().build()).execute().use { response ->
+   if (response.isSuccessful) throw IOException("Plaintext sending is blocked: this room has Matrix E2EE enabled; use the Matrix Rust SDK encrypted send path")
+   if (response.code != 404) throw IOException("Could not verify Matrix room encryption state (HTTP "+response.code+")")
+  }
   send(s,room,"m.room.message",JSONObject().put("msgtype","m.text").put("body",text))
  }
  /** Event content must be produced by a Matrix E2EE SDK; this method never encrypts locally. */
