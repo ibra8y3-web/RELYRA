@@ -67,7 +67,6 @@ fun IntegrationsScreen(vm: MainViewModel) {
     var matrixPassword by remember { mutableStateOf("") }
     var matrixRoom by remember { mutableStateOf("") }
     var matrixText by remember { mutableStateOf("") }
-    var matrixSession by remember { mutableStateOf<org.relyra.app.core.integrations.MatrixSession?>(null) }
     var matrixStatus by remember { mutableStateOf("Disconnected") }
     var xmppDomain by remember { mutableStateOf("") }
     var xmppHost by remember { mutableStateOf("") }
@@ -269,13 +268,14 @@ fun IntegrationsScreen(vm: MainViewModel) {
             OutlinedTextField(matrixUser, { matrixUser = it }, label = { Text("User ID") }, modifier = Modifier.fillMaxWidth())
             OutlinedTextField(matrixPassword, { matrixPassword = it }, label = { Text("Password") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxWidth())
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { scope.launch { runCatching { vm.matrix.login(matrixServer, matrixUser, matrixPassword) }.onSuccess { matrixSession = it; matrixStatus = "Signed in: ${it.userId}" }.onFailure { matrixStatus = it.message ?: "Login failed" } } }) { Text("Sign in") }
-                OutlinedButton(onClick = { scope.launch { runCatching { vm.matrix.sync(matrixSession ?: error("Sign in first")) }.onSuccess { matrixStatus = "Sync OK · ${it.joinedRoomIds.size} joined rooms"; }.onFailure { matrixStatus = it.message ?: "Sync failed" } } }, enabled = matrixSession != null) { Text("Sync") }
+                Button(onClick = { scope.launch { runCatching { vm.matrixE2ee.login(matrixServer, matrixUser, matrixPassword) }.onSuccess { matrixStatus = "Matrix Rust SDK E2EE signed in: $it" }.onFailure { matrixStatus = it.message ?: "Login failed" } } }) { Text("Sign in with E2EE") }
+                OutlinedButton(onClick = { scope.launch { runCatching { vm.matrixE2ee.restoreSavedSession() }.onSuccess { matrixStatus = "Restored E2EE session: $it" }.onFailure { matrixStatus = it.message ?: "Restore failed" } } }) { Text("Restore session") }
+                OutlinedButton(onClick = { scope.launch { runCatching { vm.matrixE2ee.startSync() }.onSuccess { matrixStatus = "Encrypted Matrix sync started" }.onFailure { matrixStatus = it.message ?: "Sync failed" } } }) { Text("Sync") }
             }
             OutlinedTextField(matrixRoom, { matrixRoom = it }, label = { Text("Room ID or alias") }, modifier = Modifier.fillMaxWidth())
-            Button(onClick = { scope.launch { runCatching { vm.matrix.join(matrixSession ?: error("Sign in first"), matrixRoom) }.onSuccess { matrixStatus = "Joined room: $it" }.onFailure { matrixStatus = it.message ?: "Join failed" } } }, enabled = matrixSession != null && matrixRoom.isNotBlank()) { Text("Join room") }
-            OutlinedTextField(matrixText, { matrixText = it }, label = { Text("Message (unencrypted)") }, modifier = Modifier.fillMaxWidth())
-            Button(onClick = { scope.launch { runCatching { vm.matrix.sendText(matrixSession ?: error("Sign in first"), matrixRoom, matrixText) }.onSuccess { matrixStatus = "Message sent: $it"; matrixText = "" }.onFailure { matrixStatus = it.message ?: "Send failed" } } }, enabled = matrixSession != null && matrixRoom.startsWith("!") && matrixText.isNotBlank()) { Text("Send plaintext test message") }
+            Button(onClick = { scope.launch { runCatching { vm.matrixE2ee.joinRoom(matrixRoom) }.onSuccess { matrixStatus = "Joined room: $it" }.onFailure { matrixStatus = it.message ?: "Join failed" } } }, enabled = matrixRoom.isNotBlank()) { Text("Join room") }
+            OutlinedTextField(matrixText, { matrixText = it }, label = { Text("E2EE message") }, modifier = Modifier.fillMaxWidth())
+            Button(onClick = { scope.launch { runCatching { vm.matrixE2ee.sendEncrypted(matrixRoom, matrixText) }.onSuccess { matrixStatus = "Encrypted message sent"; matrixText = "" }.onFailure { matrixStatus = it.message ?: "Encrypted send failed" } } }, enabled = matrixRoom.startsWith("!") && matrixText.isNotBlank()) { Text("Send encrypted message") }
             Text(matrixStatus, style = MaterialTheme.typography.bodySmall)
         }
 

@@ -127,6 +127,7 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val localApi get() = rely.container.localApi
     val plugins get() = rely.container.plugins
     val matrix get() = rely.container.matrix
+    val matrixE2ee get() = rely.container.matrixE2ee
     val ipfs get() = rely.container.ipfs
     val xmpp get() = rely.container.xmpp
     val relays get() = rely.container.network.relays

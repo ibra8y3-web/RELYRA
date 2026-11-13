@@ -115,6 +115,7 @@ class AppContainer(context: Context) {
     }
     val plugins by lazy { org.relyra.app.core.integrations.PluginRuntime(appContext) }
     val matrix by lazy { org.relyra.app.core.integrations.MatrixClient() }
+    val matrixE2ee by lazy { org.relyra.app.core.integrations.MatrixRustE2eeClient(appContext, { secure.databaseKey() }) }
     val ipfs by lazy { org.relyra.app.core.integrations.IpfsEncryptedStore(appContext) }
     val xmpp by lazy { org.relyra.app.core.integrations.XmppOmemoClient(appContext) }
 

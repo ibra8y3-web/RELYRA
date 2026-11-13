@@ -112,6 +112,7 @@ dependencies {
     implementation(libs.tink)
     implementation(libs.okhttp)
     implementation(libs.webrtc)
+    implementation("org.matrix.rustcomponents:sdk-android:26.11.05")
 
     // XMPP + XEP-0384 OMEMO (Signal provider is GPL-3.0; preserve its notices in distributions).
     implementation("org.igniterealtime.smack:smack-android:4.5.0")
