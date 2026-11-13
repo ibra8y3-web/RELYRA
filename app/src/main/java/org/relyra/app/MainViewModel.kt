@@ -126,6 +126,9 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     val settings get() = rely.container.settings
     val localApi get() = rely.container.localApi
     val plugins get() = rely.container.plugins
+    val matrix get() = rely.container.matrix
+    val ipfs get() = rely.container.ipfs
+    val xmpp get() = rely.container.xmpp
     val relays get() = rely.container.network.relays
     val relayConnected get() = rely.container.nostr.connections
     val relayStatus get() = rely.container.network.status

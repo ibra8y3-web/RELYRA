@@ -17,6 +17,11 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.text.input.PasswordVisualTransformation
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
+import java.io.File
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
@@ -55,6 +60,24 @@ fun IntegrationsScreen(vm: MainViewModel) {
     var pendingUri by remember { mutableStateOf<Uri?>(null) }
     var pendingPlugin by remember { mutableStateOf<PluginInfo?>(null) }
     var inspectError by remember { mutableStateOf<String?>(null) }
+    var matrixServer by remember { mutableStateOf("https://matrix.org") }
+    var matrixUser by remember { mutableStateOf("") }
+    var matrixPassword by remember { mutableStateOf("") }
+    var matrixRoom by remember { mutableStateOf("") }
+    var matrixText by remember { mutableStateOf("") }
+    var matrixSession by remember { mutableStateOf<org.relyra.app.core.integrations.MatrixSession?>(null) }
+    var matrixStatus by remember { mutableStateOf("Disconnected") }
+    var xmppDomain by remember { mutableStateOf("") }
+    var xmppHost by remember { mutableStateOf("") }
+    var xmppPort by remember { mutableStateOf("5222") }
+    var xmppUser by remember { mutableStateOf("") }
+    var xmppPassword by remember { mutableStateOf("") }
+    var xmppRecipient by remember { mutableStateOf("") }
+    var xmppText by remember { mutableStateOf("") }
+    var xmppStatus by remember { mutableStateOf("Disconnected") }
+    var ipfsApi by remember { mutableStateOf("") }
+    var ipfsCid by remember { mutableStateOf("") }
+    var ipfsStatus by remember { mutableStateOf("") }
 
     val pluginPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) {
@@ -199,6 +222,49 @@ fun IntegrationsScreen(vm: MainViewModel) {
                     )
                 }
             }
+        }
+
+
+        SectionCard("Matrix") {
+            Text("Matrix Client-Server API. E2EE is not enabled in this adapter; do not use plaintext send for private conversations.", color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(matrixServer, { matrixServer = it }, label = { Text("Homeserver HTTPS URL") }, modifier = Modifier.fillMaxSize())
+            OutlinedTextField(matrixUser, { matrixUser = it }, label = { Text("User ID") }, modifier = Modifier.fillMaxSize())
+            OutlinedTextField(matrixPassword, { matrixPassword = it }, label = { Text("Password") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxSize())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { scope.launch { runCatching { vm.matrix.login(matrixServer, matrixUser, matrixPassword) }.onSuccess { matrixSession = it; matrixStatus = "Signed in: ${it.userId}" }.onFailure { matrixStatus = it.message ?: "Login failed" } } }) { Text("Sign in") }
+                OutlinedButton(onClick = { scope.launch { runCatching { vm.matrix.sync(matrixSession ?: error("Sign in first")) }.onSuccess { matrixStatus = "Sync OK · ${it.joinedRoomIds.size} joined rooms"; }.onFailure { matrixStatus = it.message ?: "Sync failed" } } }, enabled = matrixSession != null) { Text("Sync") }
+            }
+            OutlinedTextField(matrixRoom, { matrixRoom = it }, label = { Text("Room ID or alias") }, modifier = Modifier.fillMaxSize())
+            Button(onClick = { scope.launch { runCatching { vm.matrix.join(matrixSession ?: error("Sign in first"), matrixRoom) }.onSuccess { matrixStatus = "Joined room: $it" }.onFailure { matrixStatus = it.message ?: "Join failed" } } }, enabled = matrixSession != null && matrixRoom.isNotBlank()) { Text("Join room") }
+            OutlinedTextField(matrixText, { matrixText = it }, label = { Text("Message (unencrypted)") }, modifier = Modifier.fillMaxSize())
+            Button(onClick = { scope.launch { runCatching { vm.matrix.sendText(matrixSession ?: error("Sign in first"), matrixRoom, matrixText) }.onSuccess { matrixStatus = "Message sent: $it"; matrixText = "" }.onFailure { matrixStatus = it.message ?: "Send failed" } } }, enabled = matrixSession != null && matrixRoom.startsWith("!") && matrixText.isNotBlank()) { Text("Send plaintext test message") }
+            Text(matrixStatus, style = MaterialTheme.typography.bodySmall)
+        }
+
+        SectionCard("XMPP / OMEMO") {
+            OutlinedTextField(xmppDomain, { xmppDomain = it }, label = { Text("XMPP domain") }, modifier = Modifier.fillMaxSize())
+            OutlinedTextField(xmppHost, { xmppHost = it }, label = { Text("Server host") }, modifier = Modifier.fillMaxSize())
+            OutlinedTextField(xmppPort, { xmppPort = it }, label = { Text("Port") }, modifier = Modifier.fillMaxSize())
+            OutlinedTextField(xmppUser, { xmppUser = it }, label = { Text("Username") }, modifier = Modifier.fillMaxSize())
+            OutlinedTextField(xmppPassword, { xmppPassword = it }, label = { Text("Password") }, visualTransformation = PasswordVisualTransformation(), modifier = Modifier.fillMaxSize())
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { scope.launch { runCatching { withContext(Dispatchers.IO) { vm.xmpp.connect(xmppDomain, xmppHost, xmppPort.toInt(), xmppUser, xmppPassword) } }.onSuccess { xmppStatus = "Connected as $it" }.onFailure { xmppStatus = it.message ?: "Connection failed" } } }) { Text("Connect") }
+                OutlinedButton(onClick = { vm.xmpp.disconnect(); xmppStatus = "Disconnected" }) { Text("Disconnect") }
+            }
+            OutlinedTextField(xmppRecipient, { xmppRecipient = it }, label = { Text("Recipient JID") }, modifier = Modifier.fillMaxSize())
+            OutlinedTextField(xmppText, { xmppText = it }, label = { Text("OMEMO message") }, modifier = Modifier.fillMaxSize())
+            Button(onClick = { scope.launch { runCatching { withContext(Dispatchers.IO) { vm.xmpp.sendEncrypted(xmppRecipient, xmppText) } }.onSuccess { xmppStatus = "Encrypted message sent"; xmppText = "" }.onFailure { xmppStatus = it.message ?: "OMEMO send failed" } } }, enabled = xmppRecipient.isNotBlank() && xmppText.isNotBlank()) { Text("Send encrypted") }
+            Text("Trust fingerprints must be verified out-of-band. OMEMO key storage is not yet Keystore-backed.", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+            Text(xmppStatus, style = MaterialTheme.typography.bodySmall)
+        }
+
+        SectionCard("IPFS — encrypted attachments") {
+            Text("Kubo RPC over HTTPS only. Select a RELYRA .enc ciphertext file; plaintext files are rejected.", style = MaterialTheme.typography.bodySmall)
+            OutlinedTextField(ipfsApi, { ipfsApi = it }, label = { Text("Kubo HTTPS API URL") }, modifier = Modifier.fillMaxSize())
+            Button(onClick = { ipfsPicker.launch(arrayOf("application/octet-stream", "*/*")) }, enabled = ipfsApi.startsWith("https://")) { Text("Upload encrypted .enc file") }
+            OutlinedTextField(ipfsCid, { ipfsCid = it }, label = { Text("CIDv1") }, modifier = Modifier.fillMaxSize())
+            Button(onClick = { ipfsSavePicker.launch("${ipfsCid}.enc") }, enabled = ipfsApi.startsWith("https://") && ipfsCid.startsWith("b")) { Text("Download ciphertext") }
+            Text(ipfsStatus, style = MaterialTheme.typography.bodySmall)
         }
 
         Text(stringResource(R.string.integrations_phase7_limitations), style = MaterialTheme.typography.bodySmall,
