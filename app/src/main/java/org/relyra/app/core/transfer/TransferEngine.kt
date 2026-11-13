@@ -242,7 +242,8 @@ class TransferEngine(
                 try {
                     val endpoint = ipfs?.endpoint?.value.orEmpty()
                     require(endpoint.isNotBlank()) { "Configure the Kubo HTTPS endpoint to download this group attachment" }
-                    ipfs.fetchCiphertext(endpoint, ipfsCid!!, part)
+                    val ipfsStore = ipfs ?: error("IPFS storage is not configured")
+                    ipfsStore.fetchCiphertext(endpoint, ipfsCid!!, part)
                     require(part.length() == attachment.blobSize && java.security.MessageDigest.isEqual(FileCrypto.sha256(part), attachment.blobSha256)) { "IPFS group ciphertext hash mismatch" }
                 } catch (e: Exception) {
                     part.delete()
