@@ -50,12 +50,12 @@ The current `main` branch contains the following implemented code. A green CI ru
 - The Android app uses the HTTPS discovery gateway; it is not itself a libp2p DHT host. Public discovery requires operators to deploy and configure multiple reachable nodes.
 - There is no public DHT/TURN cluster operated by this repository. Real NAT/TURN and independent-device interoperability testing remains pending.
 - Presence anti-replay high-water persistence, a true multi-node DHT integration test, distributed community-directory replication, third-party Store-and-Forward, and per-attempt routing diagnostics remain outstanding on `main`.
-- The WebRTC implementation is a data channel, not voice/video MediaTracks.
+- CallEngine contains WebRTC audio/video MediaTracks, signed call signaling, and in-app call controls; independent-device call interoperability remains to be validated.
 - MLS membership requests are routed through the group owner, who serializes epoch writes. Native multi-admin RFC 9420 Proposal merging and distributed fork reconciliation are not implemented.
 - Community post content is not end-to-end encrypted from the discovery service.
 - Blossom downloads support HTTP Range resume; uploads are not byte-resumable.
 - Backup archive/crypto tests exist, but full SQLCipher RestoreApplier end-to-end, crash-at-each-restore-stage, Room/MLS cross-database consistency and real migration-fixture integration tests remain to be closed.
-- Phase 5 multi-device enrollment/sync remains incomplete. Phase 6 BLE Mesh source is present (GATT discovery, signed transit hops, encrypted bounded queue, TTL/quota/consent controls), but has not been built or verified across physical devices. Matrix/XMPP bridges, Plugin SDK/runtime, Local API, Server Studio, desktop/developer tools, independent security audit and final physical-device test matrix remain outstanding.
+- Phase 5 multi-device enrollment and selected encrypted sync paths are present but incomplete. Phase 6 BLE Mesh source is present (GATT discovery, signed transit hops, encrypted bounded queue, TTL/quota/consent controls), with codec unit tests but no physical-device interoperability verification. Phase 7 is partial: authenticated loopback Local API and restricted JSON workflow plugins are wired into Settings; Matrix, XMPP/OMEMO and IPFS remain unimplemented. Server Studio, desktop/developer tools, independent security audit and final physical-device test matrix remain outstanding.
 
 The current source intentionally does not label these remaining items as complete.
 
@@ -75,7 +75,7 @@ Nostr is the registered messaging transport in this build. Dashed/grey nodes are
 
 <p align="center"><img src="docs/assets/relyra-message-flow.svg" alt="RELYRA message and encrypted file flow" width="100%"></p>
 
-Read the [Architecture guide](docs/ARCHITECTURE.md), [Networking guide](docs/NETWORKING.md) and [Nearby transport notes](docs/NEARBY_TRANSPORTS.md) for implementation detail.
+Read the [Architecture guide](docs/ARCHITECTURE.md), [Networking guide](docs/NETWORKING.md), [Nearby transport notes](docs/NEARBY_TRANSPORTS.md) and [Phase 7 integration status](docs/PHASE7_INTEGRATIONS.md) for implementation detail.
 
 ## How a message travels
 
