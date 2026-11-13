@@ -173,22 +173,6 @@ class DeviceSyncNetwork(
         }
     }
 
-    private fun purgeStaleTransfers() {
-        val now = System.currentTimeMillis() / 1000
-        incomingRoot.listFiles()?.forEach { directory ->
-            if (!directory.isDirectory) {
-                directory.delete()
-            } else {
-                val created = runCatching {
-                    JSONObject(File(directory, "manifest.json").readText()).getLong("createdAt")
-                }.getOrNull()
-                if (created == null || created > now + 300 || now - created > 24 * 60 * 60) {
-                    directory.deleteRecursively()
-                }
-            }
-        }
-    }
-
     private suspend fun receive(event: NostrEvent) = receiveLock.withLock {
         val ownPublicKey = identities.nostrPublicKeyHex() ?: return@withLock
         if (event.kind != KIND || event.pubkey != ownPublicKey) return@withLock
