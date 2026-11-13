@@ -47,12 +47,12 @@
 | 35 | تكامل Android | موجود | Keystore وRoom وWorkManager والإشعارات وصلاحيات الشبكات والاتصال القريب. |
 | 36 | Accessibility | جزئي | موارد عربية/إنجليزية وRTL؛ تدقيق شامل لقارئات الشاشة والتباين وتكبير النص لم يكتمل. |
 | 37 | Plugin SDK | جزئي | يوجد runtime محدود لسير عمل JSON مع موافقة صلاحيات وسجل محلي؛ لا تحميل كود عام أو DEX/Native/JavaScript ولا SDK تطوير عام أو sandbox لتنفيذ كود غير موثوق. |
-| 38 | Local API | جزئي | API قراءة فقط على 127.0.0.1 برمز Bearer مؤقت 15 دقيقة ومساري health وهوية عامة اختياري؛ لا صلاحيات كتابة ولا وصول من الشبكة. |
-| 39 | الأدوات المرافقة | غير منفذ | لا Desktop/Node/Developer Studio. |
+| 38 | Local API | جزئي | API قراءة فقط على 127.0.0.1 برمز Bearer مؤقت 15 دقيقة؛ health وdiagnostics وOpenAPI وهوية عامة اختيارية؛ لا صلاحيات كتابة ولا وصول من الشبكة. |
+| 39 | الأدوات المرافقة | موجودة في المصدر، قبولها ينتظر CI والتشغيل | Server Studio وCLI/Node وعميل Desktop عبر ADB وشاشة Developer Tools مرتبطة بحالة التطبيق؛ نسخ volumes غير مشفرة بالأداة والتحقق في بيئة مشغّل مطلوب. |
 | 40 | التشخيص | جزئي | فحوص قاعدة البيانات والشبكة والموارد وتقارير منقحة؛ تشخيص كل محاولة routing ما زال ناقصًا. |
 | 41 | إدارة الموارد | موجود | قراءات موارد التطبيق وCPU/شبكة/مساحة التخزين ضمن حدود Android المتاحة. |
 | 42 | المعمارية | جزئي | تقسيم داخلي إلى حزم Kotlin وخدمة Go ومكتبة Rust؛ ليس كل مكون وحدة مستقلة. |
-| 43 | التقنيات | جزئي | Kotlin/Compose/Room/SQLCipher/OpenMLS/Rust-JNI/Nostr/Blossom/WebRTC DataChannel وMediaTracks وBLE GATT Mesh وLocal API وإضافات JSON؛ لا Android libp2p host أو Matrix/XMPP/OMEMO/IPFS. |
+| 43 | التقنيات | جزئي | Kotlin/Compose/Room/SQLCipher/OpenMLS/Rust-JNI/Nostr/Blossom/WebRTC/BLE Mesh وMatrix Rust SDK وSmack OMEMO وKubo/IPFS وLocal API وNode Companion؛ لا Android libp2p host أو جسر رسائل كامل بين الشبكات. |
 | 44 | الهيكل البرمجي | جزئي | بنية مصدر فعلية؛ لا تُنشأ مجلدات فارغة فقط لمطابقة قائمة المكونات. |
 | 45 | مراحل البناء | جزئي | CI يبني Android ويختبر JVM وGo وRust؛ نجاح البناء لا يغلق اختبارات التكامل أو الأجهزة. |
 | 46 | الاختبارات | جزئي | اختبارات وحدات وتكامل جزئية موجودة؛ RestoreApplier end-to-end، migrations fixtures، DHT متعدد العقد وTURN الحقيقي والتوافق بين الهواتف ما زالت ناقصة. |

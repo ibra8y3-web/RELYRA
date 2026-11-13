@@ -13,6 +13,20 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  companion-node:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+      - name: Run companion CLI validation tests
+        working-directory: companion/node
+        run: npm test
+
   discovery-service:
     runs-on: ubuntu-latest
     timeout-minutes: 25

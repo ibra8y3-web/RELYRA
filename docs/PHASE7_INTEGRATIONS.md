@@ -12,8 +12,9 @@ Source: `app/src/main/java/org/relyra/app/core/integrations/LocalApiServer.kt`.
 - GET-only; rejects request bodies; validates Host and Origin; bounds header size/count and request rate.
 - `GET /v1/health`: service status, app version and timestamp.
 - `GET /v1/identity`: public display name and public RELYRA ID only; requires the explicit identity-read toggle.
+- Phase 8 adds `GET /v1/diagnostics` for redacted operational counts/flags and `GET /v1/openapi.json` for the API contract.
 - Does not expose messages, attachments, cryptographic keys or database contents.
-- No write scopes or message/group management endpoints exist yet.
+- No write scopes or message/group management endpoints exist.
 
 The temporary token is a local secret. Do not share it with untrusted apps. This API is not a substitute for authenticated trusted-device enrollment and cannot be reached from another device.
 
@@ -58,26 +59,47 @@ Example:
 
 Plugins do not execute DEX, native code, JavaScript, shell commands or executable files. This is therefore not yet a general-purpose Plugin SDK or an arbitrary-code sandbox. JSON packages are not publisher-signed and there is no trusted update channel yet; install packages only from sources you trust.
 
-## 3. Matrix and XMPP/OMEMO bridges
+## 3. Matrix and XMPP/OMEMO
 
-**Not implemented.** There is no Matrix account binding, Matrix send/receive/sync path, XMPP stream/client, OMEMO implementation, or mapping between RELYRA identity/keys and external identities.
+**Source integrations are present; a full cross-network message/identity bridge is not complete.**
 
-RELYRA will not forward message plaintext to these services and call that an encrypted bridge. A secure bridge needs explicit trust boundaries, independent key/session management, visibility into whether the remote peer is end-to-end encrypted, and clear disclosure of decryption points and metadata.
+### Matrix
+Source: `MatrixRustE2eeClient.kt`, using the official Matrix Rust SDK and connected to the Integrations screen.
+- Matrix login and session restore with local SDK state.
+- Local SDK store protected using the RELYRA database key, with sensitive session data protected using Android Keystore.
+- Room synchronization, joining rooms and sending messages through the SDK.
+- Before sending, the client checks that the room encryption state is `ENCRYPTED`; it does not silently downgrade to plaintext when encryption is unavailable.
+- This does not turn the RELYRA account into a Matrix identity or automatically translate/forward RELYRA one-to-one and group conversations to Matrix.
+
+### XMPP / OMEMO
+Source: `XmppOmemoClient.kt`, using Smack 4.5.0.
+- XMPP connection/login, encrypted OMEMO sends, receiving and decrypting messages when peer sessions are available.
+- OMEMO device fingerprint display and explicit trust/distrust decisions; unknown devices are not automatically trusted.
+- Trust decisions are encrypted using Android Keystore.
+- Security limitation: the OMEMO cryptographic key store itself remains in app-private storage; it is not accurate to claim every OMEMO key is directly wrapped by Keystore.
+- License limitation: `smack-omemo-signal` uses the Signal provider under GPL-3.0. Review distribution/licensing compatibility before shipping an APK under the project's Apache-2.0 license.
+
+**Verification boundary:** This document does not claim interoperability with independent Matrix/XMPP servers or external devices. Real-server login, encryption, key exchange and reconnect behavior still need validation. A full bridge that maps/forwards identities and messages across RELYRA and the external protocols remains separate work.
 
 ## 4. IPFS
 
-**Not implemented.** There is no Kubo/HTTP RPC client, IPFS upload/fetch path, or binding from CIDs to encrypted attachment descriptors and secure file-key exchange over RELYRA messages. Blossom remains the current attachment path. IPFS must remain optional and must not be required for core messaging.
+**The optional Kubo client and encrypted attachment path are present in source.**
+- The app accepts a Kubo HTTPS RPC endpoint; IPFS remains disabled until the user configures it.
+- Outgoing files pass through RELYRA file encryption first; only ciphertext is uploaded to Kubo and the resulting CID is used in transfer metadata.
+- Downloads retrieve ciphertext by CID and validate size and SHA-256 before handing it to the decryption path.
+- The path is connected to the transfer engine and group attachments. Blossom remains available and IPFS is not required for core messaging.
+
+**Verification boundary:** Source code does not prove that public IPFS nodes are reachable, that pins remain available, or that upload/download interoperability works across networks. These need separate deployment/runtime checks.
 
 ## 5. Delivery status
 
 | Component | Source status |
 |---|---|
-| Authenticated loopback Local API | Implemented and wired to Settings; not runtime-tested in this task |
-| Restricted JSON plugin workflow runtime | Implemented and wired to Settings; not a general-purpose code SDK |
-| Plugin activity log | Local bounded log of the latest 100 events |
-| Matrix bridge | Not implemented |
-| XMPP/OMEMO bridge | Not implemented |
-| IPFS integration | Not implemented |
-| Build/runtime tests | None were manually started; the repository workflow triggers automatically on every push to main. Automatic run [#43406875573](https://github.com/ibra8y3-web/RELYRA/actions/runs/43406875573) was created by the push and does not by itself establish final app verification. |
+| Local API | Health and optional identity endpoints; Phase 8 adds redacted diagnostics and OpenAPI; loopback-only and read-only |
+| Restricted JSON plugin workflow runtime | Implemented and wired to Settings; fixed action allow-list, user-granted permissions and bounded event log; not a general-purpose code SDK |
+| Matrix client | Rust SDK integration is wired to the app; not an automatic RELYRA message bridge |
+| XMPP/OMEMO client | Smack send/receive and device-trust flow are wired to the app; OMEMO storage and GPL-3.0 dependency review remain important limitations |
+| IPFS/Kubo | Optional ciphertext transfer path is connected to attachments; public-node operation has not been verified |
+| External interoperability | Independent Matrix, XMPP and Kubo server testing remains required; these clients are not a complete cross-network bridge |
 
-**Conclusion:** Phase 7 is not complete. The implemented portion is the authenticated Local API and restricted JSON workflow runtime with in-app management. Matrix, XMPP/OMEMO and IPFS, plus runtime tests and security review, remain before Phase 7 can be declared complete.
+**Conclusion:** Phase 7 is partially implemented at source level: Matrix and XMPP/OMEMO clients and the IPFS attachment path exist alongside the Local API and restricted JSON workflow runtime. External-server interoperability is not yet verified, and a full identity/message bridge across RELYRA and those networks remains incomplete. Automated/runtime validation and the dependency-license review are required before declaring Phase 7 complete.

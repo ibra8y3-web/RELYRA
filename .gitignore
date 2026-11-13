@@ -12,3 +12,6 @@ captures/
 # Local service secrets and operator configuration
 .env
 services/discovery/.env
+
+# Local Server Studio volume snapshots (may contain private service state)
+.relyra-backups/

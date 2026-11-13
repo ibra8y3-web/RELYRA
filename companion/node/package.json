@@ -1,0 +1,11 @@
+{
+  "name": "@relyra/companion",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Local RELYRA Server Studio, Android API client and developer CLI",
+  "type": "module",
+  "engines": { "node": ">=20" },
+  "bin": { "relyra": "./bin/relyra.mjs" },
+  "scripts": { "start": "node ./bin/relyra.mjs", "test": "node --test" },
+  "license": "Apache-2.0"
+}

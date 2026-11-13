@@ -109,9 +109,25 @@ class AppContainer(context: Context) {
     }
 
     val localApi by lazy {
-        org.relyra.app.core.integrations.LocalApiServer(BuildConfig.VERSION_NAME) {
-            database.identityDao().get()?.let { it.displayName to it.publicId }
-        }
+        org.relyra.app.core.integrations.LocalApiServer(
+            version = BuildConfig.VERSION_NAME,
+            identityProvider = {
+                database.identityDao().get()?.let { it.displayName to it.publicId }
+            },
+            diagnosticsProvider = {
+                val relayList = network.relays.value
+                val pluginList = plugins.installed.value
+                org.json.JSONObject()
+                    .put("configuredRelays", relayList.size)
+                    .put("enabledRelays", relayList.count { it.enabled })
+                    .put("connectedRelays", nostr.connections.value.values.count { it })
+                    .put("enabledDiscoveryGateways", network.discoveryGateways.value.count { it.enabled })
+                    .put("publicDiscoveryEnabled", network.publicDiscoveryEnabled.value)
+                    .put("meshEnabled", network.meshEnabled.value)
+                    .put("installedPlugins", pluginList.size)
+                    .put("enabledPlugins", pluginList.count { it.enabled })
+            },
+        )
     }
     val plugins by lazy { org.relyra.app.core.integrations.PluginRuntime(appContext) }
     val matrix by lazy { org.relyra.app.core.integrations.MatrixClient() }

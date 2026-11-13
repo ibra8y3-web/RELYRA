@@ -55,9 +55,18 @@ The current `main` branch contains the following implemented code. A green CI ru
 - Community post content is not end-to-end encrypted from the discovery service.
 - Blossom downloads support HTTP Range resume; uploads are not byte-resumable.
 - Backup archive/crypto tests exist, but full SQLCipher RestoreApplier end-to-end, crash-at-each-restore-stage, Room/MLS cross-database consistency and real migration-fixture integration tests remain to be closed.
-- Phase 5 multi-device enrollment and selected encrypted sync paths are present but incomplete. Phase 6 BLE Mesh source is present (GATT discovery, signed transit hops, encrypted bounded queue, TTL/quota/consent controls), with codec unit tests but no physical-device interoperability verification. Phase 7 is partial: authenticated loopback Local API and restricted JSON workflow plugins are wired into Settings; Matrix, XMPP/OMEMO and IPFS remain unimplemented. Server Studio, desktop/developer tools, independent security audit and final physical-device test matrix remain outstanding.
+- Phase 5 multi-device enrollment and selected encrypted sync paths are present but incomplete. Phase 6 BLE Mesh source is present (GATT discovery, signed transit hops, encrypted bounded queue, TTL/quota/consent controls), with codec unit tests but no physical-device interoperability verification.
+- Phase 7 has source implementations for a Matrix Rust SDK E2EE client, an XMPP/OMEMO client and an optional Kubo/IPFS encrypted-attachment path, alongside the authenticated Local API and constrained JSON workflow plugins. External-server interoperability is still unverified; the Smack Signal OMEMO dependency needs GPL-3.0 distribution-license review.
+- Phase 8 companion tools are present in source: Node.js Server Studio for the existing discovery Docker Compose deployment, a Desktop/Node client for Android's read-only Local API through ADB, and an Android Developer Tools screen connected to live application state. CI and operator-environment acceptance remain pending. Docker volume snapshots are not encrypted by the tool and no public administration endpoint is exposed.
+- Independent security audit, supply-chain/reproducible-release work and the final physical-device test matrix remain outstanding.
 
 The current source intentionally does not label these remaining items as complete.
+
+## Companion tools — Phase 8
+
+The repository includes [Server Studio and Desktop/Node companion instructions](companion/node/README.md), the [Phase 8 implementation reference](docs/PHASE8_COMPANION_TOOLS.md), and the [Arabic guide](docs/PHASE8_COMPANION_TOOLS_AR.md). Server Studio controls only the operator's existing local Docker Compose deployment. The desktop client uses ADB forwarding to the Android app's loopback-only, read-only Local API. The Android Developer Tools screen displays real relay, Mesh, plugin and Local API state.
+
+These tools do not host a public RELYRA network, expose a remote administration API, or provide message-write/read access through the Local API. Server volume backups are unencrypted snapshots and must be stored on encrypted, access-controlled storage. Source implementation does not imply successful CI or validation against a live operator deployment.
 
 ## Visual system maps
 
@@ -110,7 +119,7 @@ See the detailed limits in **Current implementation status** above. The next sch
 
 ## Build from source
 
-**Android requirements:** Android SDK Platform 37.0, Build Tools 37.0.0, JDK 17 and Gradle 9.6.0. **Service requirements:** Go 1.26 and Docker Compose for the discovery/TURN services. The repository currently does not contain a root Gradle Wrapper; use the Gradle version configured by the project/CI.
+**Android requirements:** Android SDK Platform 37.0, Build Tools 37.0.0, JDK 17 and Gradle 9.6.0. **Service and companion requirements:** Go 1.26 and Docker Compose for discovery/TURN; Node.js 20+ for Server Studio and Desktop/Node tools. The repository currently does not contain a root Gradle Wrapper; use the Gradle version configured by the project/CI.
 
 Run from the repository root:
 
@@ -121,6 +130,9 @@ gradle --no-daemon testDebugUnitTest
 cd services/discovery
 go test -race ./...
 go vet ./...
+
+cd ../../companion/node
+npm test
 ```
 
 Debug APK output:
@@ -152,6 +164,7 @@ app/src/main/java/org/relyra/app/
 
 app/src/test/          JVM tests
 services/discovery/      Go Kademlia DHT gateway, coturn/Caddy deployment and protocol tests
+companion/node/           Server Studio, Android Local API client, Node CLI and tests
 docs/                  Architecture, networking, roadmap, specification crosswalk and visual maps
 .github/workflows/     Build and test automation
 ```

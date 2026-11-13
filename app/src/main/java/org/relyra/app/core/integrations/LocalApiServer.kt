@@ -40,6 +40,7 @@ data class LocalApiState(
 class LocalApiServer(
     private val version: String,
     private val identityProvider: suspend () -> Pair<String, String>?,
+    private val diagnosticsProvider: suspend () -> JSONObject = { JSONObject() },
 ) {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val running = AtomicBoolean(false)
@@ -184,6 +185,8 @@ class LocalApiServer(
                     }
                 JSONObject().put("displayName", identity.first).put("publicId", identity.second)
             }
+            "/v1/diagnostics" -> withContext(Dispatchers.IO) { diagnosticsProvider() }
+            "/v1/openapi.json" -> apiSchema()
             else -> {
                 respond(socket.getOutputStream(), 404, errorJson("endpoint not found"))
                 return
@@ -215,6 +218,41 @@ class LocalApiServer(
     }
 
     private fun errorJson(message: String) = JSONObject().put("error", message).toString()
+
+    /** Static read-only contract; never includes the active token or account/device secrets. */
+    private fun apiSchema(): JSONObject {
+        val bearer = JSONObject()
+            .put("type", "http")
+            .put("scheme", "bearer")
+            .put("bearerFormat", "RELYRA local short-lived token")
+        fun response(description: String) = JSONObject()
+            .put("200", JSONObject().put("description", description)
+                .put("content", JSONObject().put("application/json",
+                    JSONObject().put("schema", JSONObject().put("type", "object")))))
+            .put("401", JSONObject().put("description", "Missing, invalid or expired bearer token"))
+            .put("404", JSONObject().put("description", "Endpoint or RELYRA identity not found"))
+            .put("429", JSONObject().put("description", "Local request rate limit exceeded"))
+        fun operation(summary: String, description: String) = JSONObject()
+            .put("summary", summary)
+            .put("security", org.json.JSONArray().put(JSONObject().put("LocalBearer", org.json.JSONArray())))
+            .put("x-relyra-loopback-only", true)
+            .put("responses", response(description))
+        val health = JSONObject().put("get", operation("Read local API health", "Local API process status"))
+        val identity = JSONObject().put("get", operation("Read public identity when identity.read is enabled", "Public display name and RELYRA public ID")
+            .put("x-relyra-scope", "identity.read"))
+        val diagnostics = JSONObject().put("get", operation("Read redacted operational counters", "Counts and boolean status only"))
+        return JSONObject()
+            .put("openapi", "3.1.0")
+            .put("info", JSONObject()
+                .put("title", "RELYRA Local Companion API")
+                .put("version", "1.0.0")
+                .put("description", "Loopback-only, read-only API. A fresh bearer token expires after 15 minutes. Requests must use the loopback Host and must not include browser Origin headers."))
+            .put("components", JSONObject().put("securitySchemes", JSONObject().put("LocalBearer", bearer)))
+            .put("paths", JSONObject()
+                .put("/v1/health", health)
+                .put("/v1/identity", identity)
+                .put("/v1/diagnostics", diagnostics))
+    }
 
     companion object {
         const val TOKEN_LIFETIME_MS = 15L * 60L * 1000L

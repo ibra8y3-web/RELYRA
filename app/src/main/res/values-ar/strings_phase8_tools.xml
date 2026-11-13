@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="developer_tools_title">أدوات المطور</string>
+    <string name="developer_tools_desc">عرض مؤشرات البروتوكولات الحية وواجهة API المحلية وإضافات سير العمل المثبتة.</string>
+    <string name="developer_tools_intro">تشخيص مباشر وتفاصيل الاتصال بالأدوات المرافقة من تثبيت RELYRA الحالي. لا تُرسل الأسرار إلى خدمة بعيدة.</string>
+    <string name="developer_tools_api">واجهة API المحلية للأدوات المرافقة</string>
+    <string name="developer_tools_status">حالة الخدمة</string>
+    <string name="developer_tools_running">تعمل على هذا الجهاز</string>
+    <string name="developer_tools_stopped">متوقفة</string>
+    <string name="developer_tools_endpoint">عنوان Loopback</string>
+    <string name="developer_tools_adb_hint">على حاسوب موثوق، حوّل منفذ الجهاز %1$d إلى المنفذ المحلي 8787 باستخدام ADB.</string>
+    <string name="developer_tools_copy_forward">نسخ أمر ADB forward</string>
+    <string name="developer_tools_copy_token">نسخ الرمز المؤقت</string>
+    <string name="developer_tools_show_token">إظهار الرمز</string>
+    <string name="developer_tools_hide_token">إخفاء الرمز</string>
+    <string name="developer_tools_token_expires">انتهاء صلاحية الرمز</string>
+    <string name="developer_tools_token_warning">يمنح هذا الرمز قراءة البيانات المحلية. شاركه فقط مع أدوات موثوقة؛ وتنتهي صلاحيته تلقائيًا.</string>
+    <string name="developer_tools_start">تشغيل API المحلية</string>
+    <string name="developer_tools_stop">إيقاف API</string>
+    <string name="developer_tools_protocols">نظرة مباشرة على البروتوكولات</string>
+    <string name="developer_tools_relays">مرحلات Nostr</string>
+    <string name="developer_tools_relay_summary">%1$d مفعّل · %2$d مضبوط · %3$d متصل</string>
+    <string name="developer_tools_plugins">إضافات سير العمل</string>
+    <string name="developer_tools_plugin_summary">%1$d مفعّل · %2$d مثبت</string>
+    <string name="developer_tools_mesh">حالة Mesh</string>
+    <string name="developer_tools_redacted_note">تعرض الواجهة المصاحبة أعدادًا وحالة عامة فقط. ولا تكشف محتوى الرسائل أو المفاتيح الخاصة أو عناوين المرحّلات أو محتويات قاعدة البيانات.</string>
+    <string name="developer_tools_open_diagnostics">فتح التشخيص الكامل</string>
+    <string name="developer_tools_plugin_history">أحدث نشاط الإضافات (بيانات وصفية فقط)</string>
+    <string name="developer_tools_no_plugins">لا توجد إضافات لسير العمل مثبتة.</string>
+    <string name="developer_tools_no_events">لم يُسجل أي نشاط للإضافات.</string>
+    <string name="developer_tools_enable_plugin">تفعيل</string>
+    <string name="developer_tools_disable_plugin">إيقاف</string>
+    <string name="developer_tools_remove_plugin">حذف</string>
+    <string name="developer_tools_remove_plugin_title">حذف إضافة سير العمل</string>
+    <string name="developer_tools_remove_plugin_confirm">هل تريد حذف "%1$s" وصلاحياتها المحلية من هذا الجهاز؟</string>
+    <string name="developer_tools_plugin_removed">تم حذف الإضافة.</string>
+    <string name="developer_tools_plugin_remove_failed">تعذر حذف الإضافة.</string>
+</resources>
