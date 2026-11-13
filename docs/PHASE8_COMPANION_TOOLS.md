@@ -1,6 +1,6 @@
 # RELYRA Phase 8 — Companion tools
 
-**Source status:** implementation files and CI coverage are added in this change. The phase is not declared accepted until the new workflow run passes on the exact commit and an operator validates the tools against a real, intentionally configured deployment. This is not a claim that a public RELYRA server is deployed.
+**Source and CI status:** implementation files and CI coverage are present. Workflow #895 on main commit a2ba0bfb9702a2b182bbe1f0a2d3a0ac16d1ce3f passed APK assembly/upload, Android JVM tests, Node, Rust and Go/Docker jobs. SQLCipher instrumentation was cancelled, and operator validation against a real deployment remains pending. This is not a claim that a public RELYRA server is deployed.
 
 ## 1. Server Studio
 
@@ -49,7 +49,7 @@ Existing `/v1/health` and optional `/v1/identity` are unchanged. All requests st
 
 The build workflow adds a Node 22 job for URL policy, local API allow-list, DHT address validation, log redaction and a loopback authenticated client test. The Android JVM suite gains LocalApiServer network-level tests for bearer enforcement, health/diagnostics, opt-in identity and OpenAPI.
 
-This task does not run Gradle, npm tests, Docker or a deployment manually. The workflow result on the final commit is the acceptance check. Actual service lifecycle, browser behavior, ADB connection to a physical phone and real deployment backup/restore still require an operator's environment; they are not claimed as verified by unit tests.
+Workflow #895 confirmed APK assembly/upload and the JVM, Node, Rust and Go/Docker jobs. SQLCipher instrumentation did not complete in that run. CI evidence does not replace an operator validation against a live deployment. Actual service lifecycle, browser behavior, ADB connection to a physical phone and real deployment backup/restore still require an operator's environment; they are not claimed as verified by unit tests.
 
 ## 5. Start here
 

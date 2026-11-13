@@ -15,7 +15,9 @@ Include:
 
 ## Scope notes
 
-- The project has not yet received an independent cryptographic security audit.
-- The current transport is Nostr over user-configured WSS relays; WSS does not hide client IP addresses or all traffic metadata.
-- Group encryption currently uses separate one-to-one sessions per member; it is not MLS.
+- The project has not yet received an independent cryptographic/security audit. Phase 9 automation produces SBOM, dependency, workflow and static accessibility evidence; it is not a substitute for an independent assessor.
+- The app contains legacy pairwise-encrypted groups and a separate OpenMLS-based MLS group path. Do not conflate the two implementations or claim full multi-admin RFC 9420 proposal coordination is complete.
+- User-configured Nostr WSS relays do not hide client IP addresses or all traffic metadata.
+- The Smack Signal OMEMO provider is identified as GPL-3.0 in the Gradle dependency declaration and still requires a documented distribution-license review.
+- Debug APKs are not production releases. Release signing uses owner-managed secrets outside the repository and must be verified before distribution.
 - Planned protocols and transports must not be described as security controls until implemented and tested.

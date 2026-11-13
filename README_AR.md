@@ -174,4 +174,6 @@ docs/                  المعمارية والشبكة وخطة التطوير
 <p align="center"><strong>RELYRA — خصوصيتك من التصميم، واتصالك باختيارك.</strong></p>
 
 
+دليل تدقيق الأمان وسلسلة التوريد والإصدار في المرحلة التاسعة: [النسخة العربية](docs/PHASE9_SECURITY_RELEASE_AUDIT_AR.md) · [English](docs/PHASE9_SECURITY_RELEASE_AUDIT.md).
+
 تفاصيل المرحلة الخامسة وحالتها الفعلية: [المرحلة الخامسة — تعدد الأجهزة](docs/PHASE5_MULTI_DEVICE_AR.md).
