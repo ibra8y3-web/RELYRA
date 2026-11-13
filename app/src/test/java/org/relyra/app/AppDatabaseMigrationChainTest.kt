@@ -5,7 +5,7 @@ import org.junit.Test
 import org.relyra.app.core.database.AppDatabase
 
 class AppDatabaseMigrationChainTest {
-    @Test fun schemaMigrationsAreContiguousFromVersionOneThroughSixteen() {
+    @Test fun schemaMigrationsAreContiguousFromVersionOneThroughEighteen() {
         val migrations = listOf(
             AppDatabase.MIGRATION_1_2,
             AppDatabase.MIGRATION_2_3,
@@ -22,8 +22,10 @@ class AppDatabaseMigrationChainTest {
             AppDatabase.MIGRATION_13_14,
             AppDatabase.MIGRATION_14_15,
             AppDatabase.MIGRATION_15_16,
+            AppDatabase.MIGRATION_16_17,
+            AppDatabase.MIGRATION_17_18,
         )
-        assertEquals((1..15).toList(), migrations.map { it.startVersion })
-        assertEquals((2..16).toList(), migrations.map { it.endVersion })
+        assertEquals((1..17).toList(), migrations.map { it.startVersion })
+        assertEquals((2..18).toList(), migrations.map { it.endVersion })
     }
 }
