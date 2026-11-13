@@ -246,9 +246,12 @@ class DeviceSyncNetwork(
         val wire = output.toByteArray()
         runCatching { sync.importEncrypted(wire) }
             .onSuccess {
-                network.inboxSince = maxOf(network.inboxSince, transfer.createdAt)
-                publishTransferAck(transferId, senderId, secure.deviceId(), ownPublicKey)
-                directory.deleteRecursively()
+                // Keep the durable chunks until the sender has a signed relay acknowledgement.
+                // Re-importing the same encrypted snapshot is idempotent and lets us retry the ACK.
+                if (publishTransferAck(transferId, senderId, secure.deviceId(), ownPublicKey)) {
+                    network.inboxSince = maxOf(network.inboxSince, transfer.createdAt)
+                    directory.deleteRecursively()
+                }
             }
     }
 
@@ -322,8 +325,8 @@ class DeviceSyncNetwork(
         targetSenderId: String,
         localDeviceId: String,
         publicKey: String,
-    ) {
-        val secret = identities.nostrSecret() ?: return
+    ): Boolean {
+        val secret = identities.nostrSecret() ?: return false
         val tags = listOf(
             listOf("p", publicKey),
             listOf("d", targetSenderId),
@@ -332,7 +335,7 @@ class DeviceSyncNetwork(
             listOf("t", ACK_TAG),
         )
         val event = NostrEvents.create(secret, KIND, tags, "received", System.currentTimeMillis() / 1000)
-        runCatching { pool.publish(event) }
+        return runCatching { pool.publish(event) }.getOrDefault(false)
     }
 
     private fun purgeStaleTransfers() {
