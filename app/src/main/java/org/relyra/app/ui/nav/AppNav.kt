@@ -135,6 +135,7 @@ private fun titleFor(route: String): Int = when (route) {
     Routes.SETTINGS_STORAGE -> R.string.settings_cat_storage
     Routes.SETTINGS_NOTIFICATIONS -> R.string.settings_cat_notifications
     Routes.SETTINGS_BROWSER_DOCS -> R.string.settings_cat_browser
+    Routes.INTEGRATIONS -> R.string.integrations_title
     else -> R.string.app_name
 }
 
