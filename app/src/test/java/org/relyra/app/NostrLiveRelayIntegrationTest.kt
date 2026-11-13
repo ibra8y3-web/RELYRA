@@ -46,7 +46,7 @@ class NostrLiveRelayIntegrationTest {
             if (it.pubkey == alicePub && it.tags.any { tag -> tag.size >= 2 && tag[0] == "p" && tag[1] == bobPub }) {
                 received.complete(it)
             }
-        }
+        })
         try {
             alice.configure(aliceSecret, setOf(relay))
             bob.configure(bobSecret, setOf(relay))
