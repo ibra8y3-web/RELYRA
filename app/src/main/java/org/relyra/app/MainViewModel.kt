@@ -124,6 +124,8 @@ class MainViewModel(app: Application) : AndroidViewModel(app) {
     /** The vault asks for biometrics or the screen lock each time; this is cleared whenever the app leaves the screen. */
     val vaultUnlocked = MutableStateFlow(false)
     val settings get() = rely.container.settings
+    val localApi get() = rely.container.localApi
+    val plugins get() = rely.container.plugins
     val relays get() = rely.container.network.relays
     val relayConnected get() = rely.container.nostr.connections
     val relayStatus get() = rely.container.network.status
