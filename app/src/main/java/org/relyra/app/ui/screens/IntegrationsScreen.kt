@@ -275,7 +275,7 @@ fun IntegrationsScreen(vm: MainViewModel) {
                 OutlinedButton(onClick = { scope.launch { runCatching { vm.matrixE2ee.startSync() }.onSuccess { matrixStatus = "Encrypted Matrix sync started" }.onFailure { matrixStatus = it.message ?: "Sync failed" } } }) { Text("Sync") }
             }
             OutlinedTextField(matrixRoom, { matrixRoom = it }, label = { Text("Room ID or alias") }, modifier = Modifier.fillMaxWidth())
-            Button(onClick = { scope.launch { runCatching { vm.matrixE2ee.joinRoom(matrixRoom) }.onSuccess { matrixStatus = "Joined room: $it" }.onFailure { matrixStatus = it.message ?: "Join failed" } } }, enabled = matrixRoom.isNotBlank()) { Text("Join room") }
+            Button(onClick = { scope.launch { runCatching { vm.matrixE2ee.joinRoom(matrixRoom) }.onSuccess { matrixRoom = it; matrixStatus = "Joined room: $it" }.onFailure { matrixStatus = it.message ?: "Join failed" } } }, enabled = matrixRoom.isNotBlank()) { Text("Join room") }
             OutlinedTextField(matrixText, { matrixText = it }, label = { Text("E2EE message") }, modifier = Modifier.fillMaxWidth())
             Button(onClick = { scope.launch { runCatching { vm.matrixE2ee.sendEncrypted(matrixRoom, matrixText) }.onSuccess { matrixStatus = "Encrypted message sent"; matrixText = "" }.onFailure { matrixStatus = it.message ?: "Encrypted send failed" } } }, enabled = matrixRoom.startsWith("!") && matrixText.isNotBlank()) { Text("Send encrypted message") }
             Text(matrixStatus, style = MaterialTheme.typography.bodySmall)
