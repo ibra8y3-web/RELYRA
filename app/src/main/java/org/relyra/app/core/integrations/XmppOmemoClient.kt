@@ -86,17 +86,20 @@ class XmppOmemoClient(context: Context) {
             .build()
         val client = XMPPTCPConnection(config)
         try {
-            client.connect()
-            client.login()
             val omemo = OmemoManager.getInstanceFor(client)
             omemo.setTrustCallback(object : OmemoTrustCallback {
                 override fun getTrust(device: OmemoDevice, fingerprint: OmemoFingerprint): TrustState =
                     trust[key(device, fingerprint)] ?: TrustState.undecided
                 override fun setTrust(device: OmemoDevice, fingerprint: OmemoFingerprint, state: TrustState) {
-                    synchronized(trust) { trust[key(device, fingerprint)] = state; saveTrustDecisions() }
+                    synchronized(trust) {
+                        trust[key(device, fingerprint)] = state
+                        runCatching { saveTrustDecisions() }
+                    }
                 }
             })
             omemo.addOmemoMessageListener(incomingListener)
+            client.connect()
+            client.login()
             omemo.initialize()
             connection = client
             manager = omemo
