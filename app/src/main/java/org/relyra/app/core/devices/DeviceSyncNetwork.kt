@@ -106,6 +106,7 @@ class DeviceSyncNetwork(
             val wire = sync.exportEncrypted(target.deviceId)
             require(wire.size <= CHUNK_BYTES * MAX_CHUNKS) { "Device sync payload exceeds the relay transfer limit" }
             val transferId = UUID.randomUUID().toString()
+            val createdAt = System.currentTimeMillis() / 1000
             val chunks = wire.toList().chunked(CHUNK_BYTES)
             chunks.forEachIndexed { index, bytes ->
                 val tags = listOf(
@@ -118,7 +119,7 @@ class DeviceSyncNetwork(
                     listOf("t", SYNC_TAG),
                 )
                 val content = Base64.getUrlEncoder().withoutPadding().encodeToString(bytes.toByteArray())
-                val event = NostrEvents.create(secret, KIND, tags, content, System.currentTimeMillis() / 1000)
+                val event = NostrEvents.create(secret, KIND, tags, content, createdAt)
                 check(pool.publish(event)) { "No configured relay accepted device-sync chunk $index" }
             }
             sentDevices++
