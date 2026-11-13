@@ -107,7 +107,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: relyra-phase9-audit-\${{ github.run_number }}
+          name: relyra-phase9-audit-${{ github.run_number }}
           path: |
             security-reports/
             build/reports/cyclonedx/
@@ -173,7 +173,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
-          name: relyra-phase9-reproducibility-\${{ github.run_number }}
+          name: relyra-phase9-reproducibility-${{ github.run_number }}
           path: security-reports/reproducibility.md
           if-no-files-found: warn
           retention-days: 30

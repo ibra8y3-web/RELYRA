@@ -35,7 +35,7 @@ jobs:
             "platforms;android-37.0" "build-tools;37.0.0" "ndk;27.2.12479018" > /dev/null
       - name: Validate signing secret and install private keystore
         env:
-          RELYRA_RELEASE_KEYSTORE_BASE64: \${{ secrets.RELYRA_RELEASE_KEYSTORE_BASE64 }}
+          RELYRA_RELEASE_KEYSTORE_BASE64: ${{ secrets.RELYRA_RELEASE_KEYSTORE_BASE64 }}
         run: |
           set -euo pipefail
           if [ -z "$RELYRA_RELEASE_KEYSTORE_BASE64" ]; then
@@ -51,9 +51,9 @@ jobs:
         run: bash scripts/build_mls_android.sh
       - name: Assemble signed release APK
         env:
-          RELYRA_RELEASE_STORE_PASSWORD: \${{ secrets.RELYRA_RELEASE_STORE_PASSWORD }}
-          RELYRA_RELEASE_KEY_ALIAS: \${{ secrets.RELYRA_RELEASE_KEY_ALIAS }}
-          RELYRA_RELEASE_KEY_PASSWORD: \${{ secrets.RELYRA_RELEASE_KEY_PASSWORD }}
+          RELYRA_RELEASE_STORE_PASSWORD: ${{ secrets.RELYRA_RELEASE_STORE_PASSWORD }}
+          RELYRA_RELEASE_KEY_ALIAS: ${{ secrets.RELYRA_RELEASE_KEY_ALIAS }}
+          RELYRA_RELEASE_KEY_PASSWORD: ${{ secrets.RELYRA_RELEASE_KEY_PASSWORD }}
         run: |
           set -euo pipefail
           if [ -z "$RELYRA_RELEASE_STORE_PASSWORD" ]; then
