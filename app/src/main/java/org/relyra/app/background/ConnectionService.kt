@@ -13,6 +13,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import org.relyra.app.RelyraApp
@@ -59,7 +60,9 @@ class ConnectionService : Service() {
         val nm = getSystemService(NotificationManager::class.java)
         val s = scope ?: return
         s.launch {
-            container.settings.keepConnected.collect { if (!it) stopSelf() }
+            combine(container.settings.keepConnected, container.network.meshEnabled) { keepConnected, meshEnabled ->
+                keepConnected || meshEnabled
+            }.collect { shouldStayActive -> if (!shouldStayActive) stopSelf() }
         }
         // Do not wait for the first 15-minute timer after the user explicitly enabled stay-connected mode.
         runCatching { container.deviceSyncNetwork.syncNow() }
