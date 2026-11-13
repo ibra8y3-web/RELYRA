@@ -391,14 +391,14 @@
     <string name="devices_import_code">Import pasted sync code</string>
     <string name="devices_auto_sync">Automatic encrypted sync runs every 15 minutes while the app is active and configured relays are available. Large transfers are split into encrypted chunks.</string>
     <string name="devices_sync_now">Sync approved devices now</string>
-    <string name="devices_rotate_keys">Rotate this device&apos;s signing key</string>
+    <string name="devices_rotate_keys">Rotate this device’s signing key</string>
     <string name="devices_rotation_code">Signed device key-rotation code</string>
     <string name="devices_apply_rotation">Apply signed key rotation</string>
 
     <string name="mesh_title">Offline Bluetooth LE Mesh</string>
     <string name="mesh_enable">Enable nearby BLE mesh</string>
     <string name="mesh_description">Discover nearby RELYRA nodes over Bluetooth Low Energy. Messages remain end-to-end encrypted. Delivery is opportunistic and requires participating devices to run the mesh service.</string>
-    <string name="mesh_relay_consent">Allow this phone to relay other users&apos; encrypted packets</string>
+    <string name="mesh_relay_consent">Allow this phone to relay other users’ encrypted packets</string>
     <string name="mesh_relay_explanation">When enabled, this phone may store and forward ciphertext for other users. Relaying is off by default. Relays can observe timing, packet size and nearby device metadata, but cannot read message contents.</string>
     <string name="mesh_neighbors">Connected mesh neighbors</string>
     <string name="mesh_queue">Packets waiting for forwarding</string>
