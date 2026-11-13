@@ -121,6 +121,9 @@ dependencies {
     implementation("org.igniterealtime.smack:smack-extensions:4.5.0")
     implementation("org.igniterealtime.smack:smack-omemo:4.5.0")
     implementation("org.igniterealtime.smack:smack-omemo-signal:4.5.0")
+    // smack-omemo-signal marks libsignal runtime-only although its public APIs expose these types.
+    // Declare it explicitly so Kotlin can compile against SignalProtocolAddress and related classes.
+    implementation("org.whispersystems:signal-protocol-java:2.8.1")
     implementation(libs.secp256k1)
     implementation(libs.secp256k1.android)
     implementation(libs.zxing.core)
