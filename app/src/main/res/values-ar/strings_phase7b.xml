@@ -237,4 +237,9 @@
     <string name="integrations_plugin_installed">تم تثبيت الإضافة، وستظل معطّلة حتى تقوم بتفعيلها.</string>
     <string name="integrations_phase7_limitations">تكاملات Matrix وXMPP/OMEMO وIPFS غير مفعّلة في هذا الإصدار، ولا تظهر على أنها خدمات عاملة.</string>
 
+
+    <string name="integrations_api_expires">ينتهي الرمز: %1$s</string>
+    <string name="integrations_plugin_activity">سجل نشاط الإضافات</string>
+    <string name="integrations_plugin_activity_empty">لا يوجد نشاط للإضافات بعد.</string>
+
 </resources>
