@@ -60,6 +60,7 @@ fun SettingsScreen(
     onOpenNotifications: () -> Unit,
     onOpenDiagnostics: () -> Unit,
     onOpenDevices: () -> Unit,
+    onOpenIntegrations: () -> Unit,
     onOpenHome: () -> Unit,
 ) {
     Column(
@@ -84,6 +85,8 @@ fun SettingsScreen(
             Icons.Default.Language, onOpenBrowserDocs)
         SettingsHubTile(R.string.settings_cat_tools, R.string.settings_cat_tools_desc,
             Icons.Default.Build, onOpenTools)
+        SettingsHubTile(R.string.settings_cat_integrations, R.string.settings_cat_integrations_desc,
+            Icons.Default.Language, onOpenIntegrations)
         SettingsHubTile(R.string.settings_cat_notifications, R.string.settings_cat_notifications_desc,
             Icons.Default.Notifications, onOpenNotifications)
         SettingsHubTile(R.string.settings_cat_diagnostics, R.string.settings_cat_diagnostics_desc,
