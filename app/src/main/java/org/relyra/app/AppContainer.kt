@@ -108,6 +108,13 @@ class AppContainer(context: Context) {
         }
     }
 
+    val localApi by lazy {
+        org.relyra.app.core.integrations.LocalApiServer(BuildConfig.VERSION_NAME) {
+            database.identityDao().get()?.let { it.displayName to it.publicId }
+        }
+    }
+    val plugins by lazy { org.relyra.app.core.integrations.PluginRuntime(appContext) }
+
     val network by lazy { NetworkManager(appContext) }
     val discovery by lazy {
         DhtDiscoveryManager(
