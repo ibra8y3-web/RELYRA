@@ -223,7 +223,8 @@ class GroupEngine(
         if (!mine.mlsJoined || (group.kind == GroupKind.CHANNEL && mine.role == GroupRole.MEMBER)) {
             return@withLock GroupResult.NOT_ALLOWED
         }
-        val normalizedUrl = org.relyra.app.core.transfer.BlossomUrl.normalize(file.serverUrl, allowPrivate = false)
+        val normalizedUrl = if (file.serverUrl.startsWith("ipfs://") && Regex("ipfs://b[a-z2-7]{20,120}").matches(file.serverUrl)) file.serverUrl
+        else org.relyra.app.core.transfer.BlossomUrl.normalize(file.serverUrl, allowPrivate = false)
             ?: return@withLock GroupResult.INVALID
         if (file.name.isBlank() || file.name.length > AttachmentLimits.MAX_NAME ||
             file.mime.length > AttachmentLimits.MAX_MIME ||
@@ -796,7 +797,8 @@ class GroupEngine(
                         if (fresh) runCatching { incoming?.onMessage(env.groupId, true, env.from, app.body) }
                     }
                     is GroupFilePayload -> {
-                        val safeUrl = org.relyra.app.core.transfer.BlossomUrl.normalize(
+                        val safeUrl = if (app.file.serverUrl.startsWith("ipfs://") && Regex("ipfs://b[a-z2-7]{20,120}").matches(app.file.serverUrl)) app.file.serverUrl
+                        else org.relyra.app.core.transfer.BlossomUrl.normalize(
                             app.file.serverUrl, allowPrivate = false,
                         ) ?: return
                         val attachment = GroupAttachmentRecord(
