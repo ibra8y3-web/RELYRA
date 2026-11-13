@@ -7,7 +7,7 @@ The authoritative source inventory is [MAIN_BRANCH_AUDIT_AR.md](MAIN_BRANCH_AUDI
 - Android Kotlin/Compose app with Arabic RTL and English resources.
 - Ed25519 identity/contact cards, Room + SQLCipher, Android Keystore, biometric/device lock.
 - X3DH + Double Ratchet direct messages, durable queue, acknowledgements, retries and duplicate suppression.
-- Nostr WSS relay transport; WebRTC P2P DataChannel; Bluetooth Classic (paired devices), Wi-Fi Direct and Nearby LAN.
+- Nostr WSS relay transport; WebRTC P2P DataChannel and voice/video MediaTracks in CallEngine; Bluetooth Classic (paired devices), Wi-Fi Direct, Nearby LAN, and source implementation for opt-in BLE GATT Mesh.
 - Go/libp2p Kademlia DHT service, Pebble store, HTTPS gateway, signed presence and coturn configuration/short-lived TURN credentials. Android is an HTTPS gateway client, not a libp2p host. The repository does not host a public DHT/TURN cluster.
 - Legacy groups use pairwise Double Ratchet fan-out. New MLS groups use OpenMLS 0.9.2 through Rust/JNI and a separate SQLCipher database.
 - Signed community manifests/posts/moderation events, membership/access controls, reports and audit history. Post bodies are plaintext at the discovery service; community index is local to each Pebble-backed service, not globally DHT replicated.
@@ -38,7 +38,7 @@ Complete native OpenMLS proposal creation, verification, persistence, owner revi
 ## New phases — execute only after the current work above is accepted
 
 ### Phase 4 — voice/video calls
-WebRTC MediaTracks; encrypted/signed signaling; complete outgoing/incoming call lifecycle (ring, accept, reject, end, timeout, reconnect); microphone/camera permissions and controls; notifications and conversation call UI; tests for lifecycle and failure.
+**Source implementation present:** CallEngine creates audio/video MediaTracks and contains signed call signaling, incoming/outgoing lifecycle, microphone/camera controls, call notifications and conversation UI. Independent-device interoperability and complete lifecycle validation remain pending in Phase 10.
 
 ### Phase 5 — multi-device
 
@@ -46,10 +46,10 @@ WebRTC MediaTracks; encrypted/signed signaling; complete outgoing/incoming call 
 Secure device enrollment and approval, device inventory, revoke, key rotation, account/device binding, authenticated synchronization, conflict handling and settings UI.
 
 ### Phase 6 — offline Mesh
-**Source implementation added; build/runtime verification pending.** RELYRA now has an opt-in Bluetooth LE GATT transport, signed origin and per-hop transit envelopes, an eight-hop limit, 24-hour TTL, replay/deduplication tracking, loop prevention, a Keystore-encrypted local Store-and-Forward queue, a configurable 5–100 MB quota, independent relay consent, and Arabic/English network controls and diagnostics. The adaptive router uses BLE as an offline fallback after existing online/direct transports. No APK build, automated tests or physical-device interoperability checks were run; BLE multi-hop and background reliability are not verified. See [Phase 6 implementation notes](PHASE6_OFFLINE_MESH.md).
+**Source implementation present; physical-device verification pending.** RELYRA has an opt-in Bluetooth LE GATT transport, signed origin and per-hop transit envelopes, an eight-hop limit, 24-hour TTL, replay/deduplication tracking, loop prevention, a Keystore-encrypted local transit queue, a configurable 5–100 MB quota, independent relay consent, and Arabic/English network controls and diagnostics. Mesh envelope and delivery-receipt codec unit tests are present in source; no claim is made about multi-phone interoperability, reliable background operation, or final runtime verification. See [Phase 6 implementation notes](PHASE6_OFFLINE_MESH.md).
 
 ### Phase 7 — integrations
-Matrix and XMPP/OMEMO bridges with explicit trust boundaries; sandboxed Plugin SDK/runtime and permissions; authenticated Local API; optional IPFS integration; working settings/management screens.
+**Partially implemented.** The Android app now contains an authenticated loopback-only Local API with a 15-minute in-memory bearer token, health and optional public-identity read endpoints, plus a constrained declarative JSON plugin workflow runtime. Plugins require explicit permission approval, are disabled after installation, support a fixed action allow-list, and keep a bounded local activity log. Both are wired into Settings in Arabic and English. Matrix, XMPP/OMEMO and IPFS are not implemented. See [Phase 7 status](PHASE7_INTEGRATIONS.md) and [Arabic status](PHASE7_INTEGRATIONS_AR.md).
 
 ### Phase 8 — companion tools
 Server Studio; Desktop/Node companion tools; Developer Tools; real service lifecycle, logs, configuration and API connections, not mock screens.
