@@ -18,6 +18,9 @@ import org.relyra.app.core.network.NostrEvents
 import org.relyra.app.core.network.NostrPool
 import org.relyra.app.core.storage.SecureStore
 import java.io.ByteArrayOutputStream
+import java.io.File
+import java.io.FileOutputStream
+import org.json.JSONObject
 import java.util.Base64
 import java.util.UUID
 
@@ -45,11 +48,16 @@ class DeviceSyncNetwork(
         val senderId: String,
         val count: Int,
         val createdAt: Long,
-        val chunks: MutableMap<Int, ByteArray> = mutableMapOf(),
+        val directory: File,
     )
 
     private val receiveLock = Mutex()
-    private val transfers = mutableMapOf<String, IncomingTransfer>()
+    // Persist opaque, already device-encrypted chunks so an Android process death does not
+    // discard a partially received transfer. The manifest contains routing metadata only.
+    private val incomingRoot: File by lazy {
+        File(File(database.openHelper.writableDatabase.path).parentFile, "device-sync-incoming")
+            .apply { mkdirs() }
+    }
     private val pool by lazy {
         NostrPool(
             http = OkHttpClient.Builder().build(),
@@ -118,6 +126,67 @@ class DeviceSyncNetwork(
         return sentDevices
     }
 
+    private fun loadOrCreateTransfer(
+        directory: File,
+        senderId: String,
+        count: Int,
+        createdAt: Long,
+    ): IncomingTransfer? {
+        if (!incomingRoot.exists() && !incomingRoot.mkdirs()) return null
+        if (!directory.exists()) {
+            val active = incomingRoot.listFiles()?.count { it.isDirectory } ?: 0
+            if (active >= 4 || !directory.mkdirs()) return null
+            val manifest = JSONObject()
+                .put("version", 1)
+                .put("sender", senderId)
+                .put("count", count)
+                .put("createdAt", createdAt)
+            val temporary = File(directory, "manifest.tmp")
+            return try {
+                FileOutputStream(temporary).use { output ->
+                    output.write(manifest.toString().toByteArray(Charsets.UTF_8))
+                    output.fd.sync()
+                }
+                if (!temporary.renameTo(File(directory, "manifest.json"))) {
+                    directory.deleteRecursively()
+                    null
+                } else IncomingTransfer(senderId, count, createdAt, directory)
+            } catch (_: Exception) {
+                directory.deleteRecursively()
+                null
+            }
+        }
+        return try {
+            val manifest = JSONObject(File(directory, "manifest.json").readText())
+            if (manifest.optInt("version") != 1) return null
+            IncomingTransfer(
+                manifest.getString("sender"),
+                manifest.getInt("count"),
+                manifest.getLong("createdAt"),
+                directory,
+            )
+        } catch (_: Exception) {
+            directory.deleteRecursively()
+            null
+        }
+    }
+
+    private fun purgeStaleTransfers() {
+        val now = System.currentTimeMillis() / 1000
+        incomingRoot.listFiles()?.forEach { directory ->
+            if (!directory.isDirectory) {
+                directory.delete()
+            } else {
+                val created = runCatching {
+                    JSONObject(File(directory, "manifest.json").readText()).getLong("createdAt")
+                }.getOrNull()
+                if (created == null || created > now + 300 || now - created > 24 * 60 * 60) {
+                    directory.deleteRecursively()
+                }
+            }
+        }
+    }
+
     private suspend fun receive(event: NostrEvent) = receiveLock.withLock {
         val ownPublicKey = identities.nostrPublicKeyHex() ?: return@withLock
         if (event.kind != KIND || event.pubkey != ownPublicKey) return@withLock
@@ -129,32 +198,58 @@ class DeviceSyncNetwork(
         val transferId = tag("e") ?: return@withLock
         val index = tag("n")?.toIntOrNull() ?: return@withLock
         val count = tag("c")?.toIntOrNull() ?: return@withLock
-        if (count !in 1..MAX_CHUNKS || index !in 0 until count) return@withLock
+        if (count !in 1..MAX_CHUNKS || index !in 0 until count ||
+            runCatching { UUID.fromString(transferId).toString() == transferId }.getOrDefault(false).not() ||
+            runCatching { UUID.fromString(senderId).toString() == senderId }.getOrDefault(false).not()) return@withLock
         val sender = database.trustedDeviceDao().get(senderId) ?: return@withLock
         if (sender.status != TrustedDeviceStatus.APPROVED) return@withLock
+        val nowSeconds = System.currentTimeMillis() / 1000
+        if (event.createdAt > nowSeconds + 300 || nowSeconds - event.createdAt > 24 * 60 * 60) return@withLock
         val chunk = runCatching {
             Base64.getUrlDecoder().decode(event.content).also { require(it.size in 1..CHUNK_BYTES) }
         }.getOrNull() ?: return@withLock
 
-        if (transfers.size >= 4 && transferId !in transfers) return@withLock
-        val transfer = transfers.getOrPut(transferId) {
-            IncomingTransfer(senderId, count, event.createdAt)
-        }
-        if (transfer.senderId != senderId || transfer.count != count) {
-            transfers.remove(transferId)
+        purgeStaleTransfers()
+        val directory = File(incomingRoot, transferId)
+        val transfer = loadOrCreateTransfer(directory, senderId, count, event.createdAt) ?: return@withLock
+        if (transfer.senderId != senderId || transfer.count != count || transfer.createdAt != event.createdAt) {
+            directory.deleteRecursively()
             return@withLock
         }
-        transfer.chunks.putIfAbsent(index, chunk)
-        if (transfer.chunks.size != transfer.count) return@withLock
+        val partFile = File(directory, "%04d.part".format(index))
+        if (!partFile.isFile) {
+            if (directory.listFiles()?.filter { it.extension == "part" }?.sumOf { it.length() }?.plus(chunk.size)
+                ?: chunk.size.toLong() > 8L * 1024 * 1024) return@withLock
+            val temporary = File(directory, partFile.name + ".tmp")
+            try {
+                FileOutputStream(temporary).use { output ->
+                    output.write(chunk)
+                    output.fd.sync()
+                }
+                if (!temporary.renameTo(partFile)) temporary.delete()
+            } catch (_: Exception) {
+                temporary.delete()
+                return@withLock
+            }
+        }
+        val received = (0 until transfer.count).all { File(directory, "%04d.part".format(it)).isFile }
+        if (!received) return@withLock
 
         val output = ByteArrayOutputStream()
         for (part in 0 until transfer.count) {
-            val bytes = transfer.chunks[part] ?: return@withLock
-            output.write(bytes)
+            val file = File(directory, "%04d.part".format(part))
+            if (!file.isFile || file.length() !in 1..CHUNK_BYTES.toLong()) return@withLock
+            file.inputStream().use { it.copyTo(output) }
+            if (output.size() > 8 * 1024 * 1024) {
+                directory.deleteRecursively()
+                return@withLock
+            }
         }
         val wire = output.toByteArray()
-        transfers.remove(transferId)
         runCatching { sync.importEncrypted(wire) }
-            .onSuccess { network.inboxSince = maxOf(network.inboxSince, transfer.createdAt) }
+            .onSuccess {
+                network.inboxSince = maxOf(network.inboxSince, transfer.createdAt)
+                directory.deleteRecursively()
+            }
     }
 }
