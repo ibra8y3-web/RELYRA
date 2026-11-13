@@ -152,10 +152,45 @@ class XmppOmemoClient(context: Context) {
         connection = null
     }
 
+    private fun trustKey(): SecretKey {
+        val ks = KeyStore.getInstance("AndroidKeyStore").apply { load(null) }
+        (ks.getKey(TRUST_KEY_ALIAS, null) as? SecretKey)?.let { return it }
+        val generator = KeyGenerator.getInstance(KeyProperties.KEY_ALGORITHM_AES, "AndroidKeyStore")
+        generator.init(KeyGenParameterSpec.Builder(TRUST_KEY_ALIAS, KeyProperties.PURPOSE_ENCRYPT or KeyProperties.PURPOSE_DECRYPT)
+            .setBlockModes(KeyProperties.BLOCK_MODE_GCM)
+            .setEncryptionPaddings(KeyProperties.ENCRYPTION_PADDING_NONE)
+            .setRandomizedEncryptionRequired(true).setKeySize(256).build())
+        return generator.generateKey()
+    }
+
+    private fun loadTrustDecisions(): Map<String, TrustState> = runCatching {
+        val packed = trustPrefs.getString("decisions", null) ?: return emptyMap()
+        val bytes = Base64.decode(packed, Base64.NO_WRAP)
+        require(bytes.size > 12)
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.DECRYPT_MODE, trustKey(), GCMParameterSpec(128, bytes.copyOfRange(0, 12)))
+        val json = JSONObject(String(cipher.doFinal(bytes.copyOfRange(12, bytes.size)), Charsets.UTF_8))
+        buildMap {
+            val keys = json.keys()
+            while (keys.hasNext()) {
+                val key = keys.next()
+                runCatching { TrustState.valueOf(json.getString(key)) }.getOrNull()?.let { put(key, it) }
+            }
+        }
+    }.getOrDefault(emptyMap())
+
+    private fun saveTrustDecisions() {
+        val json = JSONObject()
+        trust.forEach { (key, state) -> json.put(key, state.name) }
+        val cipher = Cipher.getInstance("AES/GCM/NoPadding")
+        cipher.init(Cipher.ENCRYPT_MODE, trustKey())
+        val packed = cipher.iv + cipher.doFinal(json.toString().toByteArray(Charsets.UTF_8))
+        trustPrefs.edit().putString("decisions", Base64.encodeToString(packed, Base64.NO_WRAP)).apply()
+    }
     private fun requireManager() = manager ?: error("XMPP OMEMO session is not initialized")
     private fun key(device: OmemoDevice, fingerprint: OmemoFingerprint) = device.toString() + ":" + fingerprint.toString()
 
-    companion object { private object SmackOmemoSetup { @Volatile var initialized = false } }
+    companion object { private const val TRUST_KEY_ALIAS = "relyra.xmpp.omemo.trust.v1"; private object SmackOmemoSetup { @Volatile var initialized = false } }
 }
 
 data class XmppOmemoFingerprint(val device: OmemoDevice, val fingerprint: String, val trusted: Boolean, internal val rawFingerprint: OmemoFingerprint)
