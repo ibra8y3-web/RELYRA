@@ -43,7 +43,7 @@ jobs:
           gradle-version: 9.6.0
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6
         with:
-          go-version: "1.26.0"
+          go-version: "1.26.11"
           cache-dependency-path: services/discovery/go.mod
       - uses: dtolnay/rust-toolchain@b725eda525362e7cf34af9a7243cac1e3f01a7ec # stable
         with:
@@ -75,13 +75,33 @@ jobs:
           "$RUNNER_TEMP/syft" dir:companion/node -o cyclonedx-json=security-reports/sbom/companion-node.cdx.json
           test -s build/reports/cyclonedx/bom.json
           cp build/reports/cyclonedx/bom.json security-reports/sbom/android-gradle.cdx.json
-      - name: Run vulnerability checks for Go and Rust
+      - name: Run Go vulnerability analysis
+        id: govulncheck
+        continue-on-error: true
         run: |
-          set -euo pipefail
-          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0
-          (cd services/discovery && "$(go env GOPATH)/bin/govulncheck" ./...)
-          cargo install cargo-audit --version 0.23.0 --locked
-          cargo audit --file native/mls/Cargo.lock
+          set -uo pipefail
+          mkdir -p security-reports/vulnerabilities
+          go install golang.org/x/vuln/cmd/govulncheck@v1.9.0 2>&1 | tee security-reports/vulnerabilities/govulncheck-install.log
+          install_status=${PIPESTATUS[0]}
+          if [ "$install_status" -ne 0 ]; then
+            exit "$install_status"
+          fi
+          (cd services/discovery && "$(go env GOPATH)/bin/govulncheck" ./...) 2>&1 | tee security-reports/vulnerabilities/govulncheck.log
+          exit "${PIPESTATUS[0]}"
+
+      - name: Run Rust dependency vulnerability audit
+        id: cargo-audit
+        continue-on-error: true
+        run: |
+          set -uo pipefail
+          mkdir -p security-reports/vulnerabilities
+          cargo install cargo-audit --version 0.23.0 --locked 2>&1 | tee security-reports/vulnerabilities/cargo-audit-install.log
+          install_status=${PIPESTATUS[0]}
+          if [ "$install_status" -ne 0 ]; then
+            exit "$install_status"
+          fi
+          cargo audit --file native/mls/Cargo.lock 2>&1 | tee security-reports/vulnerabilities/cargo-audit.log
+          exit "${PIPESTATUS[0]}"
       - name: Build license and accessibility reports
         run: |
           set -euo pipefail
@@ -115,6 +135,17 @@ jobs:
             gradle/verification-metadata.xml
           if-no-files-found: warn
           retention-days: 30
+
+      - name: Enforce vulnerability review gate
+        if: always()
+        env:
+          GOVULNCHECK_OUTCOME: ${{ steps.govulncheck.outcome }}
+          CARGO_AUDIT_OUTCOME: ${{ steps.cargo-audit.outcome }}
+        run: |
+          set -euo pipefail
+          printf 'govulncheck=%s\\ncargo-audit=%s\\n' "$GOVULNCHECK_OUTCOME" "$CARGO_AUDIT_OUTCOME"
+          test "$GOVULNCHECK_OUTCOME" = "success"
+          test "$CARGO_AUDIT_OUTCOME" = "success"
 
   reproducible-debug-build:
     name: Clean debug build reproducibility check

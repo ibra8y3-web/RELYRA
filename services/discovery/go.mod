@@ -1,6 +1,6 @@
 module github.com/ibra8y3-web/RELYRA/services/discovery
 
-go 1.26.0
+go 1.26.11
 
 require (
 	github.com/ipfs/go-datastore v0.9.2
@@ -9,4 +9,5 @@ require (
 	github.com/libp2p/go-libp2p-kad-dht v0.43.0
 	github.com/libp2p/go-libp2p-record v0.3.1
 	github.com/multiformats/go-multiaddr v0.16.1
+	golang.org/x/net v0.60.0 // indirect
 )
