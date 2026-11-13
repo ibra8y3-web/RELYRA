@@ -134,6 +134,43 @@ object MeshEnvelopeCodec {
         }
 }
 
+/**
+ * End-to-end signed receipt carried as an ordinary mesh envelope back to the original sender.
+ * It confirms acceptance by the destination, not merely a successful BLE write to a neighbor.
+ */
+internal object MeshDeliveryReceiptCodec {
+    private const val MAGIC = "RELYRA-MESH-DELIVERY-ACK-V1"
+    data class Receipt(val messageId: String, val originId: String, val destinationId: String)
+
+    fun encode(messageId: String, originId: String, destinationId: String): ByteArray {
+        require(messageId.isNotBlank() && messageId.length <= 80)
+        require(IdentityCrypto.parsePublicId(originId) != null)
+        require(IdentityCrypto.parsePublicId(destinationId) != null)
+        return ByteArrayOutputStream().use { bytes ->
+            DataOutputStream(bytes).use { out ->
+                out.writeUTF(MAGIC)
+                out.writeUTF(messageId)
+                out.writeUTF(originId.lowercase())
+                out.writeUTF(destinationId.lowercase())
+            }
+            bytes.toByteArray()
+        }
+    }
+
+    fun decode(payload: ByteArray): Receipt? = runCatching {
+        require(payload.size in 1..512)
+        DataInputStream(ByteArrayInputStream(payload)).use { input ->
+            require(input.readUTF() == MAGIC)
+            val receipt = Receipt(input.readUTF(), input.readUTF(), input.readUTF())
+            require(input.available() == 0)
+            require(receipt.messageId.isNotBlank() && receipt.messageId.length <= 80)
+            require(IdentityCrypto.parsePublicId(receipt.originId) != null)
+            require(IdentityCrypto.parsePublicId(receipt.destinationId) != null)
+            receipt
+        }
+    }.getOrNull()
+}
+
 /** Keystore-encrypted, bounded local queue. Files contain only signed envelopes and ciphertext. */
 private class MeshTransitStore(context: Context) {
     private val app = context.applicationContext
@@ -168,6 +205,10 @@ private class MeshTransitStore(context: Context) {
     @Synchronized fun pending(): List<MeshEnvelope> {
         purge()
         return files().mapNotNull { read(it) }
+    }
+    @Synchronized fun pendingById(id: String): MeshEnvelope? {
+        purge()
+        return read(fileFor(id))
     }
     @Synchronized fun markDelivered(id: String) { remember(id); fileFor(id).delete() }
     @Synchronized fun markSeen(id: String) { remember(id) }
@@ -485,9 +526,40 @@ class BleMeshConnector(context: Context, private val onWire: suspend (ByteArray)
         if (!MeshEnvelopeCodec.verify(e)) return
         val self = ownId ?: return
         if (e.destinationId == self) {
+            val receipt = MeshDeliveryReceiptCodec.decode(e.payload)
+            if (receipt != null) {
+                // A receipt may retire only the exact pending envelope addressed to its signer.
+                val original = store.pendingById(receipt.messageId)
+                if (e.messageId == "ack-${receipt.messageId}" &&
+                    receipt.originId == self && receipt.destinationId == e.originId &&
+                    original?.originId == self && original.destinationId == e.originId
+                ) {
+                    store.markDelivered(receipt.messageId)
+                    store.markDelivered(e.messageId)
+                }
+                refreshStats()
+                return
+            }
             val accepted = runCatching { onWire(e.payload) }.getOrDefault(false)
-            if (accepted) store.markDelivered(e.messageId)
-            refreshStats()
+            if (accepted) {
+                store.markDelivered(e.messageId)
+                val localSigner = signer
+                if (localSigner != null) {
+                    val ackPayload = runCatching {
+                        MeshDeliveryReceiptCodec.encode(e.messageId, e.originId, self)
+                    }.getOrNull()
+                    if (ackPayload != null) {
+                        val ack = MeshEnvelopeCodec.create(
+                            "ack-${e.messageId}", self, e.originId, ackPayload, localSigner,
+                        )
+                        if (ack != null) store.put(ack, quotaBytes)
+                    }
+                }
+                refreshStats()
+                flushQueue()
+            } else {
+                refreshStats()
+            }
             return
         }
         if (!relayEnabled || e.hops.any { it.relayId == self }) return
