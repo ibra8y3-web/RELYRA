@@ -49,6 +49,7 @@ fun IntegrationsScreen(vm: MainViewModel) {
     val scope = rememberCoroutineScope()
     val api by vm.localApi.state.collectAsStateWithLifecycle()
     val plugins by vm.plugins.installed.collectAsStateWithLifecycle()
+    val pluginEvents by vm.plugins.events.collectAsStateWithLifecycle()
     val snackbar = remember { SnackbarHostState() }
     var exposeIdentity by remember(api.exposesIdentity) { mutableStateOf(api.exposesIdentity) }
     var pendingUri by remember { mutableStateOf<Uri?>(null) }
@@ -100,6 +101,16 @@ fun IntegrationsScreen(vm: MainViewModel) {
                 Text(stringResource(R.string.integrations_api_endpoint, api.port ?: 0), style = MaterialTheme.typography.bodyMedium)
                 Text(stringResource(R.string.integrations_api_token), style = MaterialTheme.typography.labelLarge)
                 Text(api.token.orEmpty(), style = MaterialTheme.typography.bodySmall)
+                api.expiresAtMillis?.let { expiry ->
+                    Text(
+                        stringResource(
+                            R.string.integrations_api_expires,
+                            java.text.DateFormat.getDateTimeInstance().format(java.util.Date(expiry)),
+                        ),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
                 OutlinedButton(onClick = {
                     api.token?.let { clipboard.setText(AnnotatedString(it)) }
                 }) { Text(stringResource(R.string.integrations_api_copy_token)) }
@@ -168,6 +179,24 @@ fun IntegrationsScreen(vm: MainViewModel) {
                 }
                 TextButton(onClick = { vm.plugins.remove(plugin.id) }) {
                     Text(stringResource(R.string.integrations_plugin_remove))
+                }
+            }
+        }
+
+        SectionCard(stringResource(R.string.integrations_plugin_activity)) {
+            if (pluginEvents.isEmpty()) {
+                Text(stringResource(R.string.integrations_plugin_activity_empty), style = MaterialTheme.typography.bodySmall)
+            } else {
+                pluginEvents.take(30).forEach { event ->
+                    ListItem(
+                        headlineContent = { Text("${event.pluginId} · ${event.event}") },
+                        supportingContent = {
+                            Text(
+                                (event.actionId.takeIf { it.isNotBlank() }?.let { "$it · " } ?: "") +
+                                    java.text.DateFormat.getDateTimeInstance().format(java.util.Date(event.timestamp))
+                            )
+                        },
+                    )
                 }
             }
         }
