@@ -11,6 +11,8 @@ class BootReceiver : BroadcastReceiver() {
         val action = intent.action
         if (action != Intent.ACTION_BOOT_COMPLETED && action != Intent.ACTION_MY_PACKAGE_REPLACED) return
         val app = context.applicationContext as RelyraApp
-        if (app.container.settings.keepConnected.value) ConnectionService.start(context)
+        if (app.container.settings.keepConnected.value || app.container.network.meshEnabled.value) {
+            ConnectionService.start(context)
+        }
     }
 }
