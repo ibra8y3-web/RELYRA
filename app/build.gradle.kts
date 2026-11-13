@@ -12,6 +12,19 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
+    id("com.github.jk1.dependency-license-report") version "3.1.4"
+}
+
+val releaseStoreFile = providers.environmentVariable("RELYRA_RELEASE_STORE_FILE").orNull
+val releaseStorePassword = providers.environmentVariable("RELYRA_RELEASE_STORE_PASSWORD").orNull
+val releaseKeyAlias = providers.environmentVariable("RELYRA_RELEASE_KEY_ALIAS").orNull
+val releaseKeyPassword = providers.environmentVariable("RELYRA_RELEASE_KEY_PASSWORD").orNull
+val releaseSigningConfigured = listOf(
+    releaseStoreFile, releaseStorePassword, releaseKeyAlias, releaseKeyPassword
+).all { !it.isNullOrBlank() }
+
+dependencyLocking {
+    lockAllConfigurations()
 }
 
 android {
@@ -27,9 +40,23 @@ android {
         versionName = "0.9.0"
     }
 
+    signingConfigs {
+        if (releaseSigningConfigured) {
+            create("release") {
+                storeFile = rootProject.file(checkNotNull(releaseStoreFile))
+                storePassword = checkNotNull(releaseStorePassword)
+                keyAlias = checkNotNull(releaseKeyAlias)
+                keyPassword = checkNotNull(releaseKeyPassword)
+            }
+        }
+    }
+
     buildTypes {
         release {
             isMinifyEnabled = false
+            if (releaseSigningConfigured) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     compileOptions {

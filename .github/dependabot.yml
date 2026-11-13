@@ -21,3 +21,15 @@ updates:
       interval: weekly
       day: monday
     open-pull-requests-limit: 4
+  - package-ecosystem: gomod
+    directory: /services/discovery
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
+  - package-ecosystem: cargo
+    directory: /native/mls
+    schedule:
+      interval: weekly
+      day: monday
+    open-pull-requests-limit: 5
