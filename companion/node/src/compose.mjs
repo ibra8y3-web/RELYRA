@@ -185,6 +185,10 @@ async function backupDirectory(root) {
   return dir;
 }
 
+export function serializeBackupManifest(manifest) {
+  return JSON.stringify(manifest, null, 2) + "\n";
+}
+
 async function snapshotStoppedVolumes(root, serviceDir, label = "manual") {
   const volumes = await composeVolumes(serviceDir);
   if (volumes.length === 0) throw new Error("Compose configuration declares no persistent volumes");
@@ -212,7 +216,7 @@ async function snapshotStoppedVolumes(root, serviceDir, label = "manual") {
       label,
       files
     };
-    await writeFile(path.join(backupDir, id + ".json"), JSON.stringify(manifest, null, 2) + "\\n", { flag: "wx", mode: 0o600 });
+    await writeFile(path.join(backupDir, id + ".json"), serializeBackupManifest(manifest), { flag: "wx", mode: 0o600 });
     return manifest;
   } catch (error) {
     await Promise.all(files.map((item) => rm(path.join(backupDir, item.file), { force: true })));

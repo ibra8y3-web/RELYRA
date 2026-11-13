@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { normalizeApiBase, isSafeApiPath, RelyraClient } from "../src/client.mjs";
 import { createServer } from "node:http";
 import { startServerStudio } from "../src/studio.mjs";
-import { redactLogText, isPublicIPv4, validateBootstrapMultiaddr } from "../src/compose.mjs";
+import { redactLogText, isPublicIPv4, validateBootstrapMultiaddr, serializeBackupManifest } from "../src/compose.mjs";
 import { mkdtemp, writeFile, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
@@ -117,4 +117,12 @@ test("Server Studio serves only a local console and rejects unauthenticated acti
   } finally {
     await new Promise((resolve) => server.close(resolve));
   }
+});
+
+test("backup manifest serialization produces parseable JSON with a real line ending", () => {
+  const manifest = { schemaVersion: 1, id: "20261113T160000Z", files: [] };
+  const serialized = serializeBackupManifest(manifest);
+  assert.equal(serialized.endsWith("\n"), true);
+  assert.deepEqual(JSON.parse(serialized), manifest);
+  assert.equal(serialized.endsWith("\\n"), false);
 });
