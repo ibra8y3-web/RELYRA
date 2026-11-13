@@ -109,7 +109,7 @@ class MatrixRustE2eeClient(
     private suspend fun buildClient(homeserver: String): Client {
         val key = databaseKey()
         require(key.size == 32) { "RELYRA database key must be 256 bits for Matrix SDK storage" }
-        val store = SqliteStoreBuilder(dataPath = dataDir.absolutePath, cachePath = cacheDir.absolutePath).key(key)
+        val store = SqliteStoreBuilder(dataPath = dataDir.absolutePath, cachePath = cacheDir.absolutePath).key(key.copyOf())
         key.fill(0)
         return ClientBuilder()
             .serverNameOrHomeserverUrl(homeserver)
