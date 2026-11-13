@@ -30,6 +30,13 @@ data class PluginInfo(
     val actions: List<PluginAction>,
 )
 
+data class PluginLogEntry(
+    val pluginId: String,
+    val actionId: String,
+    val event: String,
+    val timestamp: Long,
+)
+
 sealed interface PluginCommand {
     data class Notice(val title: String, val text: String) : PluginCommand
     data class CopyText(val text: String) : PluginCommand
@@ -51,6 +58,8 @@ class PluginRuntime(context: android.content.Context) {
     private val prefs = context.applicationContext.getSharedPreferences("relyra_plugins", android.content.Context.MODE_PRIVATE)
     private val _installed = kotlinx.coroutines.flow.MutableStateFlow(loadInstalled())
     val installed: kotlinx.coroutines.flow.StateFlow<List<PluginInfo>> = _installed
+    private val _events = kotlinx.coroutines.flow.MutableStateFlow(loadEvents())
+    val events: kotlinx.coroutines.flow.StateFlow<List<PluginLogEntry>> = _events
 
     private val allowedPermissions = setOf("clipboard.write", "external.open")
     private val allowedActionTypes = setOf("notice", "copy_text", "open_url")
@@ -77,17 +86,25 @@ class PluginRuntime(context: android.content.Context) {
             return@withContext PluginInstallResult.Rejected("Invalid plugin path")
         }
         val temporary = File(root, parsed.id + ".tmp")
+        val previous = File(root, parsed.id + ".previous")
         try {
             temporary.writeText(raw, StandardCharsets.UTF_8)
-            if (target.exists() && !target.delete()) throw IOException("Could not replace the old plugin")
-            if (!temporary.renameTo(target)) throw IOException("Could not store plugin package")
+            if (previous.exists() && !previous.delete()) throw IOException("Could not clean the previous plugin package")
+            if (target.exists() && !target.renameTo(previous)) throw IOException("Could not stage the previous plugin package")
+            if (!temporary.renameTo(target)) {
+                if (previous.exists()) previous.renameTo(target)
+                throw IOException("Could not store plugin package")
+            }
             prefs.edit().putString("grants_${parsed.id}", JSONArray(approvedPermissions.sorted()).toString())
                 .putBoolean("enabled_${parsed.id}", false).apply()
+            previous.delete()
+            recordEvent(parsed.id, "package", "installed")
             val saved = parse(raw, approvedPermissions, false)
             _installed.value = loadInstalled()
             PluginInstallResult.Installed(saved)
         } catch (t: Throwable) {
             temporary.delete()
+            if (!target.exists() && previous.exists()) previous.renameTo(target)
             PluginInstallResult.Rejected(t.message ?: "Could not install plugin")
         }
     }
@@ -96,6 +113,7 @@ class PluginRuntime(context: android.content.Context) {
         val plugin = _installed.value.firstOrNull { it.id == id } ?: return
         if (enabled && plugin.actions.isEmpty()) return
         prefs.edit().putBoolean("enabled_$id", enabled).apply()
+        recordEvent(id, "plugin", if (enabled) "enabled" else "disabled")
         _installed.value = loadInstalled()
     }
 
@@ -105,28 +123,37 @@ class PluginRuntime(context: android.content.Context) {
         val deleted = !target.exists() || target.delete()
         if (deleted) {
             prefs.edit().remove("grants_$id").remove("enabled_$id").apply()
+            recordEvent(id, "plugin", "removed")
             _installed.value = loadInstalled()
         }
         return deleted
     }
 
     fun runAction(pluginId: String, actionId: String): PluginCommand? {
-        val plugin = _installed.value.firstOrNull { it.id == pluginId && it.enabled } ?: return null
-        val action = plugin.actions.firstOrNull { it.id == actionId } ?: return null
-        return when (action.type) {
-            "notice" -> PluginCommand.Notice(action.title, action.text ?: return null)
-            "copy_text" -> {
-                if ("clipboard.write" !in plugin.grantedPermissions) return null
-                PluginCommand.CopyText(action.text ?: return null)
-            }
+        val plugin = _installed.value.firstOrNull { it.id == pluginId } ?: return null
+        if (!plugin.enabled) {
+            recordEvent(pluginId, actionId, "blocked_disabled")
+            return null
+        }
+        val action = plugin.actions.firstOrNull { it.id == actionId } ?: run {
+            recordEvent(pluginId, actionId, "blocked_unknown_action")
+            return null
+        }
+        val command = when (action.type) {
+            "notice" -> action.text?.let { PluginCommand.Notice(action.title, it) }
+            "copy_text" -> if ("clipboard.write" in plugin.grantedPermissions)
+                action.text?.let(PluginCommand::CopyText) else null
             "open_url" -> {
-                if ("external.open" !in plugin.grantedPermissions) return null
-                val safe = BrowserUrlPolicy.normalize(action.url ?: return null) ?: return null
-                if (!safe.startsWith("https://", true)) return null
-                PluginCommand.OpenUrl(safe)
+                if ("external.open" !in plugin.grantedPermissions) null
+                else {
+                    val safe = action.url?.let(BrowserUrlPolicy::normalize)
+                    if (safe != null && safe.startsWith("https://", true)) PluginCommand.OpenUrl(safe) else null
+                }
             }
             else -> null
         }
+        recordEvent(pluginId, actionId, if (command == null) "blocked_permission_or_invalid" else "executed")
+        return command
     }
 
     private fun readPackage(resolver: ContentResolver, uri: Uri): String? {
@@ -160,8 +187,38 @@ class PluginRuntime(context: android.content.Context) {
                     val id = file.nameWithoutExtension
                     val grants = readGrants(id)
                     parse(file.readText(StandardCharsets.UTF_8), grants, prefs.getBoolean("enabled_$id", false))
+                        .also { require(it.id == id) { "Plugin identifier does not match package filename" } }
                 }.getOrNull()
             }.sortedBy { it.name.lowercase() }
+    }
+
+    private fun loadEvents(): List<PluginLogEntry> = runCatching {
+        val array = JSONArray(prefs.getString("event_log", "[]"))
+        (0 until array.length()).mapNotNull { index ->
+            val item = array.optJSONObject(index) ?: return@mapNotNull null
+            val pluginId = item.optString("pluginId")
+            val event = item.optString("event")
+            val actionId = item.optString("actionId")
+            val timestamp = item.optLong("timestamp", 0L)
+            if (pluginId.isBlank() || event.isBlank() || timestamp <= 0L) null
+            else PluginLogEntry(pluginId, actionId, event, timestamp)
+        }.takeLast(MAX_LOG_ENTRIES).reversed()
+    }.getOrDefault(emptyList())
+
+    @Synchronized
+    private fun recordEvent(pluginId: String, actionId: String, event: String) {
+        val entry = PluginLogEntry(pluginId, actionId, event, System.currentTimeMillis())
+        val updated = (listOf(entry) + _events.value).take(MAX_LOG_ENTRIES)
+        _events.value = updated
+        val array = JSONArray()
+        updated.asReversed().forEach { item ->
+            array.put(JSONObject()
+                .put("pluginId", item.pluginId)
+                .put("actionId", item.actionId)
+                .put("event", item.event)
+                .put("timestamp", item.timestamp))
+        }
+        prefs.edit().putString("event_log", array.toString()).apply()
     }
 
     private fun readGrants(id: String): Set<String> = runCatching {
@@ -221,5 +278,6 @@ class PluginRuntime(context: android.content.Context) {
 
     companion object {
         const val MAX_PACKAGE_BYTES = 256 * 1024
+        const val MAX_LOG_ENTRIES = 100
     }
 }
