@@ -9,6 +9,7 @@ import kotlinx.coroutines.withContext
 import org.json.JSONObject
 import org.matrix.rustcomponents.sdk.Client
 import org.matrix.rustcomponents.sdk.ClientBuilder
+import org.matrix.rustcomponents.sdk.EncryptionState
 import org.matrix.rustcomponents.sdk.Session
 import org.matrix.rustcomponents.sdk.SlidingSyncVersion
 import org.matrix.rustcomponents.sdk.SlidingSyncVersionBuilder
@@ -91,6 +92,7 @@ class MatrixRustE2eeClient(
         require(body.isNotBlank() && body.length <= 65536)
         val room = requireClient().getRoom(roomId) ?: error("Matrix room is not available in the restored SDK store")
         room.use {
+            require(it.latestEncryptionState() == EncryptionState.ENCRYPTED) { "This room is not end-to-end encrypted; RELYRA blocks plaintext Matrix sends" }
             it.timeline().use { timeline ->
                 messageEventContentFromMarkdown(body).use { content ->
                     timeline.send(content)
