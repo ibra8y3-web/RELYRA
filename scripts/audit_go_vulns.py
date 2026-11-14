@@ -26,22 +26,47 @@ def semver_tuple(value: str) -> tuple[int, int, int] | None:
 
 
 def read_json_stream(path: Path) -> list[dict[str, Any]]:
+    """Read govulncheck's JSON stream, including pretty-printed JSON objects.
+
+    govulncheck emits a sequence of JSON messages. Depending on the producer
+    version/wrapper, each message may be compact JSONL or a multi-line JSON
+    object. Decode successive JSON values from the complete stream instead of
+    assuming one complete object per physical line.
+    """
     raw = path.read_text(encoding="utf-8").strip()
     if not raw:
         raise ValueError("govulncheck JSON stream is empty")
-    if raw.startswith("["):
-        parsed = json.loads(raw)
-        if not isinstance(parsed, list):
-            raise ValueError("expected a JSON message array")
-        return [item for item in parsed if isinstance(item, dict)]
-    messages: list[dict[str, Any]] = []
-    for line_number, line in enumerate(raw.splitlines(), 1):
-        if not line.strip():
-            continue
-        item = json.loads(line)
-        if not isinstance(item, dict):
-            raise ValueError(f"message {line_number} is not a JSON object")
-        messages.append(item)
+
+    parsed = json.loads(raw) if raw.startswith("[") else None
+    if isinstance(parsed, list):
+        messages = [item for item in parsed if isinstance(item, dict)]
+    elif parsed is not None:
+        raise ValueError("expected a JSON message array")
+
+    else:
+        decoder = json.JSONDecoder()
+        messages: list[dict[str, Any]] = []
+        offset = 0
+        while offset < len(raw):
+            while offset < len(raw) and raw[offset].isspace():
+                offset += 1
+            if offset >= len(raw):
+                break
+            try:
+                item, next_offset = decoder.raw_decode(raw, offset)
+            except json.JSONDecodeError as exc:
+                context = raw[offset:offset + 160].replace("\n", " ")
+                raise ValueError(
+                    f"invalid govulncheck JSON at character {offset}: {exc}; "
+                    f"input starts with {context!r}"
+                ) from exc
+            if not isinstance(item, dict):
+                raise ValueError(
+                    f"govulncheck message at character {offset} is not a JSON object"
+                )
+            messages.append(item)
+            offset = next_offset
+
     if not messages:
         raise ValueError("govulncheck JSON stream contains no messages")
     return messages
