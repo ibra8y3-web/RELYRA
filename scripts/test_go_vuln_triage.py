@@ -66,6 +66,18 @@ class GoVulnerabilityTriageTests(unittest.TestCase):
         self.assertIn(DHT_ADVISORY, report)
         self.assertIn("REVIEW_REQUIRED", report)
 
+    def test_json_stream_reads_pretty_printed_and_concatenated_objects(self):
+        messages = [
+            {"config": {"protocol_version": "v1.0.0"}},
+            {"finding": {"osv": DHT_ADVISORY, "trace": []}},
+        ]
+        pretty_stream = "\\n".join(json.dumps(message, indent=2) for message in messages)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "govulncheck-pretty.json"
+            path.write_text(pretty_stream, encoding="utf-8")
+            parsed = read_json_stream(path)
+        self.assertEqual(finding_ids(parsed), [DHT_ADVISORY])
+
     def test_json_stream_reads_findings(self):
         messages = [
             {"config": {"protocol_version": "v1.0.0"}},
