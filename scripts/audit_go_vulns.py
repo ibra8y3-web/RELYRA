@@ -55,7 +55,7 @@ def read_json_stream(path: Path) -> list[dict[str, Any]]:
             try:
                 item, next_offset = decoder.raw_decode(raw, offset)
             except json.JSONDecodeError as exc:
-                context = raw[offset:offset + 160].replace("\\n", " ")
+                context = raw[offset:offset + 160].replace("\n", " ")
                 raise ValueError(
                     f"invalid govulncheck JSON at character {offset}: {exc}; "
                     f"input starts with {context!r}"
