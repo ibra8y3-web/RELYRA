@@ -71,7 +71,7 @@ class GoVulnerabilityTriageTests(unittest.TestCase):
             {"config": {"protocol_version": "v1.0.0"}},
             {"finding": {"osv": DHT_ADVISORY, "trace": []}},
         ]
-        pretty_stream = "\\n".join(json.dumps(message, indent=2) for message in messages)
+        pretty_stream = "\n".join(json.dumps(message, indent=2) for message in messages)
         with tempfile.TemporaryDirectory() as directory:
             path = Path(directory) / "govulncheck-pretty.json"
             path.write_text(pretty_stream, encoding="utf-8")
