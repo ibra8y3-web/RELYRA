@@ -12,7 +12,7 @@ plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.compose)
     alias(libs.plugins.ksp)
-    id("com.github.jk1.dependency-license-report") version "3.1.4"
+    id("com.github.jk1.dependency-license-report") version "3.1.5"
 }
 
 val releaseStoreFile = providers.environmentVariable("RELYRA_RELEASE_STORE_FILE").orNull
