@@ -1,0 +1,38 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="developer_tools_title">Developer tools</string>
+    <string name="developer_tools_desc">Inspect live protocol counters, the local API and installed workflow plugins.</string>
+    <string name="developer_tools_intro">Live diagnostics and companion connection details from this RELYRA installation. Secrets are never sent to a remote service.</string>
+    <string name="developer_tools_api">Local companion API</string>
+    <string name="developer_tools_status">Service status</string>
+    <string name="developer_tools_running">Running on this device</string>
+    <string name="developer_tools_stopped">Stopped</string>
+    <string name="developer_tools_endpoint">Loopback endpoint</string>
+    <string name="developer_tools_adb_hint">On a trusted computer, forward this device port %1$d to local port 8787 with ADB.</string>
+    <string name="developer_tools_copy_forward">Copy ADB forward command</string>
+    <string name="developer_tools_copy_token">Copy temporary token</string>
+    <string name="developer_tools_show_token">Reveal token</string>
+    <string name="developer_tools_hide_token">Hide token</string>
+    <string name="developer_tools_token_expires">Token expires</string>
+    <string name="developer_tools_token_warning">This token grants local read access. Share it only with tools you trust; it expires automatically.</string>
+    <string name="developer_tools_start">Start local API</string>
+    <string name="developer_tools_stop">Stop API</string>
+    <string name="developer_tools_protocols">Live protocol overview</string>
+    <string name="developer_tools_relays">Nostr relays</string>
+    <string name="developer_tools_relay_summary">%1$d enabled · %2$d configured · %3$d connected</string>
+    <string name="developer_tools_plugins">Workflow plugins</string>
+    <string name="developer_tools_plugin_summary">%1$d enabled · %2$d installed</string>
+    <string name="developer_tools_mesh">Mesh status</string>
+    <string name="developer_tools_redacted_note">The companion API exposes counters and public status only. It never exposes message content, private keys, relay addresses or database contents.</string>
+    <string name="developer_tools_open_diagnostics">Open full diagnostics</string>
+    <string name="developer_tools_plugin_history">Recent plugin activity (metadata only)</string>
+    <string name="developer_tools_no_plugins">No workflow plugins are installed.</string>
+    <string name="developer_tools_no_events">No plugin activity has been recorded.</string>
+    <string name="developer_tools_enable_plugin">Enable</string>
+    <string name="developer_tools_disable_plugin">Disable</string>
+    <string name="developer_tools_remove_plugin">Remove</string>
+    <string name="developer_tools_remove_plugin_title">Remove workflow plugin</string>
+    <string name="developer_tools_remove_plugin_confirm">Remove "%1$s" and its local permissions from this device?</string>
+    <string name="developer_tools_plugin_removed">Plugin removed.</string>
+    <string name="developer_tools_plugin_remove_failed">Plugin could not be removed.</string>
+</resources>

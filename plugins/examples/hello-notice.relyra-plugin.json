@@ -1,0 +1,11 @@
+{
+  "schemaVersion": 1,
+  "id": "example.hello-notice",
+  "name": "Hello notice",
+  "version": "1.0.0",
+  "description": "Shows an in-app notice. Needs no permissions.",
+  "permissions": [],
+  "actions": [
+    { "id": "hello", "type": "notice", "title": "Say hello", "text": "Hello from a RELYRA plugin." }
+  ]
+}

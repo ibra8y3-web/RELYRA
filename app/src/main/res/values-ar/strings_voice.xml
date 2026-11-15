@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="voice_message">رسالة صوتية (%1$d ث)</string>
+    <string name="voice_play">تشغيل</string>
+    <string name="voice_stop">إيقاف</string>
+    <string name="voice_recording">جارٍ التسجيل %1$s</string>
+    <string name="voice_pause">إيقاف مؤقت</string>
+    <string name="voice_resume">استكمال</string>
+    <string name="voice_cancel">إلغاء</string>
+    <string name="voice_send">إرسال</string>
+    <string name="voice_too_short">التسجيل قصير جدًا.</string>
+    <string name="voice_failed">تعذر بدء التسجيل. هل الميكروفون مستخدم؟</string>
+    <string name="voice_no_permission">يلزم إذن الميكروفون لتسجيل الرسائل الصوتية.</string>
+</resources>

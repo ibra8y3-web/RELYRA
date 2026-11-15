@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="browser_new_tab">علامة تبويب جديدة</string>
+    <string name="browser_new_tab_button">+ تبويب</string>
+    <string name="browser_close_tab">إغلاق التبويب</string>
+    <string name="browser_max_tabs">يمكنك إبقاء 8 علامات تبويب مفتوحة كحد أقصى.</string>
+    <string name="browser_site_settings">إعدادات الموقع</string>
+    <string name="browser_site_none">افتح صفحة لتغيير إعدادات موقعها.</string>
+    <string name="browser_site_title">إعدادات %1$s</string>
+    <string name="browser_site_rule_line">%1$s: %2$s</string>
+    <string name="browser_rule_javascript">JavaScript</string>
+    <string name="browser_rule_cookies">ملفات الارتباط</string>
+    <string name="browser_rule_camera">الكاميرا</string>
+    <string name="browser_rule_microphone">الميكروفون</string>
+    <string name="browser_rule_default_on">الافتراضي (مفعّل)</string>
+    <string name="browser_rule_default_off">الافتراضي (متوقف)</string>
+    <string name="browser_rule_allow">مسموح</string>
+    <string name="browser_rule_block">محظور</string>
+    <string name="browser_rule_ask">اسأل في كل مرة</string>
+    <string name="browser_site_reset">إعادة ضبط هذا الموقع</string>
+    <string name="browser_site_reset_all">إعادة ضبط إعدادات كل المواقع</string>
+    <string name="browser_clear_cookies">مسح كل ملفات الارتباط</string>
+    <string name="browser_cookies_cleared">تم مسح كل ملفات الارتباط.</string>
+    <string name="browser_perm_title">السماح لـ %1$s باستخدام %2$s؟</string>
+    <string name="browser_perm_camera">الكاميرا</string>
+    <string name="browser_perm_microphone">الميكروفون</string>
+    <string name="browser_perm_camera_mic">الكاميرا والميكروفون</string>
+    <string name="browser_perm_allow">السماح الآن</string>
+    <string name="browser_perm_always">السماح دائمًا</string>
+    <string name="browser_perm_block">حظر هذا الموقع</string>
+    <string name="browser_perm_android_denied">لم يمنح Android تطبيق RELYRA صلاحية الكاميرا أو الميكروفون. اسمح بها من إعدادات الهاتف أولًا.</string>
+</resources>

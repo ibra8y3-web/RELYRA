@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="webdav_title">Backup to NAS / WebDAV</string>
+    <string name="webdav_desc">Backups are encrypted on this phone before they leave it. The server only stores ciphertext. NAS devices work through their WebDAV service (Synology, QNAP, TrueNAS, Nextcloud...).</string>
+    <string name="webdav_url">Server address (https://...)</string>
+    <string name="webdav_user">User name</string>
+    <string name="webdav_pass">Password</string>
+    <string name="webdav_pass_keep">Password (leave empty to keep the saved one)</string>
+    <string name="webdav_folder">Folder</string>
+    <string name="webdav_allow_http">Allow plain HTTP</string>
+    <string name="webdav_allow_http_desc">Only for a NAS on your own network without TLS. Anyone on that network could read the login.</string>
+    <string name="webdav_save">Save</string>
+    <string name="webdav_test">Test connection</string>
+    <string name="webdav_backup_now">Back up now</string>
+    <string name="webdav_refresh">List backups</string>
+    <string name="webdav_saved">Server settings saved.</string>
+    <string name="webdav_test_ok">Connection works.</string>
+    <string name="webdav_uploaded">Backup uploaded and verified: %1$s</string>
+    <string name="webdav_failed">WebDAV: %1$s</string>
+</resources>

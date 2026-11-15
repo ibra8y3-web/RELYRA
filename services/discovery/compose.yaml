@@ -1,0 +1,83 @@
+services:
+  discovery:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      RELYRA_HTTP_LISTEN: "0.0.0.0:8080"
+      RELYRA_LIBP2P_LISTEN: "/ip4/0.0.0.0/tcp/4001"
+      RELYRA_DATA_DIR: "/var/lib/relyra-discovery"
+      RELYRA_BOOTSTRAP_PEERS: "${RELYRA_BOOTSTRAP_PEERS:-}"
+      RELYRA_ANNOUNCE_MULTIADDRS: "${RELYRA_ANNOUNCE_MULTIADDRS:-}"
+      RELYRA_TURN_URLS: "turn:${TURN_PUBLIC_HOST}:3478?transport=udp,turn:${TURN_PUBLIC_HOST}:3478?transport=tcp"
+      RELYRA_TURN_SHARED_SECRET: "${TURN_SHARED_SECRET:?Set TURN_SHARED_SECRET in .env}"
+      RELYRA_TURN_REALM: "${TURN_REALM:-${TURN_PUBLIC_HOST}}"
+      RELYRA_TURN_TTL_SECONDS: "300"
+      RELYRA_TRUST_PROXY: "true"
+    volumes:
+      - discovery-data:/var/lib/relyra-discovery
+    networks:
+      relyra:
+        ipv4_address: 172.30.0.10
+    ports:
+      - "4001:4001/tcp"
+    expose:
+      - "8080"
+    depends_on:
+      - turn
+
+  turn:
+    image: coturn/coturn:4.18.0-r0
+    restart: unless-stopped
+    command:
+      - "-c"
+      - "/etc/coturn/turnserver.conf"
+      - "--realm=${TURN_REALM:-${TURN_PUBLIC_HOST}}"
+      - "--static-auth-secret=${TURN_SHARED_SECRET:?Set TURN_SHARED_SECRET in .env}"
+      - "--external-ip=${TURN_EXTERNAL_IP:?Set TURN_EXTERNAL_IP}/${TURN_INTERNAL_IP:-172.30.0.11}"
+    volumes:
+      - ./turn/turnserver.conf:/etc/coturn/turnserver.conf:ro
+    networks:
+      relyra:
+        ipv4_address: 172.30.0.11
+    ports:
+      - "3478:3478/udp"
+      - "3478:3478/tcp"
+      - "49160-49200:49160-49200/udp"
+      - "49160-49200:49160-49200/tcp"
+    cap_drop:
+      - ALL
+    cap_add:
+      - NET_BIND_SERVICE
+
+  caddy:
+    image: caddy:2.10-alpine
+    restart: unless-stopped
+    environment:
+      DISCOVERY_DOMAIN: "${DISCOVERY_DOMAIN:?Set DISCOVERY_DOMAIN in .env}"
+      ACME_EMAIL: "${ACME_EMAIL:?Set ACME_EMAIL in .env}"
+    ports:
+      - "80:80/tcp"
+      - "443:443/tcp"
+      - "443:443/udp"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      relyra:
+        ipv4_address: 172.30.0.12
+    depends_on:
+      - discovery
+
+networks:
+  relyra:
+    ipam:
+      config:
+        - subnet: ${RELYRA_DOCKER_SUBNET:-172.30.0.0/24}
+
+volumes:
+  discovery-data:
+  caddy-data:
+  caddy-config:

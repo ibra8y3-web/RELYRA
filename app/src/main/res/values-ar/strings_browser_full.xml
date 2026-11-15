@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="browser_start_hint">اكتب عنوان موقع في الأعلى لبدء التصفح. تفتح الصفحات داخل RELYRA وملفات الارتباط متوقفة افتراضيًا.</string>
+    <string name="browser_bookmarks">الإشارات المرجعية</string>
+    <string name="browser_history">السجل</string>
+    <string name="browser_no_bookmarks">لا توجد إشارات مرجعية بعد. افتح صفحة واضغط على إشارة مرجعية.</string>
+    <string name="browser_no_history">السجل فارغ أو متوقف.</string>
+    <string name="browser_bookmark_add">إشارة مرجعية</string>
+    <string name="browser_bookmark_remove">إزالة الإشارة</string>
+    <string name="browser_copy_link">نسخ الرابط</string>
+    <string name="browser_share_link">مشاركة الرابط</string>
+    <string name="browser_open_external">فتح في تطبيق آخر</string>
+    <string name="browser_stop">إيقاف</string>
+    <string name="browser_settings">الإعدادات</string>
+    <string name="browser_history_save">حفظ سجل التصفح (مشفر وعلى هذا الجهاز فقط)</string>
+    <string name="browser_history_clear">مسح السجل</string>
+    <string name="browser_link_copied">تم نسخ الرابط</string>
+    <string name="browser_download_title">تنزيل الملف؟</string>
+    <string name="browser_download_message">تنزيل %1$s من هذا الموقع؟ يُحفظ الملف في مجلد تنزيلات التطبيق ولا يُفتح تلقائيًا.</string>
+    <string name="browser_download_confirm">تنزيل</string>
+    <string name="browser_download_started">بدأ التنزيل: %1$s</string>
+    <string name="browser_download_failed">تعذر بدء التنزيل.</string>
+    <string name="browser_external_title">الفتح في تطبيق آخر؟</string>
+    <string name="browser_external_message">سيغادر هذا الرابط RELYRA ويفتح في تطبيق آخر: %1$s</string>
+    <string name="browser_external_confirm">فتح</string>
+    <string name="browser_external_failed">لا يوجد تطبيق قادر على فتح هذا الرابط.</string>
+</resources>

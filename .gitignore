@@ -1,0 +1,20 @@
+*.iml
+.gradle/
+/local.properties
+.idea/
+build/
+captures/
+.externalNativeBuild/
+.cxx/
+*.jks
+*.keystore
+
+# Local service secrets and operator configuration
+.env
+services/discovery/.env
+
+# Local Server Studio volume snapshots (may contain private service state)
+.relyra-backups/
+
+# Local physical-device test reports (may contain device/build metadata)
+.relyra-device-lab/

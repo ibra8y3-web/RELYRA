@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="developer_tools_sdk_title">Plugin SDK</string>
+    <string name="developer_tools_sdk_desc">Plugins are data-only JSON packages (up to 20 actions: notice, copy text, open an https link). They cannot run code, read messages or keys, or use the network. Check a plugin file here before installing it.</string>
+    <string name="developer_tools_sdk_check">Check a plugin file</string>
+    <string name="developer_tools_sdk_example">Save an example plugin</string>
+    <string name="developer_tools_sdk_valid">Valid plugin %1$s version %2$s with %3$s action(s).</string>
+    <string name="developer_tools_sdk_invalid">Plugin rejected: %1$s</string>
+    <string name="developer_tools_sdk_unreadable">The file could not be read.</string>
+    <string name="developer_tools_sdk_saved">Example plugin saved. Edit it, then check it here.</string>
+    <string name="developer_tools_open_plugin_manager">Open plugin manager</string>
+</resources>

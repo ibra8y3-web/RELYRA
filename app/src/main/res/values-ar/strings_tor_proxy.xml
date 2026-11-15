@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="net_tor_title">وكيل Tor عبر SOCKS</string>
+    <string name="net_tor_desc">يربط عملاء HTTP وWebSocket ونقل الملفات في RELYRA بخدمة Tor خارجية عبر SOCKS مثل Orbot. المنفذ المحلي الافتراضي 127.0.0.1:9050. التطبيق لا يضمّن Tor ولا يشغّله بنفسه، وتظل إعدادات Bridges داخل تطبيق Tor.</string>
+    <string name="net_tor_enable">استخدام وكيل Tor المحلي</string>
+    <string name="net_tor_strict">الوضع الصارم (منع الاتصال المباشر الاحتياطي)</string>
+    <string name="net_tor_strict_note">الوضع الصارم يرسل طلبات OkHttp الجديدة للمرحلات وخوادم الملفات عبر SOCKS فقط. إذا تعذر Tor تفشل الطلبات دون اتصال مباشر بديل. يتم حظر WebView المدمج أثناء تفعيل وكيل Tor.</string>
+    <string name="net_tor_fallback_warning">تحذير: يُسمح بالاتصال المباشر إذا تعذر SOCKS. هذا ليس توجيه Tor صارمًا وقد يكشف عنوان IP الخاص بك.</string>
+    <string name="net_tor_port">منفذ SOCKS المحلي</string>
+    <string name="net_tor_port_invalid">أدخل منفذًا من 1 إلى 65535.</string>
+    <string name="net_tor_test">حفظ الإعدادات والتحقق من مسار Tor</string>
+    <string name="net_tor_status_disabled">وكيل Tor متوقف.</string>
+    <string name="net_tor_status_ready">وكيل Tor مفعّل. نفّذ اختبار خروج Tor قبل الاعتماد عليه.</string>
+    <string name="net_tor_status_testing">جارٍ التحقق من الاتصال عبر Tor…</string>
+    <string name="net_tor_status_verified">تم التحقق من عقدة خروج Tor بواسطة Tor Project. عنوان الخروج: %1$s</string>
+    <string name="net_tor_status_not_tor">استجاب الوكيل، لكن لم يتم التعرف على عنوان الخروج كعقدة Tor.</string>
+    <string name="net_tor_status_failed">فشل اختبار مسار Tor: %1$s</string>
+</resources>

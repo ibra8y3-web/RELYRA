@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="browser_new_tab">New tab</string>
+    <string name="browser_new_tab_button">+ Tab</string>
+    <string name="browser_close_tab">Close tab</string>
+    <string name="browser_max_tabs">You can keep up to 8 tabs open.</string>
+    <string name="browser_site_settings">Site settings</string>
+    <string name="browser_site_none">Open a page to change the settings of its site.</string>
+    <string name="browser_site_title">Settings for %1$s</string>
+    <string name="browser_site_rule_line">%1$s: %2$s</string>
+    <string name="browser_rule_javascript">JavaScript</string>
+    <string name="browser_rule_cookies">Cookies</string>
+    <string name="browser_rule_camera">Camera</string>
+    <string name="browser_rule_microphone">Microphone</string>
+    <string name="browser_rule_default_on">Default (on)</string>
+    <string name="browser_rule_default_off">Default (off)</string>
+    <string name="browser_rule_allow">Allowed</string>
+    <string name="browser_rule_block">Blocked</string>
+    <string name="browser_rule_ask">Ask each time</string>
+    <string name="browser_site_reset">Reset this site</string>
+    <string name="browser_site_reset_all">Reset all site settings</string>
+    <string name="browser_clear_cookies">Clear all cookies</string>
+    <string name="browser_cookies_cleared">All cookies were cleared.</string>
+    <string name="browser_perm_title">Allow %1$s to use the %2$s?</string>
+    <string name="browser_perm_camera">camera</string>
+    <string name="browser_perm_microphone">microphone</string>
+    <string name="browser_perm_camera_mic">camera and microphone</string>
+    <string name="browser_perm_allow">Allow now</string>
+    <string name="browser_perm_always">Always allow</string>
+    <string name="browser_perm_block">Block this site</string>
+    <string name="browser_perm_android_denied">Android did not give RELYRA access to the camera or microphone. Allow it in the phone settings first.</string>
+</resources>

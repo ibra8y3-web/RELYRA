@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="voice_message">Voice message (%1$d s)</string>
+    <string name="voice_play">Play</string>
+    <string name="voice_stop">Stop</string>
+    <string name="voice_recording">Recording %1$s</string>
+    <string name="voice_pause">Pause</string>
+    <string name="voice_resume">Resume</string>
+    <string name="voice_cancel">Cancel</string>
+    <string name="voice_send">Send</string>
+    <string name="voice_too_short">The recording was too short.</string>
+    <string name="voice_failed">Could not start recording. Is the microphone in use?</string>
+    <string name="voice_no_permission">Microphone permission is needed to record voice messages.</string>
+</resources>

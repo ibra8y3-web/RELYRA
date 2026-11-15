@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="developer_tools_sdk_title">حزمة تطوير الإضافات</string>
+    <string name="developer_tools_sdk_desc">الإضافات ملفات JSON بيانات فقط (حتى 20 إجراءً: إشعار، نسخ نص، فتح رابط https). لا تستطيع تنفيذ كود ولا قراءة الرسائل أو المفاتيح ولا استخدام الشبكة. افحص ملف الإضافة هنا قبل تثبيته.</string>
+    <string name="developer_tools_sdk_check">فحص ملف إضافة</string>
+    <string name="developer_tools_sdk_example">حفظ إضافة نموذجية</string>
+    <string name="developer_tools_sdk_valid">إضافة صالحة %1$s الإصدار %2$s وفيها %3$s من الإجراءات.</string>
+    <string name="developer_tools_sdk_invalid">تم رفض الإضافة: %1$s</string>
+    <string name="developer_tools_sdk_unreadable">تعذرت قراءة الملف.</string>
+    <string name="developer_tools_sdk_saved">تم حفظ الإضافة النموذجية. عدّلها ثم افحصها هنا.</string>
+    <string name="developer_tools_open_plugin_manager">فتح مدير الإضافات</string>
+</resources>

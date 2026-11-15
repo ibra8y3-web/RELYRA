@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tool_csv">CSV</string>
+    <string name="tool_xml">XML</string>
+    <string name="tool_search">Search</string>
+    <string name="tool_more">Show more</string>
+    <string name="tool_csv_empty">The file has no rows.</string>
+    <string name="tool_csv_count">%1$d of %2$d rows, %3$d columns</string>
+    <string name="tool_csv_cut">Only the first 50,000 rows are loaded.</string>
+    <string name="tool_xml_count">%1$d elements</string>
+</resources>

@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="msg_edit">تعديل</string>
+    <string name="msg_edit_title">تعديل الرسالة</string>
+    <string name="msg_edit_save">حفظ</string>
+    <string name="msg_edited">معدّلة</string>
+    <string name="msg_edit_too_late">يمكن تعديل الرسالة خلال 48 ساعة فقط.</string>
+    <string name="msg_edit_not_allowed">لا يمكن تعديل هذه الرسالة.</string>
+    <string name="chat_schedule">جدولة</string>
+    <string name="chat_scheduled_count">%1$d رسالة مجدولة</string>
+    <string name="schedule_title">جدولة رسالة</string>
+    <string name="schedule_at">وقت الإرسال: %1$s</string>
+    <string name="schedule_pick">اختيار التاريخ والوقت</string>
+    <string name="schedule_zone_note">المنطقة الزمنية: %1$s. تُرسل الرسالة في هذه اللحظة بالضبط حتى لو غيّرت المنطقة.</string>
+    <string name="schedule_confirm">جدولة</string>
+    <string name="schedule_ok">تمت جدولة الرسالة.</string>
+    <string name="schedule_past">اختر وقتًا بعد الآن بثوانٍ على الأقل.</string>
+    <string name="schedule_far">يمكن الجدولة لمدة سنة كحد أقصى.</string>
+    <string name="schedule_not_pending">هذه الرسالة المجدولة أُرسلت أو أُلغيت بالفعل.</string>
+    <string name="schedule_failed">تعذرت جدولة هذه الرسالة.</string>
+    <string name="schedule_list_title">الرسائل المجدولة</string>
+    <string name="schedule_list_empty">لا توجد رسائل مجدولة.</string>
+    <string name="schedule_cancel">إلغاء</string>
+</resources>

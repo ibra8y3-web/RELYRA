@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_language">Language</string>
+    <string name="lang_system">System</string>
+    <string name="lang_en">English</string>
+    <string name="lang_ar">العربية</string>
+    <string name="ev_unlock_failed">Failed unlock attempt</string>
+    <string name="ev_backup_exported">Backup created</string>
+    <string name="ev_backup_restore_staged">Backup restore prepared</string>
+    <string name="ev_peer_blocked_packet">Message attempt from a blocked contact</string>
+    <string name="ev_key_changed">A contact\'s encryption key changed</string>
+    <string name="ev_network_alert">Network alert</string>
+    <string name="sc_title">Security Center</string>
+    <string name="sc_summary">%1$d events, %2$d unread</string>
+    <string name="sc_attention">%1$d need attention</string>
+    <string name="sc_mark_all">Mark all read</string>
+    <string name="sc_all">All</string>
+    <string name="sc_open">Open</string>
+    <string name="sc_unread">Unread</string>
+    <string name="sc_read">Read</string>
+    <string name="sc_handled">Handled</string>
+    <string name="sc_any_time">Any time</string>
+    <string name="sc_24h">24 hours</string>
+    <string name="sc_7d">7 days</string>
+    <string name="sc_30d">30 days</string>
+    <string name="sc_no_match">No events match these filters.</string>
+    <string name="sc_mark_handled">Mark as handled</string>
+    <string name="sc_d_severity">Severity: %1$s</string>
+    <string name="sc_d_category">Category: %1$s</string>
+    <string name="sc_d_source">Source: %1$s</string>
+    <string name="sc_d_time">Time: %1$s</string>
+    <string name="sc_d_type">Type: %1$s</string>
+    <string name="sc_d_detail">Details: %1$s</string>
+    <string name="sev_info">Info</string>
+    <string name="sev_notice">Notice</string>
+    <string name="sev_warning">Warning</string>
+    <string name="sev_critical">Critical</string>
+    <string name="cat_identity">Identity</string>
+    <string name="cat_contacts">Contacts</string>
+    <string name="cat_devices">Devices</string>
+    <string name="cat_access">Access</string>
+    <string name="cat_backup">Backup</string>
+    <string name="cat_abuse">Abuse</string>
+    <string name="cat_network">Network</string>
+    <string name="cat_other">Other</string>
+</resources>

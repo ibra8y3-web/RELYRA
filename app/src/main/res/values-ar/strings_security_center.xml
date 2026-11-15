@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="settings_language">اللغة</string>
+    <string name="lang_system">لغة النظام</string>
+    <string name="lang_en">English</string>
+    <string name="lang_ar">العربية</string>
+    <string name="ev_unlock_failed">محاولة فتح فاشلة</string>
+    <string name="ev_backup_exported">تم إنشاء نسخة احتياطية</string>
+    <string name="ev_backup_restore_staged">تم تجهيز استعادة نسخة احتياطية</string>
+    <string name="ev_peer_blocked_packet">محاولة مراسلة من جهة اتصال محظورة</string>
+    <string name="ev_key_changed">تغيّر مفتاح التشفير لجهة اتصال</string>
+    <string name="ev_network_alert">تنبيه شبكة</string>
+    <string name="sc_title">مركز الأمان</string>
+    <string name="sc_summary">%1$d حدثًا، %2$d غير مقروء</string>
+    <string name="sc_attention">%1$d تحتاج انتباهك</string>
+    <string name="sc_mark_all">تعليم الكل كمقروء</string>
+    <string name="sc_all">الكل</string>
+    <string name="sc_open">مفتوحة</string>
+    <string name="sc_unread">غير مقروءة</string>
+    <string name="sc_read">مقروءة</string>
+    <string name="sc_handled">تمت معالجتها</string>
+    <string name="sc_any_time">أي وقت</string>
+    <string name="sc_24h">24 ساعة</string>
+    <string name="sc_7d">7 أيام</string>
+    <string name="sc_30d">30 يومًا</string>
+    <string name="sc_no_match">لا توجد أحداث تطابق هذه التصفية.</string>
+    <string name="sc_mark_handled">تعليم كمعالَج</string>
+    <string name="sc_d_severity">الخطورة: %1$s</string>
+    <string name="sc_d_category">التصنيف: %1$s</string>
+    <string name="sc_d_source">المصدر: %1$s</string>
+    <string name="sc_d_time">الوقت: %1$s</string>
+    <string name="sc_d_type">النوع: %1$s</string>
+    <string name="sc_d_detail">التفاصيل: %1$s</string>
+    <string name="sev_info">معلومة</string>
+    <string name="sev_notice">ملاحظة</string>
+    <string name="sev_warning">تحذير</string>
+    <string name="sev_critical">حرج</string>
+    <string name="cat_identity">الهوية</string>
+    <string name="cat_contacts">جهات الاتصال</string>
+    <string name="cat_devices">الأجهزة</string>
+    <string name="cat_access">الدخول</string>
+    <string name="cat_backup">النسخ الاحتياطي</string>
+    <string name="cat_abuse">إساءة الاستخدام</string>
+    <string name="cat_network">الشبكة</string>
+    <string name="cat_other">أخرى</string>
+</resources>

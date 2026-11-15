@@ -1,0 +1,24 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="msg_edit">Edit</string>
+    <string name="msg_edit_title">Edit message</string>
+    <string name="msg_edit_save">Save</string>
+    <string name="msg_edited">edited</string>
+    <string name="msg_edit_too_late">Messages can only be edited within 48 hours.</string>
+    <string name="msg_edit_not_allowed">This message cannot be edited.</string>
+    <string name="chat_schedule">Schedule</string>
+    <string name="chat_scheduled_count">%1$d scheduled message(s)</string>
+    <string name="schedule_title">Schedule message</string>
+    <string name="schedule_at">Send at: %1$s</string>
+    <string name="schedule_pick">Choose date and time</string>
+    <string name="schedule_zone_note">Time zone: %1$s. The message is sent at this exact moment even if you change zones.</string>
+    <string name="schedule_confirm">Schedule</string>
+    <string name="schedule_ok">Message scheduled.</string>
+    <string name="schedule_past">Choose a time at least a few seconds from now.</string>
+    <string name="schedule_far">Messages can be scheduled up to one year ahead.</string>
+    <string name="schedule_not_pending">This scheduled message was already sent or cancelled.</string>
+    <string name="schedule_failed">Could not schedule this message.</string>
+    <string name="schedule_list_title">Scheduled messages</string>
+    <string name="schedule_list_empty">No scheduled messages.</string>
+    <string name="schedule_cancel">Cancel</string>
+</resources>

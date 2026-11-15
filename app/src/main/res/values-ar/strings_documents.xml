@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="tool_csv">CSV</string>
+    <string name="tool_xml">XML</string>
+    <string name="tool_search">بحث</string>
+    <string name="tool_more">عرض المزيد</string>
+    <string name="tool_csv_empty">الملف لا يحتوي على صفوف.</string>
+    <string name="tool_csv_count">%1$d من %2$d صفًا، %3$d عمودًا</string>
+    <string name="tool_csv_cut">تم تحميل أول 50,000 صف فقط.</string>
+    <string name="tool_xml_count">%1$d عنصرًا</string>
+</resources>

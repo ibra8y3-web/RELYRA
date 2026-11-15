@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="integrations_api_messages_scope">Allow sending messages (messages.send)</string>
+    <string name="integrations_api_messages_scope_desc">Lets a program on this phone list your contacts and groups and send text messages through RELYRA with the token. Off by default. Limited to 20 sends per minute.</string>
+    <string name="integrations_api_messages_enabled">Message sending is enabled for this token. Stop the API when you no longer need it.</string>
+    <string name="integrations_api_send_example">Example: send a message to a contact</string>
+</resources>

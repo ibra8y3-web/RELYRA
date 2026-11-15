@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="browser_title">عارض الويب الخاص</string>
+    <string name="browser_settings_desc">تصفح المواقع الحديثة مع تفعيل JavaScript؛ وتظل ملفات الارتباط متوقفة حتى تسمح بها. يظل الوصول إلى الملفات المحلية محظورًا.</string>
+    <string name="browser_address">عنوان الموقع (يفضّل HTTPS)</string>
+    <string name="browser_go">فتح</string>
+    <string name="browser_back">رجوع</string>
+    <string name="browser_forward">تقدم</string>
+    <string name="browser_reload">إعادة التحميل</string>
+    <string name="browser_invalid_address">أدخل عنوان موقع HTTP أو HTTPS صالحًا. تُحظر مخططات الروابط الأخرى.</string>
+    <string name="browser_load_failed">تعذر تحميل الصفحة.</string>
+    <string name="browser_tls_blocked">تم حظر الصفحة لتعذر التحقق من شهادة TLS.</string>
+    <string name="browser_security_note">يعمل JavaScript لدعم المواقع الحديثة ويمكن إيقافه. تظل ملفات الارتباط متوقفة حتى تسمح بها. يظل المحتوى المختلط والوصول إلى الملفات المحلية محظورين. هذا العارض لا يمر عبر Tor ولا يضمن إخفاء الهوية.</string>
+    <string name="browser_tor_proxy_blocked">عارض WebView المدمج لا يستخدم وكيل SOCKS الخاص بـ RELYRA؛ لذلك يتم حظره أثناء تشغيل وضع Tor لمنع الاتصال المباشر بالإنترنت.</string>
+    <string name="browser_javascript">تفعيل JavaScript للمواقع الحديثة</string>
+    <string name="browser_cookies">السماح بملفات ارتباط المواقع (بما فيها تسجيل الدخول)</string>
+    <string name="browser_open_network">فتح إعدادات الشبكة</string>
+    <string name="browser_http_error">أعاد الموقع خطأ HTTP رقم %1$d.</string>
+    <string name="pdf_title">قارئ PDF</string>
+    <string name="pdf_settings_desc">فتح وقراءة ملفات PDF المحلية دون رفعها إلى الإنترنت.</string>
+    <string name="pdf_open">اختيار ملف PDF</string>
+    <string name="pdf_pick_hint">اختر ملف PDF من جهازك. تتم معالجة الملف محليًا.</string>
+    <string name="pdf_page">%1$d من %2$d</string>
+    <string name="pdf_page_accessibility">صفحة PDF رقم %1$d من %2$d</string>
+    <string name="pdf_previous">السابق</string>
+    <string name="pdf_next">التالي</string>
+    <string name="pdf_error">تعذر فتح ملف PDF: %1$s</string>
+    <string name="pdf_security_note">عارض محلي للقراءة فقط. البحث النصي والتعليقات التوضيحية وتحرير PDF غير متاحة بعد.</string>
+</resources>

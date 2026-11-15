@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="webdav_title">نسخ احتياطي إلى NAS / WebDAV</string>
+    <string name="webdav_desc">تُشفَّر النسخة على هاتفك قبل خروجها، والخادم يخزّن بيانات مشفرة فقط. أجهزة NAS تعمل عبر خدمة WebDAV فيها (Synology وQNAP وTrueNAS وNextcloud...).</string>
+    <string name="webdav_url">عنوان الخادم (https://...)</string>
+    <string name="webdav_user">اسم المستخدم</string>
+    <string name="webdav_pass">كلمة المرور</string>
+    <string name="webdav_pass_keep">كلمة المرور (اتركها فارغة للإبقاء على المحفوظة)</string>
+    <string name="webdav_folder">المجلد</string>
+    <string name="webdav_allow_http">السماح بـ HTTP غير المشفر</string>
+    <string name="webdav_allow_http_desc">فقط لجهاز NAS على شبكتك بلا TLS. أي شخص على الشبكة قد يقرأ بيانات الدخول.</string>
+    <string name="webdav_save">حفظ</string>
+    <string name="webdav_test">اختبار الاتصال</string>
+    <string name="webdav_backup_now">نسخ احتياطي الآن</string>
+    <string name="webdav_refresh">عرض النسخ</string>
+    <string name="webdav_saved">تم حفظ إعدادات الخادم.</string>
+    <string name="webdav_test_ok">الاتصال يعمل.</string>
+    <string name="webdav_uploaded">تم رفع النسخة والتحقق منها: %1$s</string>
+    <string name="webdav_failed">WebDAV: %1$s</string>
+</resources>

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": 1,
+  "id": "example.support-links",
+  "name": "Support links",
+  "version": "1.0.0",
+  "description": "Copies a support address and opens the project security page.",
+  "permissions": ["clipboard.write", "external.open"],
+  "actions": [
+    { "id": "copy-security", "type": "copy_text", "title": "Copy security contact", "text": "See SECURITY.md in the repository for the reporting address." },
+    { "id": "open-repo", "type": "open_url", "title": "Open project page", "url": "https://github.com/ibra8y3-web/RELYRA" }
+  ]
+}

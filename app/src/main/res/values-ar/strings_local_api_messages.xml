@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="integrations_api_messages_scope">السماح بإرسال الرسائل (messages.send)</string>
+    <string name="integrations_api_messages_scope_desc">يسمح لبرنامج على هذا الهاتف بعرض جهات الاتصال والمجموعات وإرسال رسائل نصية عبر RELYRA باستخدام الرمز. متوقف افتراضيًا ومحدود بـ 20 رسالة في الدقيقة.</string>
+    <string name="integrations_api_messages_enabled">إرسال الرسائل مفعّل لهذا الرمز. أوقف الواجهة عندما لا تحتاجها.</string>
+    <string name="integrations_api_send_example">مثال: إرسال رسالة إلى جهة اتصال</string>
+</resources>
